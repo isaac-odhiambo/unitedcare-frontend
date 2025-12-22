@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "UNITED CARE",
+    "slug": "united-care",
+    "version": "1.0.0",
+    "orientation": "portrait",
+
+    "icon": "./assets/images/united-care-icon.png",
+
+    "scheme": "united-care",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/united-care-icon.png",
+        "backgroundColor": "#0A6E8A"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/united-care-icon.png"
+    },
+
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/united-care-splash.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#0A6E8A",
+          "dark": {
+            "backgroundColor": "#0A6E8A"
+          }
+        }
+      ]
+    ],
+
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
