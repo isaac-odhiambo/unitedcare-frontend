@@ -8,30 +8,38 @@ import {
 } from "react-native";
 import { useState } from "react";
 import { router } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { loginUser } from "@/services/auth";
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!username || !password) {
+    if (!phone || !password) {
       Alert.alert("Error", "All fields are required");
       return;
     }
 
     try {
       setLoading(true);
-      const data = await loginUser(username, password);
 
-      await AsyncStorage.setItem("access", data.access);
-      await AsyncStorage.setItem("refresh", data.refresh);
+      // 🔐 Phone-based login (backend aligned)
+      await loginUser(phone, password);
 
-      router.replace("/(tabs)");
-    } catch {
-      Alert.alert("Login Failed", "Invalid username or password");
+      Alert.alert("Success", "Login successful");
+
+      // ✅ REDIRECT TO DASHBOARD (tabs/index)
+      router.replace({
+        pathname: "/(tabs)",
+      });
+    } catch (err: any) {
+      Alert.alert(
+        "Login Failed",
+        err.response?.data?.detail ||
+          err.response?.data?.non_field_errors ||
+          "Invalid phone or password"
+      );
     } finally {
       setLoading(false);
     }
@@ -43,10 +51,10 @@ export default function LoginScreen() {
       <Text style={styles.subtitle}>Login to your account</Text>
 
       <TextInput
-        placeholder="Username"
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
+        placeholder="Phone"
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
         style={styles.input}
       />
 
@@ -68,13 +76,23 @@ export default function LoginScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.push("/register")}>
+      {/* 🔁 Go to Register */}
+      <TouchableOpacity
+        onPress={() =>
+          router.push({
+            pathname: "/(auth)/register",
+          })
+        }
+      >
         <Text style={styles.link}>Don’t have an account? Register</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
+/* =========================
+   STYLES (UNCHANGED)
+========================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -105,7 +123,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0a7ea4",
     padding: 16,
     borderRadius: 10,
-    alignItems: "center", // ✅ now correctly typed
+    alignItems: "center",
     marginBottom: 20,
   },
   buttonText: {

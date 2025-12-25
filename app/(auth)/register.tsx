@@ -12,25 +12,42 @@ import { registerUser } from "@/services/auth";
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!username || !email || !phone || !password) {
+    if (!username || !phone || !idNumber || !password) {
       Alert.alert("Error", "All fields are required");
       return;
     }
 
     try {
       setLoading(true);
-      await registerUser(username, email, phone, password);
 
-      Alert.alert("Success", "Account created successfully. Please login.");
-      router.replace("/login");
-    } catch {
-      Alert.alert("Registration Failed", "Please try again");
+      await registerUser({
+        username,
+        phone,
+        id_number: idNumber,
+        password,
+      });
+
+      Alert.alert("Success", "OTP sent to your phone");
+
+      // ✅ RELATIVE NAVIGATION (NO TS ERROR)
+      router.push({
+        pathname: "../verify-otp",
+        params: { phone },
+      });
+    } catch (err: any) {
+      Alert.alert(
+        "Registration Failed",
+        err.response?.data?.phone ||
+          err.response?.data?.id_number ||
+          err.response?.data?.detail ||
+          "Please try again"
+      );
     } finally {
       setLoading(false);
     }
@@ -50,19 +67,18 @@ export default function RegisterScreen() {
       />
 
       <TextInput
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
+        placeholder="Phone (e.g +2547...)"
+        value={phone}
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
         style={styles.input}
       />
 
       <TextInput
-        placeholder="Phone"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
+        placeholder="ID Number"
+        value={idNumber}
+        onChangeText={setIdNumber}
+        keyboardType="number-pad"
         style={styles.input}
       />
 
@@ -84,13 +100,23 @@ export default function RegisterScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.replace("/login")}>
+      {/* 🔁 Go to Login */}
+      <TouchableOpacity
+        onPress={() =>
+          router.replace({
+            pathname: "../login",
+          })
+        }
+      >
         <Text style={styles.link}>Already have an account? Login</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
+/* =========================
+   STYLES
+========================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,

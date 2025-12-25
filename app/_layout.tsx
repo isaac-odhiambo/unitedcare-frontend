@@ -1,32 +1,25 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, ActivityIndicator } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
 export default function RootLayout() {
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
       const token = await AsyncStorage.getItem("access");
       setIsAuthenticated(!!token);
-      setCheckingAuth(false);
+      setLoading(false);
     };
 
     checkAuth();
   }, []);
 
-  // Show loading screen briefly (normal app behavior)
-  if (checkingAuth) {
+  if (loading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" />
       </View>
     );

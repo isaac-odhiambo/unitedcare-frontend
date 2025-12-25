@@ -4,17 +4,13 @@
     "slug": "united-care",
     "version": "1.0.0",
     "orientation": "portrait",
-
     "icon": "./assets/images/united-care-icon.png",
-
     "scheme": "united-care",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": true
     },
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/united-care-icon.png",
@@ -23,12 +19,10 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/united-care-icon.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -42,9 +36,9 @@
             "backgroundColor": "#0A6E8A"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

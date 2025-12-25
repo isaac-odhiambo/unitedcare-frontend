@@ -1,12 +1,12 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function DashboardScreen() {
   return (
