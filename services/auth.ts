@@ -1,32 +1,31 @@
 import { API } from "./api";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "./storage";
 
 /* =========================
-   TYPES (NEW)
+   TYPES
 ========================= */
 
 export interface RegisterPayload {
   phone: string;
   username: string;
-  id_number: string;
+  id_number?: string;
   password: string;
 }
 
-export interface OTPPayload {
+export interface VerifyOTPPayload {
   phone: string;
-  code: string;
+  otp: string;
 }
 
 export interface LoginResponse {
   access: string;
   refresh: string;
   role: string;
+  status: string;
 }
 
 /* =========================
-   🔴 REGISTER (UPDATED)
-   - removed email
-   - uses phone + id_number
+   REGISTER (SEND OTP)
 ========================= */
 export const registerUser = async (data: RegisterPayload) => {
   const response = await API.post("/register/", data);
@@ -34,25 +33,15 @@ export const registerUser = async (data: RegisterPayload) => {
 };
 
 /* =========================
-   🔴 VERIFY OTP (NEW)
+   VERIFY OTP (ACTIVATE ACCOUNT)
 ========================= */
-export const verifyOtp = async (data: OTPPayload) => {
+export const verifyOtp = async (data: VerifyOTPPayload) => {
   const response = await API.post("/verify-otp/", data);
   return response.data;
 };
 
 /* =========================
-   🔴 RESEND OTP (NEW)
-========================= */
-export const resendOtp = async (phone: string) => {
-  const response = await API.post("/resend-otp/", { phone });
-  return response.data;
-};
-
-/* =========================
-   🔴 LOGIN (UPDATED)
-   - username → phone
-   - saves JWT securely
+   LOGIN
 ========================= */
 export const loginUser = async (phone: string, password: string) => {
   const response = await API.post<LoginResponse>("/login/", {
@@ -60,17 +49,46 @@ export const loginUser = async (phone: string, password: string) => {
     password,
   });
 
-  // 🔐 SAVE TOKENS (NEW)
-  await SecureStore.setItemAsync("access", response.data.access);
-  await SecureStore.setItemAsync("refresh", response.data.refresh);
+  // 🔐 Store JWT
+  await storage.set("access", response.data.access);
+  await storage.set("refresh", response.data.refresh);
 
   return response.data;
 };
 
 /* =========================
-   🔴 LOGOUT (OPTIONAL, NEW)
+   FORGOT PASSWORD (SEND OTP)
+========================= */
+export const forgotPassword = async (phone: string) => {
+  const response = await API.post("/forgot-password/", { phone });
+  return response.data;
+};
+
+/* =========================
+   RESET PASSWORD (AUTO LOGIN)
+========================= */
+export const resetPassword = async (
+  phone: string,
+  otp: string,
+  newPassword: string
+) => {
+  const response = await API.post<LoginResponse>("/reset-password/", {
+    phone,
+    otp,
+    new_password: newPassword,
+  });
+
+  // 🔑 Auto-login after reset
+  await storage.set("access", response.data.access);
+  await storage.set("refresh", response.data.refresh);
+
+  return response.data;
+};
+
+/* =========================
+   LOGOUT
 ========================= */
 export const logoutUser = async () => {
-  await SecureStore.deleteItemAsync("access");
-  await SecureStore.deleteItemAsync("refresh");
+  await storage.remove("access");
+  await storage.remove("refresh");
 };

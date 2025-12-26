@@ -1,14 +1,14 @@
+import { loginUser } from "@/services/auth";
+import { router } from "expo-router";
+import { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
-  StyleSheet,
+  View,
 } from "react-native";
-import { useState } from "react";
-import { router } from "expo-router";
-import { loginUser } from "@/services/auth";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -16,30 +16,69 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    console.log("✅ LOGIN BUTTON CLICKED");
+
     if (!phone || !password) {
-      Alert.alert("Error", "All fields are required");
+      Alert.alert("Error", "Phone and password are required");
+      return;
+    }
+
+    // 🔎 Frontend phone validation (UX only)
+    if (!/^(07|01)\d{8}$/.test(phone)) {
+      Alert.alert(
+        "Invalid Phone",
+        "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX"
+      );
       return;
     }
 
     try {
       setLoading(true);
+      console.log("🚀 SENDING LOGIN REQUEST", { phone });
 
-      // 🔐 Phone-based login (backend aligned)
-      await loginUser(phone, password);
+      const response = await loginUser(phone, password);
+      console.log("✅ LOGIN RESPONSE:", response);
 
       Alert.alert("Success", "Login successful");
 
-      // ✅ REDIRECT TO DASHBOARD (tabs/index)
-      router.replace({
-        pathname: "/(tabs)",
-      });
+      // ✅ Redirect to dashboard
+      router.replace("/(tabs)");
+
     } catch (err: any) {
-      Alert.alert(
-        "Login Failed",
-        err.response?.data?.detail ||
-          err.response?.data?.non_field_errors ||
-          "Invalid phone or password"
-      );
+      console.log("❌ LOGIN ERROR:", err);
+
+      const errorMsg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.non_field_errors ||
+        "Invalid phone or password";
+
+      // 🔐 Account not activated → redirect to OTP verification
+      if (errorMsg.toLowerCase().includes("not activated")) {
+        Alert.alert(
+          "Verify Account",
+          "Your account is not activated. Please verify using OTP.",
+          [
+            {
+              text: "Verify Now",
+              onPress: () =>
+                router.push({
+                  pathname: "/(auth)/verify-otp",
+                  params: { phone },
+                }),
+            },
+            { text: "Cancel", style: "cancel" },
+          ]
+        );
+        return;
+      }
+
+      // 🔒 Account locked feedback
+      if (errorMsg.toLowerCase().includes("locked")) {
+        Alert.alert("Account Locked", errorMsg);
+        return;
+      }
+
+      Alert.alert("Login Failed", errorMsg);
     } finally {
       setLoading(false);
     }
@@ -51,7 +90,7 @@ export default function LoginScreen() {
       <Text style={styles.subtitle}>Login to your account</Text>
 
       <TextInput
-        placeholder="Phone"
+        placeholder="Phone (07XXXXXXXX)"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -76,13 +115,18 @@ export default function LoginScreen() {
         </Text>
       </TouchableOpacity>
 
-      {/* 🔁 Go to Register */}
+      {/* 🔑 FORGOT PASSWORD */}
       <TouchableOpacity
-        onPress={() =>
-          router.push({
-            pathname: "/(auth)/register",
-          })
-        }
+        disabled={loading}
+        onPress={() => router.push("/(auth)/forgot-password")}
+      >
+        <Text style={styles.link}>Forgot password?</Text>
+      </TouchableOpacity>
+
+      {/* 🔁 REGISTER */}
+      <TouchableOpacity
+        disabled={loading}
+        onPress={() => router.push("/(auth)/register")}
       >
         <Text style={styles.link}>Don’t have an account? Register</Text>
       </TouchableOpacity>
@@ -91,7 +135,7 @@ export default function LoginScreen() {
 }
 
 /* =========================
-   STYLES (UNCHANGED)
+   STYLES
 ========================= */
 const styles = StyleSheet.create({
   container: {
@@ -124,7 +168,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 14,
   },
   buttonText: {
     color: "#fff",
@@ -134,5 +178,6 @@ const styles = StyleSheet.create({
   link: {
     color: "#0a7ea4",
     textAlign: "center",
+    marginTop: 10,
   },
 });

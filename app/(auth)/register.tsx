@@ -1,14 +1,14 @@
+import { registerUser } from "@/services/auth";
+import { router } from "expo-router";
+import { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
-  StyleSheet,
+  View,
 } from "react-native";
-import { useState } from "react";
-import { router } from "expo-router";
-import { registerUser } from "@/services/auth";
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
@@ -18,34 +18,78 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!username || !phone || !idNumber || !password) {
-      Alert.alert("Error", "All fields are required");
+    // ✅ Required fields
+    if (!username || !phone || !password) {
+      Alert.alert("Error", "Username, phone and password are required");
       return;
+    }
+
+    // 🔎 Username validation (backend-aligned)
+    if (!/^[A-Za-z]+$/.test(username)) {
+      Alert.alert(
+        "Invalid Username",
+        "Username must contain letters only"
+      );
+      return;
+    }
+
+    // 🔎 Phone validation (backend-aligned)
+    if (!/^(07|01)\d{8}$/.test(phone)) {
+      Alert.alert(
+        "Invalid Phone",
+        "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX"
+      );
+      return;
+    }
+
+    // 🔎 ID number validation (OPTIONAL field)
+    if (idNumber && !/^\d{1,9}$/.test(idNumber)) {
+      Alert.alert(
+        "Invalid ID Number",
+        "ID number must be numeric and not more than 9 digits"
+      );
+      return;
+    }
+
+    // 🔎 Password validation
+    if (password.length < 4) {
+      Alert.alert(
+        "Weak Password",
+        "Password must be at least 4 characters"
+      );
+      return;
+    }
+
+    // ✅ Payload strictly matches backend
+    const payload: any = {
+      username,
+      phone,
+      password,
+    };
+
+    if (idNumber) {
+      payload.id_number = idNumber;
     }
 
     try {
       setLoading(true);
 
-      await registerUser({
-        username,
-        phone,
-        id_number: idNumber,
-        password,
-      });
+      await registerUser(payload);
 
       Alert.alert("Success", "OTP sent to your phone");
 
-      // ✅ RELATIVE NAVIGATION (NO TS ERROR)
       router.push({
         pathname: "../verify-otp",
         params: { phone },
       });
+
     } catch (err: any) {
       Alert.alert(
         "Registration Failed",
-        err.response?.data?.phone ||
-          err.response?.data?.id_number ||
-          err.response?.data?.detail ||
+        err?.response?.data?.username ||
+          err?.response?.data?.phone ||
+          err?.response?.data?.id_number ||
+          err?.response?.data?.detail ||
           "Please try again"
       );
     } finally {
@@ -59,7 +103,7 @@ export default function RegisterScreen() {
       <Text style={styles.subtitle}>Join UNITED CARE today</Text>
 
       <TextInput
-        placeholder="Username"
+        placeholder="Username (letters only)"
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
@@ -67,7 +111,7 @@ export default function RegisterScreen() {
       />
 
       <TextInput
-        placeholder="Phone (e.g +2547...)"
+        placeholder="Phone (07XXXXXXXX)"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -75,7 +119,7 @@ export default function RegisterScreen() {
       />
 
       <TextInput
-        placeholder="ID Number"
+        placeholder="ID Number (optional)"
         value={idNumber}
         onChangeText={setIdNumber}
         keyboardType="number-pad"
@@ -83,7 +127,7 @@ export default function RegisterScreen() {
       />
 
       <TextInput
-        placeholder="Password"
+        placeholder="Password (min 4 characters)"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -100,13 +144,9 @@ export default function RegisterScreen() {
         </Text>
       </TouchableOpacity>
 
-      {/* 🔁 Go to Login */}
       <TouchableOpacity
-        onPress={() =>
-          router.replace({
-            pathname: "../login",
-          })
-        }
+        onPress={() => router.replace("../login")}
+        disabled={loading}
       >
         <Text style={styles.link}>Already have an account? Login</Text>
       </TouchableOpacity>

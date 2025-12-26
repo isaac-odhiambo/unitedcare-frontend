@@ -1,17 +1,23 @@
+import { resendOtp, verifyOtp } from "@/services/auth";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
-  StyleSheet,
+  View,
 } from "react-native";
-import { useLocalSearchParams, router } from "expo-router";
-import { verifyOtp, resendOtp } from "@/services/auth";
 
 export default function VerifyOTPScreen() {
   const { phone } = useLocalSearchParams<{ phone: string }>();
+
+  if (!phone) {
+    Alert.alert("Error", "Missing phone number");
+    router.replace("/(auth)/register");
+    return null;
+  }
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,13 +32,12 @@ export default function VerifyOTPScreen() {
       setLoading(true);
 
       await verifyOtp({
-        phone: String(phone), // 🔴 ensure correct type
+        phone: String(phone),
         code,
       });
 
       Alert.alert("Success", "Phone verified successfully");
 
-      // ✅ After OTP → go to login
       router.replace({
         pathname: "/(auth)/login",
       });
@@ -72,7 +77,7 @@ export default function VerifyOTPScreen() {
       />
 
       <TouchableOpacity
-        onPress={handleVerify}
+        onPressIn={handleVerify}
         disabled={loading}
         style={styles.button}
       >
@@ -81,7 +86,7 @@ export default function VerifyOTPScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={handleResend}>
+      <TouchableOpacity onPressIn={handleResend}>
         <Text style={styles.resend}>Resend OTP</Text>
       </TouchableOpacity>
     </View>
