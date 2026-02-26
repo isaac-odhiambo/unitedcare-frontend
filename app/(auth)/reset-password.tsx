@@ -1,121 +1,75 @@
 import { resetPassword } from "@/services/auth";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
+import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 export default function ResetPasswordScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const params = useLocalSearchParams();
+  const phone = String(params.phone || "");
+
   const [otp, setOtp] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleResetPassword = async () => {
-    if (!otp || !password) {
-      Alert.alert("Error", "OTP and new password are required");
-      return;
-    }
-
-    if (password.length < 4) {
-      Alert.alert(
-        "Weak Password",
-        "Password must be at least 4 characters"
-      );
+  const handleReset = async () => {
+    if (!phone || !otp || !newPassword) {
+      Alert.alert("Missing info", "Phone, OTP, and new password are required.");
       return;
     }
 
     try {
       setLoading(true);
-
-      await resetPassword(phone!, otp, password);
-
-      Alert.alert("Success", "Password reset successful");
-
-      // 🔑 Auto-login → go to dashboard
-      router.replace("/(tabs)");
-
-    } catch (err: any) {
-      Alert.alert(
-        "Error",
-        err?.response?.data?.detail || "Password reset failed"
-      );
+      await resetPassword({ phone, otp, new_password: newPassword });
+      Alert.alert("Success", "Password reset successful. You are now logged in.");
+      router.replace("/(tabs)/dashboard");
+    } catch (e: any) {
+      const msg =
+        e?.response?.data?.detail ||
+        e?.response?.data?.non_field_errors?.[0] ||
+        "Password reset failed.";
+      Alert.alert("Error", msg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Reset Password</Text>
+    <View style={{ padding: 20, gap: 12 }}>
+      <Text style={{ fontSize: 22, fontWeight: "700" }}>Reset Password</Text>
+
+      <Text style={{ opacity: 0.7 }}>Phone: {phone}</Text>
 
       <TextInput
         placeholder="OTP"
         value={otp}
         onChangeText={setOtp}
         keyboardType="number-pad"
-        style={styles.input}
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
       />
 
       <TextInput
         placeholder="New Password"
-        value={password}
-        onChangeText={setPassword}
+        value={newPassword}
+        onChangeText={setNewPassword}
         secureTextEntry
-        style={styles.input}
+        style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
       />
 
       <TouchableOpacity
-        onPress={handleResetPassword}
+        onPress={handleReset}
         disabled={loading}
-        style={styles.button}
+        style={{
+          backgroundColor: "black",
+          padding: 14,
+          borderRadius: 10,
+          alignItems: "center",
+          opacity: loading ? 0.6 : 1,
+        }}
       >
-        <Text style={styles.buttonText}>
-          {loading ? "Resetting..." : "RESET PASSWORD"}
+        <Text style={{ color: "white", fontWeight: "700" }}>
+          {loading ? "Resetting..." : "Reset Password"}
         </Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-/* =========================
-   STYLES
-========================= */
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 24,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#0a7ea4",
-    marginBottom: 20,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    backgroundColor: "#fff",
-  },
-  button: {
-    backgroundColor: "#0a7ea4",
-    padding: 16,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-});

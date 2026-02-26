@@ -1,17 +1,11 @@
-import { COLORS } from "@/constants/theme";
+import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { router } from "expo-router";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function DashboardScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.appName}>UNITED CARE</Text>
@@ -21,21 +15,21 @@ export default function DashboardScreen() {
       {/* Summary Cards */}
       <View style={styles.cardRow}>
         <View style={[styles.card, { backgroundColor: COLORS.success }]}>
-          <Ionicons name="wallet" size={28} color="#fff" />
+          <Ionicons name="wallet" size={28} color={COLORS.white} />
           <Text style={styles.cardLabel}>Total Savings</Text>
           <Text style={styles.cardValue}>KES 25,000</Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: COLORS.accent }]}>
-          <Ionicons name="cash" size={28} color="#fff" />
+        <View style={[styles.card, { backgroundColor: COLORS.accent, marginRight: 0 }]}>
+          <Ionicons name="cash" size={28} color={COLORS.white} />
           <Text style={styles.cardLabel}>Outstanding Loans</Text>
           <Text style={styles.cardValue}>KES 10,000</Text>
         </View>
       </View>
 
       <View style={styles.cardRow}>
-        <View style={[styles.card, { backgroundColor: COLORS.primary }]}>
-          <Ionicons name="people" size={28} color="#fff" />
+        <View style={[styles.card, { backgroundColor: COLORS.primary, marginRight: 0 }]}>
+          <Ionicons name="people" size={28} color={COLORS.white} />
           <Text style={styles.cardLabel}>Active Groups</Text>
           <Text style={styles.cardValue}>3</Text>
         </View>
@@ -44,21 +38,29 @@ export default function DashboardScreen() {
       {/* Quick Actions */}
       <Text style={styles.sectionTitle}>Quick Actions</Text>
 
-      <TouchableOpacity style={styles.actionButton}>
-        <Ionicons name="add-circle-outline" size={22} color="#fff" />
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => router.push("/(tabs)/savings")}
+      >
+        <Ionicons name="add-circle-outline" size={22} color={COLORS.white} />
         <Text style={styles.actionText}>Add Savings</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.actionButton}>
-        <Ionicons name="document-text-outline" size={22} color="#fff" />
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => router.push("/(tabs)/loans")}
+      >
+        <Ionicons name="document-text-outline" size={22} color={COLORS.white} />
         <Text style={styles.actionText}>Apply for Loan</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.actionButton}>
-        <Ionicons name="people-outline" size={22} color="#fff" />
-        <Text style={styles.actionText}>View Groups</Text>
+      <TouchableOpacity
+        style={styles.actionButton}
+        onPress={() => router.push("/(tabs)/merry")}
+      >
+        <Ionicons name="people-outline" size={22} color={COLORS.white} />
+        <Text style={styles.actionText}>View Merry</Text>
       </TouchableOpacity>
-
     </ScrollView>
   );
 }
@@ -67,60 +69,60 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.white,
-    padding: 16,
+    padding: SPACING.md,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: SPACING.lg,
   },
   appName: {
-    fontSize: 24,
+    fontSize: FONT.title,
     fontWeight: "bold",
     color: COLORS.primary,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: FONT.subtitle,
     color: COLORS.gray,
-    marginTop: 4,
+    marginTop: SPACING.xs,
   },
   cardRow: {
     flexDirection: "row",
-    marginBottom: 16,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
   card: {
     flex: 1,
-    borderRadius: 16,
-    padding: 18,
-    marginRight: 12,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md + 2,
   },
   cardLabel: {
-    color: "#fff",
+    color: COLORS.white,
     fontSize: 14,
-    marginTop: 10,
+    marginTop: SPACING.sm,
   },
   cardValue: {
-    color: "#fff",
+    color: COLORS.white,
     fontSize: 20,
     fontWeight: "bold",
-    marginTop: 6,
+    marginTop: SPACING.xs,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: FONT.section,
     fontWeight: "bold",
     color: COLORS.dark,
-    marginVertical: 16,
+    marginVertical: SPACING.md,
   },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 12,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.sm,
   },
   actionText: {
-    color: "#fff",
-    fontSize: 16,
-    marginLeft: 12,
+    color: COLORS.white,
+    fontSize: FONT.body,
+    marginLeft: SPACING.sm,
     fontWeight: "500",
   },
 });

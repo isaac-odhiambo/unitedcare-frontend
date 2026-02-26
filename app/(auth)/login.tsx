@@ -1,14 +1,9 @@
-import { loginUser } from "@/services/auth";
-import { router } from "expo-router";
 import { useState } from "react";
-import {
-  Alert,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
+
+import { loginUser } from "@/services/auth";
+import { COLORS, RADIUS, SPACING, FONT } from "@/constants/theme";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
@@ -16,69 +11,31 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    console.log("✅ LOGIN BUTTON CLICKED");
-
+    // Basic UX checks
     if (!phone || !password) {
-      Alert.alert("Error", "Phone and password are required");
+      Alert.alert("Missing details", "Phone and password are required.");
       return;
     }
-
-    // 🔎 Frontend phone validation (UX only)
     if (!/^(07|01)\d{8}$/.test(phone)) {
-      Alert.alert(
-        "Invalid Phone",
-        "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX"
-      );
+      Alert.alert("Invalid phone", "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX.");
       return;
     }
 
     try {
       setLoading(true);
-      console.log("🚀 SENDING LOGIN REQUEST", { phone });
 
-      const response = await loginUser(phone, password);
-      console.log("✅ LOGIN RESPONSE:", response);
+      // Calls: POST /api/accounts/login/
+      await loginUser({ phone, password });
 
-      Alert.alert("Success", "Login successful");
-
-      // ✅ Redirect to dashboard
-      router.replace("/(tabs)");
-
-    } catch (err: any) {
-      console.log("❌ LOGIN ERROR:", err);
-
-      const errorMsg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.non_field_errors ||
-        "Invalid phone or password";
-
-      // 🔐 Account not activated → redirect to OTP verification
-      if (errorMsg.toLowerCase().includes("not activated")) {
-        Alert.alert(
-          "Verify Account",
-          "Your account is not activated. Please verify using OTP.",
-          [
-            {
-              text: "Verify Now",
-              onPress: () =>
-                router.push({
-                  pathname: "/(auth)/verify-otp",
-                  params: { phone },
-                }),
-            },
-            { text: "Cancel", style: "cancel" },
-          ]
-        );
-        return;
-      }
-
-      // 🔒 Account locked feedback
-      if (errorMsg.toLowerCase().includes("locked")) {
-        Alert.alert("Account Locked", errorMsg);
-        return;
-      }
-
-      Alert.alert("Login Failed", errorMsg);
+      // IMPORTANT: this will work after you create folders with index.tsx
+      router.replace("/(tabs)/dashboard");
+    } catch (e: any) {
+      // Your backend returns ValidationError strings usually in "detail"
+      const msg =
+        e?.response?.data?.detail ||
+        e?.response?.data?.non_field_errors?.[0] ||
+        "Login failed. Please try again.";
+      Alert.alert("Login Failed", msg);
     } finally {
       setLoading(false);
     }
@@ -86,98 +43,87 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>UNITED CARE</Text>
-      <Text style={styles.subtitle}>Login to your account</Text>
+      <Text style={styles.title}>Login</Text>
+      <Text style={styles.subtitle}>Welcome back</Text>
 
       <TextInput
+        style={styles.input}
         placeholder="Phone (07XXXXXXXX)"
+        placeholderTextColor={COLORS.gray}
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
-        style={styles.input}
       />
 
       <TextInput
+        style={styles.input}
         placeholder="Password"
+        placeholderTextColor={COLORS.gray}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        style={styles.input}
       />
 
-      <TouchableOpacity
-        onPress={handleLogin}
-        disabled={loading}
-        style={styles.button}
-      >
-        <Text style={styles.buttonText}>
-          {loading ? "Logging in..." : "LOGIN"}
-        </Text>
+      <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
+        <Text style={styles.buttonText}>{loading ? "Logging in..." : "Login"}</Text>
       </TouchableOpacity>
 
-      {/* 🔑 FORGOT PASSWORD */}
-      <TouchableOpacity
-        disabled={loading}
-        onPress={() => router.push("/(auth)/forgot-password")}
-      >
+      <TouchableOpacity onPress={() => router.push("/(auth)/forgot-password")}>
         <Text style={styles.link}>Forgot password?</Text>
       </TouchableOpacity>
 
-      {/* 🔁 REGISTER */}
-      <TouchableOpacity
-        disabled={loading}
-        onPress={() => router.push("/(auth)/register")}
-      >
-        <Text style={styles.link}>Don’t have an account? Register</Text>
+      <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+        <Text style={styles.link}>Create account</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-/* =========================
-   STYLES
-========================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
     justifyContent: "center",
-    padding: 24,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#0a7ea4",
-    marginBottom: 8,
+    fontSize: FONT.title,
+    fontWeight: "800",
+    color: COLORS.primary,
   },
   subtitle: {
-    textAlign: "center",
-    color: "#666",
-    marginBottom: 30,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.lg,
+    color: COLORS.gray,
+    fontSize: FONT.subtitle,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    backgroundColor: "#fff",
+    borderColor: COLORS.lightGray,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.sm,
+    color: COLORS.dark,
   },
   button: {
-    backgroundColor: "#0a7ea4",
-    padding: 16,
-    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
     alignItems: "center",
-    marginBottom: 14,
+    marginTop: SPACING.sm,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
+    color: COLORS.white,
+    fontWeight: "700",
+    fontSize: FONT.body,
   },
   link: {
-    color: "#0a7ea4",
+    marginTop: SPACING.md,
     textAlign: "center",
-    marginTop: 10,
+    color: COLORS.primary,
+    fontWeight: "600",
   },
 });
