@@ -1,189 +1,250 @@
-import { verifyOtp } from "@/services/auth";
+// app/(auth)/verify-otp.tsx
+import { getErrorMessage } from "@/services/api";
+import { resendOtp, verifyOtp } from "@/services/auth";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+
+type FieldErrors = {
+  phone?: string;
+  otp?: string;
+  general?: string;
+};
+
+function normalizePhone(input: string) {
+  return (input || "").replace(/\s+/g, "").trim();
+}
+
+function parseBackendError(e: any): FieldErrors {
+  const pretty = getErrorMessage(e);
+  const data = e?.response?.data;
+
+  // DRF: { detail: "..." }
+  if (typeof data?.detail === "string") return { general: data.detail };
+
+  // DRF: { non_field_errors: ["..."] }
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors.length) {
+    return { general: data.non_field_errors[0] };
+  }
+
+  // DRF field errors: { phone: ["..."], otp: ["..."] }
+  const errors: FieldErrors = {};
+  if (Array.isArray(data?.phone) && data.phone.length) errors.phone = data.phone[0];
+  if (Array.isArray(data?.otp) && data.otp.length) errors.otp = data.otp[0];
+
+  if (Object.keys(errors).length) return errors;
+
+  return { general: pretty || "Verification failed. Please try again." };
+}
 
 export default function VerifyOtpScreen() {
-  const { phone } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const phoneParam = useMemo(() => normalizePhone(String(params?.phone || "")), [params]);
+
+  const [phone] = useState(phoneParam); // readonly (prevents mismatch)
   const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+
+  // Resend cooldown (seconds)
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  const validateVerify = (): boolean => {
+    const next: FieldErrors = {};
+
+    if (!phone) next.phone = "Phone is missing. Go back and register again.";
+    else if (!/^(07|01)\d{8}$/.test(phone)) next.phone = "Phone must be 07XXXXXXXX or 01XXXXXXXX.";
+
+    if (!otp) next.otp = "OTP is required.";
+    else if (!/^\d{6}$/.test(otp)) next.otp = "OTP must be exactly 6 digits.";
+
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   const handleVerify = async () => {
+    setErrors({});
+    if (!validateVerify()) return;
+
     try {
-      await verifyOtp({ phone: String(phone), otp });
-      Alert.alert("Success", "Account verified. Please login.");
+      setLoading(true);
+
+      const res = await verifyOtp({ phone, otp });
+
+      Alert.alert("Success", res?.detail || "Account verified successfully.");
       router.replace("/(auth)/login");
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "OTP failed");
+      const parsed = parseBackendError(e);
+      setErrors(parsed);
+
+      console.log("VERIFY OTP ERROR:", {
+        status: e?.response?.status,
+        data: e?.response?.data,
+        sent: { phone, otp },
+        baseURL: e?.config?.baseURL,
+        url: e?.config?.url,
+        message: getErrorMessage(e),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    // basic frontend validation
+    const p = normalizePhone(phone);
+    if (!/^(07|01)\d{8}$/.test(p)) {
+      Alert.alert("Invalid phone", "Phone must be 07XXXXXXXX or 01XXXXXXXX.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await resendOtp({ phone: p });
+
+      Alert.alert("OTP Sent", res?.detail || "OTP resent. Please check your phone.");
+      setCooldown(60); // 60s cooldown
+    } catch (e: any) {
+      console.log("RESEND OTP ERROR:", {
+        status: e?.response?.status,
+        data: e?.response?.data,
+        sent: { phone: p },
+        baseURL: e?.config?.baseURL,
+        url: e?.config?.url,
+        message: getErrorMessage(e),
+      });
+
+      Alert.alert("Resend Failed", getErrorMessage(e));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={{ padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 22 }}>Verify OTP</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#fff" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={styles.container}>
+        <Text style={styles.title}>Verify OTP</Text>
 
-      <TextInput
-        placeholder="Enter OTP"
-        value={otp}
-        onChangeText={setOtp}
-        keyboardType="number-pad"
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-      />
+        <Text style={styles.subtitle}>
+          Enter the 6-digit code sent to <Text style={{ fontWeight: "800" }}>{phone || "your phone"}</Text>
+        </Text>
 
-      <TouchableOpacity
-        onPress={handleVerify}
-        style={{
-          backgroundColor: "black",
-          padding: 14,
-          borderRadius: 10,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ color: "white" }}>Verify</Text>
-      </TouchableOpacity>
-    </View>
+        {errors.general ? <Text style={styles.generalError}>{errors.general}</Text> : null}
+        {errors.phone ? <Text style={styles.fieldError}>{errors.phone}</Text> : null}
+
+        <TextInput
+          placeholder="Enter 6-digit OTP"
+          value={otp}
+          onChangeText={(t) => {
+            // digits only, max 6
+            const cleaned = t.replace(/\D/g, "").slice(0, 6);
+            setOtp(cleaned);
+            if (errors.otp) setErrors((p) => ({ ...p, otp: undefined }));
+            if (errors.general) setErrors((p) => ({ ...p, general: undefined }));
+          }}
+          keyboardType="number-pad"
+          maxLength={6}
+          editable={!loading}
+          style={[styles.input, errors.otp && styles.inputError]}
+        />
+        {errors.otp ? <Text style={styles.fieldError}>{errors.otp}</Text> : null}
+
+        <TouchableOpacity
+          onPress={handleVerify}
+          disabled={loading}
+          activeOpacity={0.9}
+          style={[styles.button, loading && styles.buttonDisabled]}
+        >
+          {loading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.buttonText}>Verifying...</Text>
+            </View>
+          ) : (
+            <Text style={styles.buttonText}>Verify</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleResend}
+          disabled={loading || cooldown > 0}
+          style={{ marginTop: 16 }}
+        >
+          <Text style={[styles.link, (loading || cooldown > 0) && { opacity: 0.6 }]}>
+            {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Resend OTP"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.replace("/(auth)/register")} disabled={loading}>
+          <Text style={[styles.link, { marginTop: 10 }]}>Back to Register</Text>
+        </TouchableOpacity>
+
+        {/* Optional dev hint */}
+        {/* <Text style={{ marginTop: 20, color: "#888", textAlign: "center" }}>
+          API: {process.env.EXPO_PUBLIC_API_URL}
+        </Text> */}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#fff" },
+  title: { fontSize: 24, fontWeight: "800", marginBottom: 8, color: "#111" },
+  subtitle: { marginBottom: 16, color: "#666" },
 
-// import { resendOtp, verifyOtp } from "@/services/auth";
-// import { router, useLocalSearchParams } from "expo-router";
-// import { useState } from "react";
-// import {
-//   Alert,
-//   StyleSheet,
-//   Text,
-//   TextInput,
-//   TouchableOpacity,
-//   View,
-// } from "react-native";
+  generalError: {
+    backgroundColor: "#ffecec",
+    borderColor: "#ffb3b3",
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+    color: "#990000",
+    fontWeight: "700",
+  },
 
-// export default function VerifyOTPScreen() {
-//   const { phone } = useLocalSearchParams<{ phone: string }>();
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+    color: "#111",
+  },
+  inputError: { borderColor: "#cc0000" },
 
-//   if (!phone) {
-//     Alert.alert("Error", "Missing phone number");
-//     router.replace("/(auth)/register");
-//     return null;
-//   }
+  fieldError: { color: "#cc0000", marginBottom: 10, fontWeight: "600" },
 
-//   const [code, setCode] = useState("");
-//   const [loading, setLoading] = useState(false);
+  button: {
+    backgroundColor: "#111",
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  buttonDisabled: { opacity: 0.7 },
 
-//   const handleVerify = async () => {
-//     if (!code) {
-//       Alert.alert("Error", "Please enter the OTP");
-//       return;
-//     }
+  buttonText: { color: "#fff", fontWeight: "700" },
 
-//     try {
-//       setLoading(true);
-
-//       await verifyOtp({
-//         phone: String(phone),
-//         otp: code,
-//       });
-
-//       Alert.alert("Success", "Phone verified successfully");
-
-//       router.replace({
-//         pathname: "/(auth)/login",
-//       });
-//     } catch (err: any) {
-//       Alert.alert(
-//         "Verification Failed",
-//         err.response?.data?.error || "Invalid or expired OTP"
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const handleResend = async () => {
-//     try {
-//       await resendOtp(String(phone));
-//       Alert.alert("Success", "OTP resent successfully");
-//     } catch {
-//       Alert.alert("Error", "Failed to resend OTP");
-//     }
-//   };
-
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Verify OTP</Text>
-//       <Text style={styles.subtitle}>
-//         Enter the code sent to {phone}
-//       </Text>
-
-//       <TextInput
-//         placeholder="Enter OTP"
-//         keyboardType="number-pad"
-//         maxLength={6}
-//         value={code}
-//         onChangeText={setCode}
-//         style={styles.input}
-//       />
-
-//       <TouchableOpacity
-//         onPressIn={handleVerify}
-//         disabled={loading}
-//         style={styles.button}
-//       >
-//         <Text style={styles.buttonText}>
-//           {loading ? "Verifying..." : "VERIFY OTP"}
-//         </Text>
-//       </TouchableOpacity>
-
-//       <TouchableOpacity onPressIn={handleResend}>
-//         <Text style={styles.resend}>Resend OTP</Text>
-//       </TouchableOpacity>
-//     </View>
-//   );
-// }
-
-// /* =========================
-//    STYLES
-// ========================= */
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     justifyContent: "center",
-//     padding: 24,
-//   },
-//   title: {
-//     fontSize: 26,
-//     fontWeight: "bold",
-//     textAlign: "center",
-//     color: "#0a7ea4",
-//     marginBottom: 8,
-//   },
-//   subtitle: {
-//     textAlign: "center",
-//     color: "#666",
-//     marginBottom: 30,
-//   },
-//   input: {
-//     borderWidth: 1,
-//     borderColor: "#ddd",
-//     borderRadius: 10,
-//     padding: 14,
-//     marginBottom: 20,
-//     backgroundColor: "#fff",
-//   },
-//   button: {
-//     backgroundColor: "#0a7ea4",
-//     padding: 16,
-//     borderRadius: 10,
-//     alignItems: "center",
-//     marginBottom: 16,
-//   },
-//   buttonText: {
-//     color: "#fff",
-//     fontSize: 16,
-//     fontWeight: "bold",
-//   },
-//   resend: {
-//     textAlign: "center",
-//     color: "#0a7ea4",
-//     fontSize: 14,
-//   },
-// });
+  link: { textAlign: "center", color: "#111", fontWeight: "700" },
+});

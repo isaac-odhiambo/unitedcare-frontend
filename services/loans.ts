@@ -1,78 +1,176 @@
-import { api } from "./api";
+// services/loans.ts
+import { api } from "@/services/api";
+
+/* =========================================================
+   Types (DRF friendly)
+========================================================= */
+
+export type LoanStatus =
+  | "PENDING"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "DEFAULTED"
+  | "COMPLETED"
+  | string;
 
 export type Loan = {
   id: number;
   borrower: number;
-  status: string;
+  merry: number | null;
+  group: number | null;
+  product: number;
+
   principal: string;
   term_weeks: number;
-  total_payable: string;
-  total_paid: string;
-  outstanding_balance: string;
 
-  merry?: number | null;
-  group?: number | null;
-  product?: number;
+  status: LoanStatus;
 
-  approved_at?: string | null;
   created_at?: string;
+  approved_at?: string | null;
+
+  total_payable?: string;
+  total_paid?: string;
+  outstanding_balance?: string;
+
+  is_defaulter?: boolean;
+
+  borrower_reserved_savings?: string;
+  borrower_reserved_merry_credit?: string;
+  security_target?: string;
 };
 
-export type GuaranteeRequest = {
+export type LoanGuarantor = {
   id: number;
   loan: number;
   guarantor: number;
+
   accepted: boolean;
   accepted_at?: string | null;
+
+  reserved_amount?: string;
 };
 
-export async function fetchMyLoans(): Promise<Loan[]> {
-  const { data } = await api.get("/loans/myloans/");
-  return data;
-}
+export type PayLoanResponse = {
+  message: string;
+  loan_status: LoanStatus;
+  total_paid: string;
+  outstanding_balance: string;
+};
 
-export async function requestLoan(payload: {
+/* =========================================================
+   Payloads
+========================================================= */
+
+export type RequestLoanPayload = {
+  merry?: number;
+  group?: number;
   product: number;
-  principal: string | number;
+  principal: string; // decimal as string
   term_weeks: number;
-  merry?: number | null;
-  group?: number | null;
-}) {
-  const { data } = await api.post("/loans/request/", payload);
-  return data;
+};
+
+export type AddGuarantorPayload = {
+  loan: number;
+  guarantor: number;
+};
+
+export type PayLoanPayload = {
+  amount: string; // decimal as string
+  method?: string; // "MANUAL" | "MPESA" | ...
+  reference?: string;
+};
+
+/* =========================================================
+   API (matches loans/urls.py exactly)
+========================================================= */
+
+// ✅ GET /loans/myloans/
+export async function getMyLoans(): Promise<Loan[]> {
+  const res = await api.get("/loans/myloans/");
+  return res.data;
 }
 
-export async function fetchLoanDetail(loanId: number): Promise<Loan> {
-  const { data } = await api.get(`/loans/loan/${loanId}/`);
-  return data;
+// ✅ POST /loans/request/
+export async function requestLoan(payload: RequestLoanPayload): Promise<{
+  message: string;
+  loan: Loan;
+}> {
+  const res = await api.post("/loans/request/", payload);
+  return res.data;
 }
 
-export async function addGuarantor(payload: { loan: number; guarantor: number }) {
-  const { data } = await api.post("/loans/loan/add-guarantor/", payload);
-  return data;
+// ✅ GET /loans/loan/<pk>/
+export async function getLoanDetail(loanId: number): Promise<Loan> {
+  const res = await api.get(`/loans/loan/${loanId}/`);
+  return res.data;
 }
 
-export async function fetchMyGuaranteeRequests(): Promise<GuaranteeRequest[]> {
-  const { data } = await api.get("/loans/guarantee/my-requests/");
-  return data;
+// ✅ POST /loans/loan/add-guarantor/
+export async function addGuarantor(payload: AddGuarantorPayload): Promise<{
+  message: string;
+  guarantor: LoanGuarantor;
+}> {
+  const res = await api.post("/loans/loan/add-guarantor/", payload);
+  return res.data;
 }
 
-export async function acceptGuarantee(guarantorId: number) {
-  const { data } = await api.patch(`/loans/guarantee/${guarantorId}/accept/`);
-  return data;
+// ✅ GET /loans/guarantee/my-requests/
+export async function getMyGuaranteeRequests(): Promise<LoanGuarantor[]> {
+  const res = await api.get("/loans/guarantee/my-requests/");
+  return res.data;
 }
 
-export async function rejectGuarantee(guarantorId: number) {
-  const { data } = await api.patch(`/loans/guarantee/${guarantorId}/reject/`);
-  return data;
+// ✅ PATCH /loans/guarantee/<guarantor_id>/accept/
+export async function acceptGuarantee(guarantorId: number): Promise<{
+  message: string;
+}> {
+  const res = await api.patch(`/loans/guarantee/${guarantorId}/accept/`);
+  return res.data;
 }
 
-export async function approveLoan(loanId: number) {
-  const { data } = await api.patch(`/loans/loan/${loanId}/approve/`);
-  return data;
+// ✅ PATCH /loans/guarantee/<guarantor_id>/reject/
+export async function rejectGuarantee(guarantorId: number): Promise<{
+  message: string;
+}> {
+  const res = await api.patch(`/loans/guarantee/${guarantorId}/reject/`);
+  return res.data;
 }
 
-export async function payLoan(loanId: number, payload: { amount: string | number; method?: string; reference?: string }) {
-  const { data } = await api.post(`/loans/loan/${loanId}/pay/`, payload);
-  return data;
+// ✅ PATCH /loans/loan/<loan_id>/approve/
+export async function approveLoan(loanId: number): Promise<{
+  message: string;
+  loan: Loan;
+}> {
+  const res = await api.patch(`/loans/loan/${loanId}/approve/`);
+  return res.data;
+}
+
+// ✅ POST /loans/loan/<loan_id>/pay/
+export async function payLoan(
+  loanId: number,
+  payload: PayLoanPayload
+): Promise<PayLoanResponse> {
+  const res = await api.post(`/loans/loan/${loanId}/pay/`, payload);
+  return res.data;
+}
+
+/* =========================================================
+   Error helper (optional)
+========================================================= */
+
+export function getApiErrorMessage(e: any) {
+  const data = e?.response?.data;
+
+  if (!data) return "Something went wrong.";
+  if (typeof data === "string") return data;
+  if (typeof data?.detail === "string") return data.detail;
+
+  if (typeof data === "object") {
+    const k = Object.keys(data)[0];
+    const v = data[k];
+    if (Array.isArray(v) && v.length) return `${k}: ${v[0]}`;
+    if (typeof v === "string") return `${k}: ${v}`;
+  }
+
+  return "Request failed.";
 }

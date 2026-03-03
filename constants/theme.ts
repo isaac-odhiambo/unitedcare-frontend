@@ -8,6 +8,10 @@ export const COLORS = {
   dark: "#111827",
   gray: "#6B7280",
   lightGray: "#E5E7EB",
+  gray50: "#F9FAFB",
+  gray200: "#E5E7EB",
+  gray600: "#4B5563",
+  black: "#000000",
 };
 
 export const SPACING = {
@@ -31,3 +35,13 @@ export const FONT = {
   section: 18,
   body: 16,
 };
+
+const P = {
+  bg: COLORS.white,
+  page: COLORS.lightGray,     // light page background
+  card: COLORS.white,
+  border: COLORS.lightGray,
+  text: COLORS.dark,
+  subtext: COLORS.gray,
+};
+
