@@ -1,237 +1,249 @@
 // app/(tabs)/dashboard/index.tsx
-
 import { Ionicons } from "@expo/vector-icons";
-import type { RelativePathString } from "expo-router";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import Section from "@/components/ui/Section";
+
+import { ROUTES } from "@/constants/routes";
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getMyLoans } from "@/services/loans";
+import { getMyMerries } from "@/services/merry";
+import { getMyLedger } from "@/services/payments";
+import {
+  canJoinGroup,
+  canJoinMerry,
+  canRequestLoan,
+  canWithdraw,
+  getMe,
+  isAdminUser,
+  isKycComplete,
+  MeResponse,
+} from "@/services/profile";
+import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
 import { getSessionUser, SessionUser } from "@/services/session";
 
-/* =========================================================
-   ROUTES (RELATIVE to /dashboard)
-   ✅ This matches your app/(tabs) folder structure
-========================================================= */
-const ROUTES = {
-  profile: "../profile",
-  savings: "../savings",
-  loans: "../loans",
-  merry: "../merry",
-  payments: "../payments",
-  paymentHistory: "../payments/history",
-} as const satisfies Record<string, RelativePathString>;
+type DashboardUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const go = (href: RelativePathString) => router.push(href);
+type Stat = {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+};
 
-/* =========================================================
-   Tile UI
-========================================================= */
-function Tile({
+type ActionItem = {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  go: () => void;
+};
+
+function StatCard({ label, value, icon }: Stat) {
+  return (
+    <Card style={styles.statCard}>
+      <View style={styles.statRow}>
+        <View style={styles.statIcon}>
+          <Ionicons name={icon} size={18} color={COLORS.primary} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.statLabel}>{label}</Text>
+          <Text style={styles.statValue} numberOfLines={1}>
+            {value}
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function ActionTile({
   title,
   subtitle,
   icon,
   onPress,
-  disabled,
 }: {
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  disabled?: boolean;
 }) {
   return (
-    <TouchableOpacity
-      style={[styles.tile, disabled && styles.tileDisabled]}
-      onPress={onPress}
-      activeOpacity={0.9}
-      disabled={disabled}
-    >
-      <View style={styles.tileIcon}>{icon}</View>
-      <Text style={styles.tileTitle}>{title}</Text>
-      <Text style={styles.tileSubtitle}>{subtitle}</Text>
+    <Card onPress={onPress} style={styles.tile}>
+      <View style={styles.tileIcon}>
+        <Ionicons name={icon} size={20} color={COLORS.white} />
+      </View>
 
-      {disabled ? (
-        <View style={styles.lockPill}>
-          <Ionicons name="lock-closed-outline" size={14} color={COLORS.gray} />
-          <Text style={styles.lockText}>Locked</Text>
-        </View>
-      ) : null}
-    </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.tileTitle}>{title}</Text>
+        <Text style={styles.tileSubtitle} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </View>
+
+      <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+    </Card>
   );
 }
 
-/* =========================================================
-   Types
-========================================================= */
-type Ctx = {
-  user: SessionUser | null;
-  isAdmin: boolean;
-  kycApproved: boolean;
-  openLocked: () => void;
-};
-
-type DashboardTile = {
-  key: string;
-  title: string;
-  subtitle: (ctx: Ctx) => string;
-  icon: (color: string) => React.ReactNode;
-  route?: RelativePathString;
-  onPress?: (ctx: Ctx) => void;
-  requiresKyc?: boolean;
-  requiresAdmin?: boolean;
-};
-
-type DashboardSection = {
-  title: string;
-  tiles: DashboardTile[];
-};
-
-/* =========================================================
-   Sections (organized links)
-========================================================= */
-const SECTIONS: DashboardSection[] = [
-  {
-    title: "Savings",
-    tiles: [
-      {
-        key: "add-savings",
-        title: "Add Savings",
-        subtitle: () => "Deposit into your wallet",
-        icon: (c) => <Ionicons name="add-circle-outline" size={22} color={c} />,
-        route: ROUTES.savings,
-      },
-      {
-        key: "withdraw",
-        title: "Withdraw",
-        subtitle: (ctx) =>
-          ctx.kycApproved ? "Withdraw to M-Pesa" : "Locked until KYC approved",
-        icon: (c) =>
-          <Ionicons name="arrow-down-circle-outline" size={22} color={c} />,
-        requiresKyc: true,
-        onPress: (ctx) => {
-          if (!ctx.kycApproved) return ctx.openLocked();
-          Alert.alert("Withdraw", "Create a withdraw screen inside savings.");
-          go(ROUTES.savings);
-        },
-      },
-    ],
-  },
-  {
-    title: "Loans",
-    tiles: [
-      {
-        key: "apply-loan",
-        title: "Apply Loan",
-        subtitle: (ctx) =>
-          ctx.kycApproved ? "Request a loan instantly" : "Locked until KYC approved",
-        icon: (c) =>
-          <Ionicons name="document-text-outline" size={22} color={c} />,
-        requiresKyc: true,
-        route: ROUTES.loans,
-      },
-      {
-        key: "loan-payment",
-        title: "Loan Repayment",
-        subtitle: (ctx) =>
-          ctx.kycApproved ? "Pay your loan installment" : "Locked until KYC approved",
-        icon: (c) => <Ionicons name="cash-outline" size={22} color={c} />,
-        requiresKyc: true,
-        route: ROUTES.payments,
-      },
-    ],
-  },
-  {
-    title: "Payments",
-    tiles: [
-      {
-        key: "pay",
-        title: "Make Payment",
-        subtitle: () => "Pay contributions / loans",
-        icon: (c) => <Ionicons name="card-outline" size={22} color={c} />,
-        route: ROUTES.payments,
-      },
-      {
-        key: "history",
-        title: "Payment History",
-        subtitle: () => "View all transactions",
-        icon: (c) => <Ionicons name="receipt-outline" size={22} color={c} />,
-        route: ROUTES.paymentHistory,
-      },
-    ],
-  },
-  {
-    title: "Merry Go Round",
-    tiles: [
-      {
-        key: "merry",
-        title: "Merry Go Round",
-        subtitle: (ctx) =>
-          ctx.kycApproved ? "View rotation & status" : "Locked until KYC approved",
-        icon: (c) => <Ionicons name="people-outline" size={22} color={c} />,
-        requiresKyc: true,
-        route: ROUTES.merry,
-      },
-      {
-        key: "merry-pay",
-        title: "Merry Payments",
-        subtitle: (ctx) =>
-          ctx.kycApproved ? "Pay your turn contribution" : "Locked until KYC approved",
-        icon: (c) => <Ionicons name="repeat-outline" size={22} color={c} />,
-        requiresKyc: true,
-        onPress: (ctx) => {
-          if (!ctx.kycApproved) return ctx.openLocked();
-          Alert.alert("Merry Payments", "Put this inside /merry or /payments.");
-          go(ROUTES.merry);
-        },
-      },
-    ],
-  },
-  {
-    title: "Account",
-    tiles: [
-      {
-        key: "profile",
-        title: "My Profile",
-        subtitle: () => "Account & settings",
-        icon: (c) =>
-          <Ionicons name="person-circle-outline" size={22} color={c} />,
-        route: ROUTES.profile,
-      },
-      {
-        key: "support",
-        title: "Support",
-        subtitle: () => "Help & contact",
-        icon: (c) => <Ionicons name="help-circle-outline" size={22} color={c} />,
-        onPress: () => Alert.alert("Support", "Add support screen later."),
-      },
-    ],
-  },
-];
-
-/* helper: split array into rows of N */
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const n = Number(value.replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
 }
 
-/* =========================================================
-   Screen
-========================================================= */
+function formatKes(value: number): string {
+  return `KES ${value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+}
+
+function getSavingsTotal(accounts: SavingsAccount[]): number {
+  return accounts.reduce(
+    (sum, account) =>
+      sum + toNumber(account.available_balance ?? account.balance ?? 0),
+    0
+  );
+}
+
+function getLoansTotal(loansData: any): number {
+  const rows = Array.isArray(loansData)
+    ? loansData
+    : Array.isArray(loansData?.results)
+    ? loansData.results
+    : Array.isArray(loansData?.data)
+    ? loansData.data
+    : [];
+
+  return rows.reduce((sum: number, loan: any) => {
+    return sum + toNumber(
+      loan?.outstanding_balance ??
+        loan?.balance ??
+        loan?.remaining_balance ??
+        loan?.amount ??
+        0
+    );
+  }, 0);
+}
+
+function getLedgerCount(ledgerData: any): number {
+  const rows = Array.isArray(ledgerData)
+    ? ledgerData
+    : Array.isArray(ledgerData?.results)
+    ? ledgerData.results
+    : Array.isArray(ledgerData?.data)
+    ? ledgerData.data
+    : [];
+
+  return rows.length;
+}
+
+function getMerryCount(merryData: any): number {
+  const created = Array.isArray(merryData?.created) ? merryData.created.length : 0;
+  const memberships = Array.isArray(merryData?.memberships)
+    ? merryData.memberships.length
+    : 0;
+
+  return created + memberships;
+}
+
 export default function DashboardScreen() {
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const [user, setUser] = useState<DashboardUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [stats, setStats] = useState({
+    savings: "—",
+    loans: "—",
+    ledger: "—",
+    merry: "—",
+  });
+
+  const isAdmin = isAdminUser(user);
+  const kycComplete = isKycComplete(user);
+  const loanAllowed = canRequestLoan(user);
+  const groupAllowed = canJoinGroup(user);
+  const merryAllowed = canJoinMerry(user);
+  const withdrawAllowed = canWithdraw(user);
+
+  const goToKyc = useCallback(() => {
+    router.push(ROUTES.tabs.profileKyc);
+  }, []);
 
   const load = useCallback(async () => {
-    const u = await getSessionUser();
-    setUser(u);
+    try {
+      setLoading(true);
+
+      const [
+        sessionResult,
+        meResult,
+        savingsResult,
+        loansResult,
+        ledgerResult,
+        merryResult,
+      ] = await Promise.allSettled([
+        getSessionUser(),
+        getMe(),
+        listMySavingsAccounts(),
+        getMyLoans(),
+        getMyLedger(),
+        getMyMerries(),
+      ]);
+
+      const sessionUser =
+        sessionResult.status === "fulfilled" ? sessionResult.value : null;
+      const meUser = meResult.status === "fulfilled" ? meResult.value : null;
+
+      const mergedUser: DashboardUser | null =
+        sessionUser || meUser
+          ? {
+              ...(sessionUser ?? {}),
+              ...(meUser ?? {}),
+            }
+          : null;
+
+      setUser(mergedUser);
+
+      const savingsTotal =
+        savingsResult.status === "fulfilled"
+          ? getSavingsTotal(savingsResult.value)
+          : 0;
+
+      const loansTotal =
+        loansResult.status === "fulfilled" ? getLoansTotal(loansResult.value) : 0;
+
+      const ledgerCount =
+        ledgerResult.status === "fulfilled"
+          ? getLedgerCount(ledgerResult.value)
+          : 0;
+
+      const merryCount =
+        merryResult.status === "fulfilled" ? getMerryCount(merryResult.value) : 0;
+
+      setStats({
+        savings: formatKes(savingsTotal),
+        loans: formatKes(loansTotal),
+        ledger: `${ledgerCount} txns`,
+        merry: `${merryCount} merries`,
+      });
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
@@ -240,307 +252,380 @@ export default function DashboardScreen() {
     }, [load])
   );
 
-  const isAdmin = useMemo(
-    () => !!(user?.is_admin || user?.role === "admin"),
-    [user]
-  );
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
 
-  const kycApproved = useMemo(() => user?.status === "approved", [user]);
+  const actions = useMemo<ActionItem[]>(() => {
+    const common: ActionItem[] = [
+      {
+        title: "Savings",
+        subtitle: "View savings accounts and balances",
+        icon: "wallet-outline",
+        go: () => router.push(ROUTES.tabs.savings),
+      },
+      {
+        title: "Deposit",
+        subtitle: "Add money to savings through payments",
+        icon: "arrow-down-circle-outline",
+        go: () => router.push(ROUTES.tabs.paymentsDeposit),
+      },
+      {
+        title: "Withdrawals",
+        subtitle: withdrawAllowed
+          ? "Request or track withdrawals"
+          : "Complete KYC before withdrawals",
+        icon: "arrow-up-circle-outline",
+        go: () =>
+          withdrawAllowed
+            ? router.push(ROUTES.tabs.paymentsWithdrawals)
+            : goToKyc(),
+      },
+      {
+        title: "Payments",
+        subtitle: "Ledger, transactions and withdrawal history",
+        icon: "card-outline",
+        go: () => router.push(ROUTES.tabs.payments),
+      },
+      {
+        title: "Loans",
+        subtitle: loanAllowed
+          ? "Request, pay and manage guarantors"
+          : "Complete KYC before requesting a loan",
+        icon: "cash-outline",
+        go: () => (loanAllowed ? router.push(ROUTES.tabs.loans) : goToKyc()),
+      },
+      {
+        title: "Groups",
+        subtitle: groupAllowed
+          ? "View groups and memberships"
+          : "Complete KYC before joining groups",
+        icon: "people-outline",
+        go: () => (groupAllowed ? router.push(ROUTES.tabs.groups) : goToKyc()),
+      },
+      {
+        title: "Merry-Go-Round",
+        subtitle: merryAllowed
+          ? "Dues, contributions and payout activity"
+          : "Account approval required before joining merry",
+        icon: "repeat-outline",
+        go: () =>
+          merryAllowed
+            ? router.push(ROUTES.tabs.merry)
+            : router.push(ROUTES.tabs.profile),
+      },
+      {
+        title: "Profile",
+        subtitle: kycComplete
+          ? "Account details, KYC and settings"
+          : "Complete your KYC to unlock more features",
+        icon: "person-circle-outline",
+        go: () => router.push(ROUTES.tabs.profile),
+      },
+    ];
 
-  const openLocked = useCallback(() => {
-    Alert.alert(
-      "KYC Required",
-      "Complete your KYC to unlock loans, merry-go-round, and withdrawals."
+    if (!isAdmin) return common;
+
+    return [
+      ...common,
+      {
+        title: "Approvals",
+        subtitle: "Review withdrawals, join requests and confirmations",
+        icon: "shield-checkmark-outline",
+        go: () => router.push(ROUTES.tabs.payments),
+      },
+    ];
+  }, [
+    goToKyc,
+    groupAllowed,
+    isAdmin,
+    kycComplete,
+    loanAllowed,
+    merryAllowed,
+    withdrawAllowed,
+  ]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
     );
-  }, []);
+  }
 
-  const ctx: Ctx = useMemo(
-    () => ({ user, isAdmin, kycApproved, openLocked }),
-    [user, isAdmin, kycApproved, openLocked]
-  );
-
-  const onTilePress = useCallback(
-    (tile: DashboardTile) => {
-      if (tile.requiresAdmin && !ctx.isAdmin) return;
-
-      if (tile.requiresKyc && !ctx.kycApproved) return ctx.openLocked();
-
-      if (tile.onPress) return tile.onPress(ctx);
-
-      if (tile.route) return go(tile.route);
-
-      Alert.alert("Route missing", "Add a route or onPress for this tile.");
-    },
-    [ctx]
-  );
+  if (!user) {
+    return (
+      <View style={styles.page}>
+        <EmptyState
+          title="Not signed in"
+          subtitle="Please login to access your dashboard."
+          actionLabel="Go to Login"
+          onAction={() => router.replace(ROUTES.auth.login)}
+        />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={styles.page}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 18 }}
     >
-      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.appName}>UNITED CARE</Text>
-            <Text style={styles.subtitle}>
-              {isAdmin ? "Admin Panel" : "Self Help Group"}
-            </Text>
-          </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.appName}>UNITED CARE</Text>
+          <Text style={styles.subtitle}>
+            {isAdmin ? "Dashboard (Admin View)" : "Dashboard"} •{" "}
+            {user?.status ?? "—"}
+          </Text>
+        </View>
 
-          <TouchableOpacity
-            onPress={() => go(ROUTES.profile)}
-            style={styles.profilePill}
-            activeOpacity={0.9}
+        <View style={styles.userPill}>
+          <Ionicons name="person-outline" size={14} color={COLORS.primary} />
+          <Text style={styles.userPillText} numberOfLines={1}>
+            {user.username ?? "User"}
+          </Text>
+        </View>
+      </View>
+
+      {!kycComplete && (
+        <Section title="Complete KYC">
+          <Card
+            style={styles.noteCard}
+            onPress={() => router.push(ROUTES.tabs.profileKyc)}
           >
             <Ionicons
-              name="person-circle-outline"
-              size={24}
-              color={COLORS.primary}
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.info}
             />
-          </TouchableOpacity>
+            <Text style={styles.noteText}>
+              Your account can access savings and merry, but loan requests,
+              group joining and withdrawals require completed KYC.
+            </Text>
+          </Card>
+        </Section>
+      )}
+
+      <Section title="Overview">
+        <View style={styles.statsGrid}>
+          <StatCard label="Savings" value={stats.savings} icon="wallet-outline" />
+          <StatCard label="Loans" value={stats.loans} icon="cash-outline" />
+          <StatCard label="Ledger" value={stats.ledger} icon="receipt-outline" />
+          <StatCard label="Merries" value={stats.merry} icon="repeat-outline" />
         </View>
+      </Section>
 
-        <View style={styles.divider} />
-      </View>
-
-      {/* KYC banner */}
-      {!isAdmin && !kycApproved ? (
-        <View style={styles.kycBanner}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-            <Ionicons name="alert-circle-outline" size={20} color="#7A5B00" />
-            <Text style={styles.kycTitle}>Complete KYC to unlock features</Text>
-          </View>
-
-          <Text style={styles.kycText}>
-            Savings are available now. Loans, merry-go-round and withdrawals will
-            unlock after approval.
-          </Text>
-
-          <TouchableOpacity
-            onPress={() => go(ROUTES.profile)}
-            style={styles.kycBtn}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.kycBtnText}>Go to Profile</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      {/* Summary Cards (replace with API later) */}
-      <View style={styles.cardRow}>
-        <View style={[styles.card, { backgroundColor: COLORS.success }]}>
-          <Ionicons name="wallet" size={28} color={COLORS.white} />
-          <Text style={styles.cardLabel}>
-            {isAdmin ? "Total Collections" : "Total Savings"}
-          </Text>
-          <Text style={styles.cardValue}>
-            {isAdmin ? "KES 540,000" : "KES 25,000"}
-          </Text>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: COLORS.accent }]}>
-          <Ionicons name="cash" size={28} color={COLORS.white} />
-          <Text style={styles.cardLabel}>
-            {isAdmin ? "Active Loans" : "Outstanding Loans"}
-          </Text>
-          <Text style={styles.cardValue}>{isAdmin ? "62" : "KES 10,000"}</Text>
-        </View>
-      </View>
-
-      {/* Sections */}
-      {SECTIONS.map((section) => (
-        <View key={section.title} style={{ marginBottom: SPACING.md }}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-
-          {chunk(section.tiles, 2).map((row, idx) => (
-            <View key={`${section.title}-row-${idx}`} style={styles.tileRow}>
-              {row.map((tile) => {
-                const disabled =
-                  (tile.requiresKyc && !ctx.kycApproved) ||
-                  (tile.requiresAdmin && !ctx.isAdmin);
-
-                return (
-                  <Tile
-                    key={tile.key}
-                    title={tile.title}
-                    subtitle={tile.subtitle(ctx)}
-                    icon={tile.icon(COLORS.primary)}
-                    disabled={disabled}
-                    onPress={() => onTilePress(tile)}
-                  />
-                );
-              })}
-
-              {row.length === 1 ? <View style={{ flex: 1 }} /> : null}
-            </View>
+      <Section
+        title="Quick Actions"
+        right={
+          <Button
+            variant="ghost"
+            title="Refresh"
+            onPress={onRefresh}
+            leftIcon={
+              <Ionicons
+                name="refresh-outline"
+                size={16}
+                color={COLORS.primary}
+              />
+            }
+          />
+        }
+      >
+        <View style={styles.tiles}>
+          {actions.map((a) => (
+            <ActionTile
+              key={a.title}
+              title={a.title}
+              subtitle={a.subtitle}
+              icon={a.icon}
+              onPress={a.go}
+            />
           ))}
         </View>
-      ))}
+      </Section>
+
+      <Section title={isAdmin ? "Operations" : "Tips"}>
+        <Card style={styles.noteCard}>
+          <Ionicons
+            name={isAdmin ? "shield-outline" : "information-circle-outline"}
+            size={18}
+            color={COLORS.info}
+          />
+          <Text style={styles.noteText}>
+            {isAdmin
+              ? "Review approvals in Payments and confirm member activity across Loans, Merry and Groups. Keep audit trails clean through the ledger."
+              : kycComplete
+              ? "Consistent savings deposits can improve loan readiness. Keep merry dues up to date and monitor your payment ledger regularly."
+              : "Complete KYC to unlock withdrawals, loan requests and group membership while continuing to use savings and merry features."}
+          </Text>
+        </Card>
+      </Section>
+
+      <View style={{ height: 10 }} />
     </ScrollView>
   );
 }
 
-/* =========================================================
-   Styles
-========================================================= */
 const styles = StyleSheet.create({
-  container: {
+  page: { flex: 1, backgroundColor: COLORS.background },
+  content: { padding: SPACING.lg, paddingBottom: 30 },
+
+  loadingWrap: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    padding: SPACING.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
   },
 
   header: {
-    marginBottom: SPACING.md,
-  },
-  headerTop: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.lg,
+    gap: SPACING.md,
   },
+
   appName: {
     fontSize: FONT.title,
-    fontWeight: "800",
-    color: COLORS.primary,
+    fontFamily: FONT.bold,
+    color: COLORS.text,
+    letterSpacing: 0.3,
   },
+
   subtitle: {
-    fontSize: FONT.subtitle,
-    color: COLORS.gray,
     marginTop: 2,
-  },
-  profilePill: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.lightGray,
-    marginTop: SPACING.md,
-    opacity: 0.7,
+    fontSize: FONT.caption,
+    fontFamily: FONT.regular,
+    color: COLORS.textMuted,
   },
 
-  kycBanner: {
-    borderWidth: 1,
-    borderColor: "#FFE08A",
-    backgroundColor: "#FFF8E1",
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-    gap: 8,
-  },
-  kycTitle: {
-    fontWeight: "800",
-    color: "#7A5B00",
-    fontSize: 14,
-  },
-  kycText: {
-    color: "#7A5B00",
-    lineHeight: 18,
-  },
-  kycBtn: {
-    alignSelf: "flex-start",
-    backgroundColor: "#7A5B00",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    marginTop: 6,
-  },
-  kycBtnText: {
-    color: "white",
-    fontWeight: "800",
-  },
-
-  cardRow: {
-    flexDirection: "row",
-    marginBottom: SPACING.md,
-    gap: SPACING.sm,
-  },
-  card: {
-    flex: 1,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md + 2,
-  },
-  cardLabel: {
-    color: COLORS.white,
-    fontSize: 14,
-    marginTop: SPACING.sm,
-    opacity: 0.95,
-  },
-  cardValue: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: "800",
-    marginTop: SPACING.xs,
-  },
-
-  sectionTitle: {
-    fontSize: FONT.section,
-    fontWeight: "800",
-    color: COLORS.dark,
-    marginVertical: SPACING.sm,
-  },
-
-  tileRow: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  tile: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    backgroundColor: COLORS.white,
-  },
-  tileDisabled: {
-    opacity: 0.55,
-  },
-  tileIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "#EEF2FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.sm,
-  },
-  tileTitle: {
-    fontSize: FONT.body,
-    fontWeight: "800",
-    color: COLORS.dark,
-  },
-  tileSubtitle: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  lockPill: {
-    marginTop: 10,
+  userPill: {
+    flexShrink: 1,
+    maxWidth: 170,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    alignSelf: "flex-start",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    backgroundColor: "#F3F4F6",
+    borderColor: COLORS.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
   },
-  lockText: {
-    color: COLORS.gray,
-    fontWeight: "700",
-    fontSize: 12,
+
+  userPillText: {
+    fontSize: FONT.caption,
+    fontFamily: FONT.medium,
+    color: COLORS.text,
+  },
+
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: SPACING.md,
+  },
+
+  statCard: {
+    width: "48%",
+    padding: SPACING.md,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    ...SHADOW.card,
+  },
+
+  statRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  statIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.overlay,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  statLabel: {
+    fontSize: FONT.caption,
+    color: COLORS.textMuted,
+    fontFamily: FONT.regular,
+  },
+
+  statValue: {
+    marginTop: 2,
+    fontSize: FONT.body,
+    color: COLORS.text,
+    fontFamily: FONT.semiBold,
+  },
+
+  tiles: {
+    gap: SPACING.md,
+  },
+
+  tile: {
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    ...SHADOW.card,
+  },
+
+  tileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  tileTitle: {
+    fontSize: FONT.body,
+    fontFamily: FONT.semiBold,
+    color: COLORS.text,
+  },
+
+  tileSubtitle: {
+    marginTop: 2,
+    fontSize: FONT.caption,
+    fontFamily: FONT.regular,
+    color: COLORS.textMuted,
+  },
+
+  noteCard: {
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    ...SHADOW.card,
+  },
+
+  noteText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.textMuted,
+    fontFamily: FONT.regular,
   },
 });

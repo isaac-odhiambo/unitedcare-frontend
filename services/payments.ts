@@ -1,135 +1,302 @@
+// services/payments.ts
+// ------------------------------------------------------
+// Payments, STK push, ledger, withdrawals
+// Centralized around ENDPOINTS from services/endpoints.ts
+// ------------------------------------------------------
+
 import { api } from "@/services/api";
+import { ENDPOINTS } from "@/services/endpoints";
 
-export type LedgerEntry = {
-  id: number;
-  user?: number;
-  user_phone?: string | null;
-  user_username?: string | null;
-  entry_type: "CREDIT" | "DEBIT";
-  category: "SAVINGS" | "LOANS" | "MERRY" | "WITHDRAWAL" | "OTHER";
-  amount: string; // DRF decimal string
-  narration: string;
-  reference: string;
-  created_at: string;
-  mpesa: null | {
-    id: number;
-    status: string;
-    receipt: string | null;
-    channel: string;
-    direction: string;
-    phone: string;
-  };
-};
+/* =========================================================
+   Types
+========================================================= */
 
-export type Withdrawal = {
+export type MpesaTxStatus =
+  | "INITIATED"
+  | "PENDING"
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED"
+  | "TIMEOUT"
+  | string;
+
+export type MpesaPurpose =
+  | "SAVINGS_DEPOSIT"
+  | "MERRY_CONTRIBUTION"
+  | "GROUP_CONTRIBUTION"
+  | "LOAN_REPAYMENT"
+  | "OTHER";
+
+export type MpesaTransaction = {
   id: number;
-  user: number;
-  user_phone?: string | null;
-  user_username?: string | null;
   phone: string;
   amount: string;
-  source: "SAVINGS" | "MERRY" | "OTHER";
-  status: "PENDING" | "APPROVED" | "REJECTED" | "PROCESSING" | "PAID" | "FAILED" | "CANCELLED";
-  rejection_reason?: string | null;
-  approved_by?: number | null;
-  approved_by_username?: string | null;
-  approved_at?: string | null;
-  rejected_by?: number | null;
-  rejected_by_username?: string | null;
-  rejected_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  mpesa?: null | {
-    id: number;
-    status: string;
-    channel: string;
-    receipt: string | null;
-    result_desc?: string | null;
-  };
-};
 
-export type MpesaTx = {
-  id: number;
-  user: number | null;
-  user_phone?: string | null;
-  user_username?: string | null;
-  phone: string;
-  amount: string;
-  direction: "IN" | "OUT";
-  channel: "STK" | "B2C" | "C2B";
-  purpose: string;
-  status: string;
+  direction: "IN" | "OUT" | string;
+  channel: "STK" | "B2C" | string;
+  purpose: MpesaPurpose | string;
+  status: MpesaTxStatus;
+
+  reference?: string;
+
   merchant_request_id?: string | null;
   checkout_request_id?: string | null;
+
   conversation_id?: string | null;
   originator_conversation_id?: string | null;
+
   result_code?: string | null;
   result_desc?: string | null;
+
   mpesa_receipt_number?: string | null;
   transaction_date?: string | null;
-  created_at: string;
-  updated_at: string;
+
+  ledger_posted?: boolean;
+
+  created_at?: string;
 };
 
-const base = "/payments"; // adjust if your root is different
+export type LedgerEntryType = "CREDIT" | "DEBIT" | string;
 
-// ---------- Member ----------
-export const myLedger = async () => {
-  const res = await api.get<LedgerEntry[]>(`${base}/ledger/my/`);
-  return res.data;
-};
+export type LedgerCategory =
+  | "SAVINGS"
+  | "LOANS"
+  | "MERRY"
+  | "GROUP"
+  | "WITHDRAWAL"
+  | "WITHDRAWAL_FEE"
+  | "TRANSACTION_FEE"
+  | "OTHER"
+  | string;
 
-export const myWithdrawals = async () => {
-  const res = await api.get<Withdrawal[]>(`${base}/withdrawals/my/`);
-  return res.data;
-};
+export type PaymentLedgerEntry = {
+  id: number;
+  entry_type: LedgerEntryType;
+  category: LedgerCategory;
+  amount: string;
 
-export const requestWithdrawal = async (payload: {
-  amount: number | string;
-  phone?: string; // optional; backend will default to user phone if serializer updated
-  source?: "SAVINGS" | "MERRY" | "OTHER";
-  target_app_label?: string;
-  target_model?: string;
-  target_object_id?: number;
-}) => {
-  const res = await api.post(`${base}/withdrawals/request/`, payload);
-  return res.data; // { message, withdrawal }
-};
-
-export const stkPush = async (payload: {
-  phone: string;
-  amount: number | string;
-  purpose?: string; // SAVINGS_DEPOSIT / LOAN_REPAYMENT / MERRY_CONTRIBUTION...
+  narration?: string;
   reference?: string;
-}) => {
-  const res = await api.post(`${base}/mpesa/stk-push/`, payload);
-  return res.data; // { message, tx }
+
+  mpesa_tx?: MpesaTransaction | number | null;
+  created_at?: string;
 };
 
-// ---------- Admin ----------
-export const adminWithdrawals = async (status?: string) => {
-  const res = await api.get<Withdrawal[]>(`${base}/withdrawals/admin/`, {
-    params: status ? { status } : undefined,
+export type WithdrawalStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "PROCESSING"
+  | "PAID"
+  | "FAILED"
+  | "CANCELLED"
+  | string;
+
+export type WithdrawalSource =
+  | "SAVINGS"
+  | "MERRY"
+  | "GROUP"
+  | "OTHER"
+  | string;
+
+export type WithdrawalRequest = {
+  id: number;
+  phone: string;
+  amount: string;
+  source: WithdrawalSource;
+  status: WithdrawalStatus;
+
+  created_at?: string;
+  updated_at?: string;
+
+  mpesa_tx?: MpesaTransaction | number | null;
+};
+
+/* =========================================================
+   Payloads
+========================================================= */
+
+export type StkPushPayload = {
+  phone: string;
+  amount: string;
+  purpose: MpesaPurpose;
+  reference?: string;
+  narration?: string;
+};
+
+export type StkPushResponse = {
+  message: string;
+  tx: MpesaTransaction;
+};
+
+export type RequestWithdrawalPayload = {
+  phone: string;
+  amount: string;
+  source?: WithdrawalSource;
+};
+
+/* =========================================================
+   Base API Functions
+========================================================= */
+
+export async function mpesaStkPush(
+  payload: StkPushPayload
+): Promise<StkPushResponse> {
+  const res = await api.post(ENDPOINTS.payments.stkPush, {
+    phone: payload.phone,
+    amount: payload.amount,
+    purpose: payload.purpose,
+    reference: payload.reference ?? "",
+    narration: payload.narration ?? "",
   });
   return res.data;
-};
+}
 
-export const approveWithdrawal = async (id: number) => {
-  const res = await api.patch(`${base}/withdrawals/${id}/approve/`, { approve: true });
+export async function getMyLedger(): Promise<PaymentLedgerEntry[]> {
+  const res = await api.get(ENDPOINTS.payments.myLedger);
   return res.data;
-};
+}
 
-export const rejectWithdrawal = async (id: number, rejection_reason?: string) => {
-  const res = await api.patch(`${base}/withdrawals/${id}/reject/`, { rejection_reason });
+export async function getAdminLedger(): Promise<PaymentLedgerEntry[]> {
+  const res = await api.get(ENDPOINTS.payments.adminLedger);
   return res.data;
-};
+}
 
-export const adminLedger = async (params?: { user?: number; category?: string }) => {
-  const res = await api.get<LedgerEntry[]>(`${base}/ledger/admin/`, { params });
+export async function getMyWithdrawals(): Promise<WithdrawalRequest[]> {
+  const res = await api.get(ENDPOINTS.payments.myWithdrawals);
   return res.data;
-};
+}
 
-export const adminMpesa = async (params?: { status?: string; purpose?: string }) => {
-  const res = await api.get<MpesaTx[]>(`${base}/mpesa/admin/`, { params });
+export async function getAdminWithdrawals(): Promise<WithdrawalRequest[]> {
+  const res = await api.get(ENDPOINTS.payments.adminWithdrawals);
   return res.data;
-};
+}
+
+export async function requestWithdrawal(
+  payload: RequestWithdrawalPayload
+): Promise<{ message: string; withdrawal: WithdrawalRequest }> {
+  const res = await api.post(ENDPOINTS.payments.requestWithdrawal, payload);
+  return res.data;
+}
+
+export async function approveWithdrawal(
+  withdrawalId: number
+): Promise<{ message: string }> {
+  const res = await api.post(ENDPOINTS.payments.approveWithdrawal(withdrawalId));
+  return res.data;
+}
+
+export async function rejectWithdrawal(
+  withdrawalId: number
+): Promise<{ message: string }> {
+  const res = await api.post(ENDPOINTS.payments.rejectWithdrawal(withdrawalId));
+  return res.data;
+}
+
+export async function getAdminMpesaTransactions(): Promise<MpesaTransaction[]> {
+  const res = await api.get(ENDPOINTS.payments.adminMpesa);
+  return res.data;
+}
+
+/* =========================================================
+   Convenience Wrappers
+========================================================= */
+
+/**
+ * Savings deposit STK
+ * reference is usually optional/blank for savings
+ */
+export function stkDepositSavings(
+  phone: string,
+  amount: string,
+  reference: string = ""
+) {
+  return mpesaStkPush({
+    phone,
+    amount,
+    purpose: "SAVINGS_DEPOSIT",
+    reference,
+    narration: "Savings deposit",
+  });
+}
+
+/**
+ * Loan repayment STK
+ * backend expects reference like LOAN-<loan_id>
+ */
+export function stkRepayLoan(
+  phone: string,
+  amount: string,
+  loanId: number
+) {
+  return mpesaStkPush({
+    phone,
+    amount,
+    purpose: "LOAN_REPAYMENT",
+    reference: `LOAN-${loanId}`,
+    narration: `Loan repayment (Loan#${loanId})`,
+  });
+}
+
+/**
+ * Group contribution STK
+ * backend expects reference like GROUP-<group_id>
+ */
+export function stkContributeGroup(
+  phone: string,
+  amount: string,
+  groupId: number
+) {
+  return mpesaStkPush({
+    phone,
+    amount,
+    purpose: "GROUP_CONTRIBUTION",
+    reference: `GROUP-${groupId}`,
+    narration: `Group contribution (Group#${groupId})`,
+  });
+}
+
+/**
+ * Merry contribution STK
+ * backend expects reference like MERRY-PAYMENT-<payment_id>
+ */
+export function stkContributeMerryByPaymentId(
+  phone: string,
+  amount: string,
+  merryPaymentId: number
+) {
+  return mpesaStkPush({
+    phone,
+    amount,
+    purpose: "MERRY_CONTRIBUTION",
+    reference: `MERRY-PAYMENT-${merryPaymentId}`,
+    narration: `Merry contribution (Payment#${merryPaymentId})`,
+  });
+}
+
+/* =========================================================
+   Friendly Error Message
+========================================================= */
+
+export function getApiErrorMessage(error: any): string {
+  const data = error?.response?.data;
+
+  if (!data) return "Something went wrong.";
+  if (typeof data === "string") return data;
+  if (typeof data?.detail === "string") return data.detail;
+
+  if (typeof data === "object") {
+    const firstKey = Object.keys(data)[0];
+    const firstValue = data?.[firstKey];
+
+    if (Array.isArray(firstValue) && firstValue.length > 0) {
+      return `${firstKey}: ${firstValue[0]}`;
+    }
+
+    if (typeof firstValue === "string") {
+      return `${firstKey}: ${firstValue}`;
+    }
+  }
+
+  return "Request failed.";
+}

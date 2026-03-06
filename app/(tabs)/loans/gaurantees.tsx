@@ -1,69 +1,145 @@
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { api, getErrorMessage } from "@/services/api";
+// app/(tabs)/loans/guarantees.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
   RefreshControl,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
-/* =========================
-   Types
-========================= */
-type LoanGuarantor = {
-  id: number;
-  loan: number;
-  guarantor: number;
+import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
+import {
+  acceptGuarantee,
+  getMyGuaranteeRequests,
+  LoanGuarantor,
+  rejectGuarantee,
+} from "@/services/loans";
 
-  accepted: boolean;
-  accepted_at?: string | null;
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
+import Section from "@/components/ui/Section";
 
-  reserved_amount?: string;
-};
-
-/* =========================
-   API
-========================= */
-async function getMyGuaranteeRequests(): Promise<LoanGuarantor[]> {
-  const res = await api.get("/loans/guarantee/my-requests/");
-  return res.data;
+function formatKes(value?: string | number) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "KES 0.00";
+  return `KES ${n.toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-async function acceptGuarantee(id: number): Promise<{ message: string }> {
-  const res = await api.patch(`/loans/guarantee/${id}/accept/`);
-  return res.data;
+function Pill({ label, tone }: { label: string; tone: "ok" | "warn" | "bad" }) {
+  const bg =
+    tone === "ok"
+      ? "rgba(46, 125, 50, 0.12)"
+      : tone === "bad"
+      ? "rgba(211, 47, 47, 0.12)"
+      : "rgba(242, 140, 40, 0.14)";
+
+  const color =
+    tone === "ok" ? COLORS.success : tone === "bad" ? COLORS.danger : COLORS.accent;
+
+  return (
+    <View style={[styles.pill, { backgroundColor: bg }]}>
+      <Text style={[styles.pillText, { color }]}>{label}</Text>
+    </View>
+  );
 }
 
-async function rejectGuarantee(id: number): Promise<{ message: string }> {
-  const res = await api.patch(`/loans/guarantee/${id}/reject/`);
-  return res.data;
-}
+function GuaranteeCard({
+  item,
+  onAccept,
+  onReject,
+  busy,
+}: {
+  item: LoanGuarantor;
+  onAccept: () => void;
+  onReject: () => void;
+  busy?: boolean;
+}) {
+  const accepted = !!item.accepted;
 
-/* =========================
-   Helpers
-========================= */
-function money(v?: string | number | null) {
-  const n =
-    typeof v === "string" ? Number(v) : typeof v === "number" ? v : 0;
-  if (!Number.isFinite(n)) return "KES 0";
-  const parts = Math.round(n)
-    .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `KES ${parts}`;
+  return (
+    <Card style={{ marginBottom: SPACING.md }}>
+      <View style={styles.topRow}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.title}>Guarantee Request #{item.id}</Text>
+          <Text style={styles.sub}>
+            Loan #{item.loan} • Borrower User #{item.guarantor ? "—" : "—"}
+          </Text>
+        </View>
+
+        {accepted ? (
+          <Pill label="ACCEPTED" tone="ok" />
+        ) : (
+          <Pill label="PENDING" tone="warn" />
+        )}
+      </View>
+
+      <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Loan</Text>
+          <Text style={styles.value}>#{item.loan}</Text>
+        </View>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Reserved</Text>
+          <Text style={styles.value}>{formatKes(item.reserved_amount ?? "0.00")}</Text>
+        </View>
+      </View>
+
+      {accepted ? (
+        <View style={styles.acceptedRow}>
+          <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.success} />
+          <Text style={styles.acceptedText}>
+            Accepted {item.accepted_at ? `• ${new Date(item.accepted_at).toLocaleString()}` : ""}
+          </Text>
+
+          <Text
+            style={styles.link}
+            onPress={() => router.push(`/loans/${item.loan}` as any)}
+          >
+            View Loan
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.actionsRow}>
+          <Button
+            title="Accept"
+            onPress={onAccept}
+            loading={busy}
+            disabled={busy}
+            style={{ flex: 1 }}
+          />
+          <View style={{ width: SPACING.sm }} />
+          <Button
+            title="Reject"
+            variant="secondary"
+            onPress={onReject}
+            disabled={busy}
+            style={{ flex: 1 }}
+          />
+        </View>
+      )}
+
+      <Text style={styles.note}>
+        Note: Reserved amount is set by the system at loan approval (coverage/security).
+      </Text>
+    </Card>
+  );
 }
 
 export default function GuaranteesScreen() {
+  const [items, setItems] = useState<LoanGuarantor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [items, setItems] = useState<LoanGuarantor[]>([]);
+
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -71,7 +147,7 @@ export default function GuaranteesScreen() {
       const data = await getMyGuaranteeRequests();
       setItems(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      Alert.alert("Error", getErrorMessage(e));
+      Alert.alert("Guarantees", getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -84,264 +160,143 @@ export default function GuaranteesScreen() {
   );
 
   const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  const pending = useMemo(() => items.filter((x) => !x.accepted), [items]);
+  const accepted = useMemo(() => items.filter((x) => x.accepted), [items]);
+
+  const doAccept = async (id: number) => {
     try {
-      setRefreshing(true);
-      const data = await getMyGuaranteeRequests();
-      setItems(Array.isArray(data) ? data : []);
+      setBusyId(id);
+      const res = await acceptGuarantee(id);
+      Alert.alert("Success", res?.message || "Guarantee accepted.");
+      await load();
     } catch (e: any) {
-      Alert.alert("Error", getErrorMessage(e));
+      Alert.alert("Accept Guarantee", getErrorMessage(e));
     } finally {
-      setRefreshing(false);
+      setBusyId(null);
     }
-  }, []);
+  };
 
-  const pendingCount = useMemo(
-    () => items.filter((x) => !x.accepted).length,
-    [items]
-  );
-
-  const openLoan = (loanId: number) => {
-  router.push({
-    pathname: "/(tabs)/loans/[Id]",
-    params: { Id: String(loanId) },
-  });
-};
-
-  const renderItem = ({ item }: { item: LoanGuarantor }) => {
-    const badgeBg = item.accepted ? COLORS.success : COLORS.accent;
-
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>Guarantee Request</Text>
-            <Text style={styles.cardSub}>Request #{item.id}</Text>
-
-            <TouchableOpacity
-              style={styles.linkRow}
-              onPress={() => openLoan(item.loan)}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="open-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.linkText}>Open Loan #{item.loan}</Text>
-            </TouchableOpacity>
-
-            {item.reserved_amount ? (
-              <Text style={styles.cardSub}>
-                Reserved:{" "}
-                <Text style={{ fontWeight: "900" }}>
-                  {money(item.reserved_amount)}
-                </Text>
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-            <Text style={styles.badgeText}>
-              {item.accepted ? "ACCEPTED" : "PENDING"}
-            </Text>
-          </View>
-        </View>
-
-        {!item.accepted ? (
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: COLORS.success }]}
-              activeOpacity={0.9}
-              onPress={() => {
-                Alert.alert(
-                  "Accept guarantee?",
-                  `You will guarantee Loan #${item.loan}. Your reserved savings may be locked until the loan completes.`,
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Accept",
-                      onPress: async () => {
-                        try {
-                          const res = await acceptGuarantee(item.id);
-                          Alert.alert("Success", res.message || "Accepted.");
-                          await onRefresh();
-                        } catch (e: any) {
-                          Alert.alert("Error", getErrorMessage(e));
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Ionicons
-                name="thumbs-up-outline"
-                size={18}
-                color={COLORS.success}
-              />
-              <Text style={styles.actionText}>Accept</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: COLORS.danger }]}
-              activeOpacity={0.9}
-              onPress={() => {
-                Alert.alert(
-                  "Reject guarantee?",
-                  `Reject guarantee request #${item.id}?`,
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Reject",
-                      style: "destructive",
-                      onPress: async () => {
-                        try {
-                          const res = await rejectGuarantee(item.id);
-                          Alert.alert("Done", res.message || "Rejected.");
-                          await onRefresh();
-                        } catch (e: any) {
-                          Alert.alert("Error", getErrorMessage(e));
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-            >
-              <Ionicons
-                name="close-circle-outline"
-                size={18}
-                color={COLORS.danger}
-              />
-              <Text style={[styles.actionText, { color: COLORS.danger }]}>
-                Reject
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Text style={styles.note}>
-            Accepted. If the admin approves the loan, your reserved savings can be
-            applied automatically.
-          </Text>
-        )}
-      </View>
-    );
+  const doReject = async (id: number) => {
+    try {
+      setBusyId(id);
+      const res = await rejectGuarantee(id);
+      Alert.alert("Done", res?.message || "Guarantee rejected.");
+      await load();
+    } catch (e: any) {
+      Alert.alert("Reject Guarantee", getErrorMessage(e));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={20} color={COLORS.dark} />
-        </TouchableOpacity>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.h1}>Guarantees</Text>
-          <Text style={styles.h2}>
-            {pendingCount > 0
-              ? `${pendingCount} pending request${pendingCount === 1 ? "" : "s"}`
-              : "No pending requests"}
-          </Text>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.hTitle}>Guarantee Requests</Text>
+          <Text style={styles.hSub}>Accept or reject requests to guarantee a loan.</Text>
         </View>
+        <Ionicons name="shield-checkmark-outline" size={22} color={COLORS.primary} />
       </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-          <Text style={styles.centerText}>Loading...</Text>
-        </View>
-      ) : (
-        <FlatList
-          contentContainerStyle={{ padding: SPACING.md, paddingBottom: 120 }}
-          data={items}
-          keyExtractor={(it) => String(it.id)}
-          renderItem={renderItem}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="shield-outline" size={28} color={COLORS.gray} />
-              <Text style={styles.emptyText}>No guarantee requests yet.</Text>
-            </View>
-          }
-        />
-      )}
-    </SafeAreaView>
+      <Section title={`Pending (${pending.length})`}>
+        {loading ? (
+          <Text style={styles.muted}>Loading…</Text>
+        ) : pending.length === 0 ? (
+          <EmptyState
+            title="No pending requests"
+            subtitle="New requests will appear here."
+          />
+        ) : (
+          pending.map((g) => (
+            <GuaranteeCard
+              key={g.id}
+              item={g}
+              busy={busyId === g.id}
+              onAccept={() => doAccept(g.id)}
+              onReject={() => doReject(g.id)}
+            />
+          ))
+        )}
+      </Section>
+
+      <Section title={`Accepted (${accepted.length})`}>
+        {!loading && accepted.length === 0 ? (
+          <EmptyState
+            icon="checkmark-done-outline"
+            title="No accepted guarantees"
+            subtitle="Accepted guarantees will appear here."
+          />
+        ) : (
+          accepted.map((g) => (
+            <GuaranteeCard
+              key={g.id}
+              item={g}
+              busy={busyId === g.id}
+              onAccept={() => {}}
+              onReject={() => {}}
+            />
+          ))
+        )}
+      </Section>
+
+      <View style={{ height: 24 }} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.white },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  content: { padding: SPACING.lg, paddingBottom: 24 },
 
   header: {
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  h1: { fontSize: FONT.section, fontWeight: "900", color: COLORS.dark },
-  h2: { marginTop: 2, fontSize: FONT.subtitle, color: COLORS.gray },
-
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10 },
-  centerText: { color: COLORS.gray },
-
-  empty: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 50,
-    gap: 10,
-  },
-  emptyText: { color: COLORS.gray },
-
-  card: {
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.xl,
-    padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    marginBottom: SPACING.md,
-  },
-  cardTop: {
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
   },
-  cardTitle: { fontSize: FONT.section, fontWeight: "900", color: COLORS.dark },
-  cardSub: { marginTop: 3, fontSize: 12, color: COLORS.gray },
+  hTitle: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
+  hSub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  badgeText: { color: COLORS.white, fontWeight: "900", fontSize: 11 },
+  muted: { marginTop: 6, fontFamily: FONT.regular, color: COLORS.gray },
 
-  linkRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
-  linkText: { color: COLORS.primary, fontWeight: "900" },
+  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  title: { fontFamily: FONT.bold, fontSize: 14, color: COLORS.dark },
+  sub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  actionsRow: {
+  grid: { marginTop: SPACING.md, flexDirection: "row", justifyContent: "space-between" },
+  cell: { width: "48%" },
+  label: { fontFamily: FONT.regular, fontSize: 11, color: COLORS.gray },
+  value: { marginTop: 6, fontFamily: FONT.bold, fontSize: 13, color: COLORS.dark },
+
+  actionsRow: { marginTop: SPACING.md, flexDirection: "row", alignItems: "center" },
+
+  acceptedRow: {
     marginTop: SPACING.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  actionBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: RADIUS.lg,
-    backgroundColor: "#F9FAFB",
   },
-  actionText: { color: COLORS.dark, fontWeight: "900" },
+  acceptedText: { flex: 1, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+  link: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.primary },
 
-  note: { marginTop: 10, color: COLORS.gray, fontSize: 12, lineHeight: 18 },
+  note: { marginTop: 10, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+
+  pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  pillText: { fontFamily: FONT.bold, fontSize: 11, letterSpacing: 0.3 },
 });

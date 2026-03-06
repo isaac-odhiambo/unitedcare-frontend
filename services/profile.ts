@@ -1,45 +1,149 @@
 // services/profile.ts
 import { api } from "@/services/api";
+import { ENDPOINTS } from "@/services/endpoints";
+
+/* =========================================================
+   Types
+========================================================= */
+
+export type UserRole = "admin" | "member" | string;
+export type UserStatus = "pending" | "approved" | "blocked" | "rejected" | string;
 
 export type MeResponse = {
+  id?: number;
   username: string;
   phone: string;
+
   email?: string | null;
-  role: string;
-  status: string;
+  id_number?: string | null;
+
+  role: UserRole;
+  status: UserStatus;
+
   is_admin?: boolean;
+
+  // optional KYC fields depending on your serializer
+  kyc_completed?: boolean;
+  kyc_status?: string | null;
+
+  [key: string]: any;
 };
 
-export async function getMe() {
-  const res = await api.get("/api/accounts/me/");
-  return res.data as MeResponse;
-}
-
-export async function updateMe(payload: Partial<Pick<MeResponse, "username" | "email">>) {
-  const res = await api.patch("/api/accounts/me/", payload);
-  return res.data as MeResponse;
-}
+export type KycFile = {
+  uri: string;
+  name?: string;
+  type?: string;
+};
 
 export type KycPayload = {
-  passport_photo: { uri: string; name?: string; type?: string };
-  id_front: { uri: string; name?: string; type?: string };
-  id_back: { uri: string; name?: string; type?: string };
+  passport_photo: KycFile;
+  id_front: KycFile;
+  id_back: KycFile;
 };
 
-function filePart(file: { uri: string; name?: string; type?: string }, fallbackName: string) {
-  const name = file.name || fallbackName;
-  const type = file.type || "image/jpeg";
-  return { uri: file.uri, name, type } as any;
+export type KycResponse = {
+  message?: string;
+  detail?: string;
+  user?: MeResponse;
+  [key: string]: any;
+};
+
+/* =========================================================
+   Helpers
+========================================================= */
+
+function filePart(file: KycFile, fallbackName: string) {
+  return {
+    uri: file.uri,
+    name: file.name || fallbackName,
+    type: file.type || "image/jpeg",
+  } as any;
 }
 
-export async function submitKyc(payload: KycPayload) {
+export function isAdminUser(user?: Partial<MeResponse> | null): boolean {
+  return !!user?.is_admin || user?.role === "admin";
+}
+
+export function isApprovedUser(user?: Partial<MeResponse> | null): boolean {
+  return (user?.status || "").toLowerCase() === "approved";
+}
+
+export function isKycComplete(user?: Partial<MeResponse> | null): boolean {
+  return (
+    !!user?.kyc_completed ||
+    (user?.kyc_status || "").toLowerCase() === "approved"
+  );
+}
+
+export function canRequestLoan(user?: Partial<MeResponse> | null): boolean {
+  return isApprovedUser(user) && isKycComplete(user);
+}
+
+export function canJoinGroup(user?: Partial<MeResponse> | null): boolean {
+  return isApprovedUser(user) && isKycComplete(user);
+}
+
+export function canJoinMerry(user?: Partial<MeResponse> | null): boolean {
+  return isApprovedUser(user);
+}
+
+export function canWithdraw(user?: Partial<MeResponse> | null): boolean {
+  return isApprovedUser(user) && isKycComplete(user);
+}
+
+export function getApiErrorMessage(error: any): string {
+  const data = error?.response?.data;
+
+  if (!data) return "Something went wrong.";
+  if (typeof data === "string") return data;
+  if (typeof data?.detail === "string") return data.detail;
+
+  if (typeof data === "object") {
+    const firstKey = Object.keys(data)[0];
+    const firstValue = data?.[firstKey];
+
+    if (Array.isArray(firstValue) && firstValue.length > 0) {
+      return `${firstKey}: ${firstValue[0]}`;
+    }
+
+    if (typeof firstValue === "string") {
+      return `${firstKey}: ${firstValue}`;
+    }
+  }
+
+  return "Request failed.";
+}
+
+/* =========================================================
+   Profile API
+========================================================= */
+
+// GET /api/accounts/me/
+export async function getMe(): Promise<MeResponse> {
+  const res = await api.get(ENDPOINTS.accounts.me);
+  return res.data;
+}
+
+/* =========================================================
+   KYC
+========================================================= */
+
+// POST /api/accounts/kyc/
+export async function submitKyc(payload: KycPayload): Promise<KycResponse> {
   const form = new FormData();
-  form.append("passport_photo", filePart(payload.passport_photo, "passport.jpg"));
+
+  form.append(
+    "passport_photo",
+    filePart(payload.passport_photo, "passport.jpg")
+  );
   form.append("id_front", filePart(payload.id_front, "id_front.jpg"));
   form.append("id_back", filePart(payload.id_back, "id_back.jpg"));
 
-  const res = await api.post("/api/accounts/kyc/", form, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const res = await api.post(ENDPOINTS.accounts.kycSubmit, form, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
   });
+
   return res.data;
 }
