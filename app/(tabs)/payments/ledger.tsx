@@ -58,17 +58,42 @@ function categoryIcon(category?: string) {
   if (c === "LOANS") return "cash-outline";
   if (c === "MERRY") return "repeat-outline";
   if (c === "GROUP") return "people-outline";
-  if (c === "WITHDRAWAL" || c === "WITHDRAWAL_FEE") return "arrow-up-circle-outline";
+  if (c === "WITHDRAWAL") return "arrow-up-circle-outline";
+  if (c === "WITHDRAWAL_FEE") return "remove-circle-outline";
   if (c === "TRANSACTION_FEE") return "receipt-outline";
   return "list-outline";
+}
+
+function categoryLabel(category?: string) {
+  const c = String(category || "").toUpperCase();
+
+  if (c === "SAVINGS") return "Savings";
+  if (c === "LOANS") return "Loans";
+  if (c === "MERRY") return "Merry";
+  if (c === "GROUP") return "Group";
+  if (c === "WITHDRAWAL") return "Withdrawal";
+  if (c === "WITHDRAWAL_FEE") return "Withdrawal Fee";
+  if (c === "TRANSACTION_FEE") return "Transaction Fee";
+  return c || "Other";
+}
+
+function isFeeCategory(category?: string) {
+  const c = String(category || "").toUpperCase();
+  return c === "WITHDRAWAL_FEE" || c === "TRANSACTION_FEE";
 }
 
 function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
   const color = entryColor(entry);
   const sign = entrySign(entry);
-  const title = entry.narration || entry.category || "Ledger entry";
+  const feeRow = isFeeCategory(entry.category);
+
+  const title =
+    entry.narration ||
+    categoryLabel(entry.category) ||
+    "Ledger entry";
+
   const meta = [
-    entry.category,
+    categoryLabel(entry.category),
     entry.reference,
     entry.created_at,
   ]
@@ -76,13 +101,13 @@ function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
     .join(" • ");
 
   return (
-    <Card style={styles.entryCard}>
+    <Card style={[styles.entryCard, feeRow && styles.feeCard]}>
       <View style={styles.entryTop}>
         <View style={styles.entryIcon}>
           <Ionicons
             name={categoryIcon(entry.category) as any}
             size={18}
-            color={COLORS.primary}
+            color={feeRow ? COLORS.warning : COLORS.primary}
           />
         </View>
 
@@ -99,6 +124,19 @@ function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
           {sign} {formatKes(entry.amount)}
         </Text>
       </View>
+
+      {feeRow ? (
+        <View style={styles.feeNoteRow}>
+          <Ionicons
+            name="information-circle-outline"
+            size={14}
+            color={COLORS.warning}
+          />
+          <Text style={styles.feeNoteText}>
+            This row shows a system fee applied during payment processing.
+          </Text>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -173,19 +211,27 @@ export default function LedgerScreen() {
   const stats = useMemo(() => {
     let credits = 0;
     let debits = 0;
+    let fees = 0;
 
     ledger.forEach((entry) => {
       const amount = Number(entry.amount ?? 0);
       if (!Number.isFinite(amount)) return;
 
       const type = String(entry.entry_type || "").toUpperCase();
+      const category = String(entry.category || "").toUpperCase();
+
       if (type === "CREDIT") credits += amount;
       else if (type === "DEBIT") debits += amount;
+
+      if (category === "WITHDRAWAL_FEE" || category === "TRANSACTION_FEE") {
+        fees += amount;
+      }
     });
 
     return {
       credits,
       debits,
+      fees,
       count: ledger.length,
     };
   }, [ledger]);
@@ -268,16 +314,34 @@ export default function LedgerScreen() {
 
       <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Fees</Text>
+          <Text style={[styles.summaryValue, { color: COLORS.warning }]}>
+            {formatKes(stats.fees)}
+          </Text>
+        </View>
+
+        <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Entries</Text>
           <Text style={styles.summaryValue}>{stats.count}</Text>
         </View>
+      </View>
 
+      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Quick Action</Text>
           <Button
             title="Deposit"
             variant="secondary"
             onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
+          />
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Quick Action</Text>
+          <Button
+            title="Withdraw"
+            variant="secondary"
+            onPress={() => router.push(ROUTES.tabs.paymentsRequestWithdrawal)}
           />
         </View>
       </View>
@@ -381,6 +445,11 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
 
+  feeCard: {
+    borderColor: COLORS.warning,
+    borderWidth: 1,
+  },
+
   entryTop: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -412,5 +481,22 @@ const styles = StyleSheet.create({
   entryAmount: {
     fontFamily: FONT.bold,
     fontSize: 13,
+  },
+
+  feeNoteRow: {
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  feeNoteText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
   },
 });

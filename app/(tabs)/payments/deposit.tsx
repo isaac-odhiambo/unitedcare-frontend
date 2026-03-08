@@ -19,7 +19,15 @@ import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getApiErrorMessage, stkDepositSavings } from "@/services/payments";
+import {
+  getApiErrorMessage,
+  getBaseAmount,
+  getChargedAmount,
+  getTransactionFee,
+  money,
+  stkDepositSavings,
+  StkPushResponse,
+} from "@/services/payments";
 import { getMe, isAdminUser, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
@@ -32,13 +40,8 @@ function normalizePhone(value: string) {
   return v;
 }
 
-function formatKes(value?: string | number | null) {
-  const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "KES 0.00";
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+function isValidKenyanPhone(phone: string) {
+  return /^(07|01)\d{8}$/.test(phone);
 }
 
 function isPositiveAmount(value: string) {
@@ -55,11 +58,12 @@ export default function DepositScreen() {
 
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
+  const [result, setResult] = useState<StkPushResponse | null>(null);
 
   const isAdmin = isAdminUser(user);
 
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
-  const phoneOk = useMemo(() => /^0\d{9}$/.test(normalizedPhone), [normalizedPhone]);
+  const phoneOk = useMemo(() => isValidKenyanPhone(normalizedPhone), [normalizedPhone]);
   const amountOk = useMemo(() => isPositiveAmount(amount), [amount]);
   const canSubmit = phoneOk && amountOk && !submitting;
 
@@ -120,8 +124,21 @@ export default function DepositScreen() {
 
     try {
       setSubmitting(true);
+      setResult(null);
 
-      const res = await stkDepositSavings(normalizedPhone, String(Number(amount)));
+      const res = await stkDepositSavings(
+        normalizedPhone,
+        String(Number(amount))
+      );
+
+      setResult(res);
+
+      const tx = res?.tx;
+      const baseAmount = money(getBaseAmount(tx) || Number(amount));
+      const feeAmount =
+        tx ? money(getTransactionFee(tx)) : "Determined by backend";
+      const chargedAmount =
+        tx ? money(getChargedAmount(tx)) : "Determined by backend";
 
       const message =
         res?.message ||
@@ -133,7 +150,7 @@ export default function DepositScreen() {
           deposited: "1",
           amount: String(Number(amount)),
           phone: normalizedPhone,
-          notice: message,
+          notice: `${message}\nRequested credit: ${baseAmount}\nPossible fee: ${feeAmount}\nPossible charged amount: ${chargedAmount}`,
         },
       });
     } catch (e: any) {
@@ -142,6 +159,18 @@ export default function DepositScreen() {
       setSubmitting(false);
     }
   }, [amount, amountOk, normalizedPhone, phoneOk]);
+
+  const previewBase = result?.tx
+    ? money(getBaseAmount(result.tx))
+    : money(amount || 0);
+
+  const previewFee = result?.tx
+    ? money(getTransactionFee(result.tx))
+    : "Determined by backend";
+
+  const previewCharged = result?.tx
+    ? money(getChargedAmount(result.tx))
+    : "Determined by backend";
 
   if (loading) {
     return (
@@ -216,7 +245,7 @@ export default function DepositScreen() {
             style={styles.input}
           />
 
-          <Text style={styles.label}>Amount</Text>
+          <Text style={styles.label}>Amount to Credit</Text>
           <TextInput
             value={amount}
             onChangeText={setAmount}
@@ -226,6 +255,18 @@ export default function DepositScreen() {
             style={styles.input}
           />
 
+          <Card style={styles.noticeCard}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={COLORS.info}
+            />
+            <Text style={styles.noticeText}>
+              Enter the amount you want credited to savings. If a deposit transaction fee
+              is configured, the STK prompt on your phone may be higher than the amount entered.
+            </Text>
+          </Card>
+
           <View style={styles.previewCard}>
             <View style={styles.previewRow}>
               <Text style={styles.previewLabel}>Phone</Text>
@@ -233,8 +274,18 @@ export default function DepositScreen() {
             </View>
 
             <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Amount</Text>
-              <Text style={styles.previewValue}>{formatKes(amount || 0)}</Text>
+              <Text style={styles.previewLabel}>Amount to credit</Text>
+              <Text style={styles.previewValue}>{previewBase}</Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible fee</Text>
+              <Text style={styles.previewValue}>{previewFee}</Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible charged amount</Text>
+              <Text style={styles.previewValue}>{previewCharged}</Text>
             </View>
 
             <View style={styles.previewRow}>
@@ -251,11 +302,52 @@ export default function DepositScreen() {
         </Card>
       </Section>
 
+      {result ? (
+        <Section title="Latest STK Request">
+          <Card style={styles.latestCard}>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Status</Text>
+              <Text style={styles.previewValue}>{result.tx?.status || "—"}</Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Requested credit</Text>
+              <Text style={styles.previewValue}>
+                {money(getBaseAmount(result.tx))}
+              </Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible fee</Text>
+              <Text style={styles.previewValue}>
+                {money(getTransactionFee(result.tx))}
+              </Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible charged amount</Text>
+              <Text style={styles.previewValue}>
+                {money(getChargedAmount(result.tx))}
+              </Text>
+            </View>
+
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Checkout ID</Text>
+              <Text style={styles.previewValue}>
+                {result.tx?.checkout_request_id || "—"}
+              </Text>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
       <Section title="Notes">
         <Card style={styles.notesCard}>
           <Text style={styles.noteText}>
             A prompt will be sent to your phone. Enter your M-Pesa PIN to complete
-            the deposit. Savings deposits are allowed even before full KYC.
+            the deposit. Savings deposits are allowed even before full KYC. Where
+            transaction fees are configured, the amount charged on STK may be higher
+            than the amount credited into savings.
           </Text>
         </Card>
       </Section>
@@ -334,6 +426,24 @@ const styles = StyleSheet.create({
     color: COLORS.dark,
   },
 
+  noticeCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+  },
+
+  noticeText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: COLORS.gray,
+  },
+
   previewCard: {
     marginBottom: SPACING.md,
     borderWidth: 1,
@@ -343,10 +453,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
 
+  latestCard: {
+    padding: SPACING.md,
+  },
+
   previewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 6,
+    gap: SPACING.md,
   },
 
   previewLabel: {
@@ -356,6 +471,8 @@ const styles = StyleSheet.create({
   },
 
   previewValue: {
+    flexShrink: 1,
+    textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
     color: COLORS.dark,

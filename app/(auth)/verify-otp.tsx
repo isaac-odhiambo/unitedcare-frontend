@@ -1,18 +1,19 @@
 // app/(auth)/verify-otp.tsx
+
 import { getErrorMessage } from "@/services/api";
 import { resendOtp, verifyOtp } from "@/services/auth";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type FieldErrors = {
@@ -29,50 +30,72 @@ function parseBackendError(e: any): FieldErrors {
   const pretty = getErrorMessage(e);
   const data = e?.response?.data;
 
-  // DRF: { detail: "..." }
-  if (typeof data?.detail === "string") return { general: data.detail };
-
-  // DRF: { non_field_errors: ["..."] }
-  if (Array.isArray(data?.non_field_errors) && data.non_field_errors.length) {
-    return { general: data.non_field_errors[0] };
+  if (typeof data?.detail === "string") {
+    return { general: data.detail };
   }
 
-  // DRF field errors: { phone: ["..."], otp: ["..."] }
-  const errors: FieldErrors = {};
-  if (Array.isArray(data?.phone) && data.phone.length) errors.phone = data.phone[0];
-  if (Array.isArray(data?.otp) && data.otp.length) errors.otp = data.otp[0];
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors.length) {
+    return { general: String(data.non_field_errors[0]) };
+  }
 
-  if (Object.keys(errors).length) return errors;
+  const errors: FieldErrors = {};
+
+  if (Array.isArray(data?.phone) && data.phone.length) {
+    errors.phone = String(data.phone[0]);
+  } else if (typeof data?.phone === "string") {
+    errors.phone = data.phone;
+  }
+
+  if (Array.isArray(data?.otp) && data.otp.length) {
+    errors.otp = String(data.otp[0]);
+  } else if (typeof data?.otp === "string") {
+    errors.otp = data.otp;
+  }
+
+  if (Object.keys(errors).length > 0) return errors;
 
   return { general: pretty || "Verification failed. Please try again." };
 }
 
 export default function VerifyOtpScreen() {
   const params = useLocalSearchParams();
-  const phoneParam = useMemo(() => normalizePhone(String(params?.phone || "")), [params]);
 
-  const [phone] = useState(phoneParam); // readonly (prevents mismatch)
+  const phoneParam = useMemo(
+    () => normalizePhone(String(params?.phone || "")),
+    [params]
+  );
+
+  const [phone] = useState(phoneParam);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
-  // Resend cooldown (seconds)
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (cooldown <= 0) return;
-    const t = setInterval(() => setCooldown((c) => c - 1), 1000);
+
+    const t = setInterval(() => {
+      setCooldown((c) => c - 1);
+    }, 1000);
+
     return () => clearInterval(t);
   }, [cooldown]);
 
   const validateVerify = (): boolean => {
     const next: FieldErrors = {};
 
-    if (!phone) next.phone = "Phone is missing. Go back and register again.";
-    else if (!/^(07|01)\d{8}$/.test(phone)) next.phone = "Phone must be 07XXXXXXXX or 01XXXXXXXX.";
+    if (!phone) {
+      next.phone = "Phone is missing. Go back and register again.";
+    } else if (!/^(07|01)\d{8}$/.test(phone)) {
+      next.phone = "Phone must be 07XXXXXXXX or 01XXXXXXXX.";
+    }
 
-    if (!otp) next.otp = "OTP is required.";
-    else if (!/^\d{6}$/.test(otp)) next.otp = "OTP must be exactly 6 digits.";
+    if (!otp) {
+      next.otp = "OTP is required.";
+    } else if (!/^\d{6}$/.test(otp)) {
+      next.otp = "OTP must be exactly 6 digits.";
+    }
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -80,14 +103,22 @@ export default function VerifyOtpScreen() {
 
   const handleVerify = async () => {
     setErrors({});
+
     if (!validateVerify()) return;
 
     try {
       setLoading(true);
 
-      const res = await verifyOtp({ phone, otp });
+      const res = await verifyOtp({
+        phone,
+        otp,
+      });
 
-      Alert.alert("Success", res?.detail || "Account verified successfully.");
+      Alert.alert(
+        "Success",
+        res?.detail || "Account verified successfully."
+      );
+
       router.replace("/(auth)/login");
     } catch (e: any) {
       const parsed = parseBackendError(e);
@@ -107,19 +138,27 @@ export default function VerifyOtpScreen() {
   };
 
   const handleResend = async () => {
-    // basic frontend validation
     const p = normalizePhone(phone);
+
     if (!/^(07|01)\d{8}$/.test(p)) {
-      Alert.alert("Invalid phone", "Phone must be 07XXXXXXXX or 01XXXXXXXX.");
+      Alert.alert(
+        "Invalid phone",
+        "Phone must be 07XXXXXXXX or 01XXXXXXXX."
+      );
       return;
     }
 
     try {
       setLoading(true);
+
       const res = await resendOtp({ phone: p });
 
-      Alert.alert("OTP Sent", res?.detail || "OTP resent. Please check your phone.");
-      setCooldown(60); // 60s cooldown
+      Alert.alert(
+        "OTP Sent",
+        res?.detail || "OTP resent. Please check your phone."
+      );
+
+      setCooldown(60);
     } catch (e: any) {
       console.log("RESEND OTP ERROR:", {
         status: e?.response?.status,
@@ -145,37 +184,52 @@ export default function VerifyOtpScreen() {
         <Text style={styles.title}>Verify OTP</Text>
 
         <Text style={styles.subtitle}>
-          Enter the 6-digit code sent to <Text style={{ fontWeight: "800" }}>{phone || "your phone"}</Text>
+          Enter the 6-digit code sent to{" "}
+          <Text style={{ fontWeight: "800" }}>
+            {phone || "your phone"}
+          </Text>
         </Text>
 
-        {errors.general ? <Text style={styles.generalError}>{errors.general}</Text> : null}
-        {errors.phone ? <Text style={styles.fieldError}>{errors.phone}</Text> : null}
+        {errors.general && (
+          <Text style={styles.generalError}>{errors.general}</Text>
+        )}
+
+        {errors.phone && (
+          <Text style={styles.fieldError}>{errors.phone}</Text>
+        )}
 
         <TextInput
           placeholder="Enter 6-digit OTP"
           value={otp}
           onChangeText={(t) => {
-            // digits only, max 6
             const cleaned = t.replace(/\D/g, "").slice(0, 6);
             setOtp(cleaned);
-            if (errors.otp) setErrors((p) => ({ ...p, otp: undefined }));
-            if (errors.general) setErrors((p) => ({ ...p, general: undefined }));
+
+            if (errors.otp || errors.general) {
+              setErrors((prev) => ({
+                ...prev,
+                otp: undefined,
+                general: undefined,
+              }));
+            }
           }}
           keyboardType="number-pad"
           maxLength={6}
           editable={!loading}
           style={[styles.input, errors.otp && styles.inputError]}
         />
-        {errors.otp ? <Text style={styles.fieldError}>{errors.otp}</Text> : null}
+
+        {errors.otp && (
+          <Text style={styles.fieldError}>{errors.otp}</Text>
+        )}
 
         <TouchableOpacity
           onPress={handleVerify}
           disabled={loading}
-          activeOpacity={0.9}
           style={[styles.button, loading && styles.buttonDisabled]}
         >
           {loading ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
               <ActivityIndicator color="#fff" />
               <Text style={styles.buttonText}>Verifying...</Text>
             </View>
@@ -189,29 +243,48 @@ export default function VerifyOtpScreen() {
           disabled={loading || cooldown > 0}
           style={{ marginTop: 16 }}
         >
-          <Text style={[styles.link, (loading || cooldown > 0) && { opacity: 0.6 }]}>
-            {cooldown > 0 ? `Resend OTP in ${cooldown}s` : "Resend OTP"}
+          <Text
+            style={[
+              styles.link,
+              (loading || cooldown > 0) && { opacity: 0.6 },
+            ]}
+          >
+            {cooldown > 0
+              ? `Resend OTP in ${cooldown}s`
+              : "Resend OTP"}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.replace("/(auth)/register")} disabled={loading}>
-          <Text style={[styles.link, { marginTop: 10 }]}>Back to Register</Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/register")}
+          disabled={loading}
+        >
+          <Text style={[styles.link, { marginTop: 10 }]}>
+            Back to Register
+          </Text>
         </TouchableOpacity>
-
-        {/* Optional dev hint */}
-        {/* <Text style={{ marginTop: 20, color: "#888", textAlign: "center" }}>
-          API: {process.env.EXPO_PUBLIC_API_URL}
-        </Text> */}
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#fff" },
-  title: { fontSize: 24, fontWeight: "800", marginBottom: 8, color: "#111" },
-  subtitle: { marginBottom: 16, color: "#666" },
-
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "#fff",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    marginBottom: 8,
+    color: "#111",
+  },
+  subtitle: {
+    marginBottom: 16,
+    color: "#666",
+  },
   generalError: {
     backgroundColor: "#ffecec",
     borderColor: "#ffb3b3",
@@ -222,7 +295,6 @@ const styles = StyleSheet.create({
     color: "#990000",
     fontWeight: "700",
   },
-
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -231,10 +303,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     color: "#111",
   },
-  inputError: { borderColor: "#cc0000" },
-
-  fieldError: { color: "#cc0000", marginBottom: 10, fontWeight: "600" },
-
+  inputError: {
+    borderColor: "#cc0000",
+  },
+  fieldError: {
+    color: "#cc0000",
+    marginBottom: 10,
+    fontWeight: "600",
+  },
   button: {
     backgroundColor: "#111",
     padding: 14,
@@ -242,9 +318,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  buttonDisabled: { opacity: 0.7 },
-
-  buttonText: { color: "#fff", fontWeight: "700" },
-
-  link: { textAlign: "center", color: "#111", fontWeight: "700" },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  link: {
+    textAlign: "center",
+    color: "#111",
+    fontWeight: "700",
+  },
 });

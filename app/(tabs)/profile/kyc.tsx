@@ -4,6 +4,7 @@ import { getErrorMessage } from "@/services/api";
 import { getMe, submitKyc } from "@/services/profile";
 import { mergeSessionUser } from "@/services/session";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -16,32 +17,71 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 
 type Picked = { uri: string; name?: string; type?: string } | null;
 
-async function pickImage(): Promise<Picked> {
-  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) {
-    Alert.alert("Permission needed", "Please allow photo permissions.");
-    return null;
-  }
-
-  const res = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    quality: 0.8,
-  });
-
-  if (res.canceled) return null;
-
-  const asset = res.assets[0];
+function normalizePickedAsset(asset: ImagePicker.ImagePickerAsset): Picked {
   const uri = asset.uri;
-
-  // Basic best-guess type
-  const type = uri.endsWith(".png") ? "image/png" : "image/jpeg";
-  const name = uri.split("/").pop() || "image.jpg";
+  const name = asset.fileName || uri.split("/").pop() || `image_${Date.now()}.jpg`;
+  const type =
+    asset.mimeType || (uri.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
 
   return { uri, name, type };
+}
+
+async function pickFromGallery(): Promise<Picked> {
+  try {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    console.log("MEDIA LIB PERMISSION:", perm);
+
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Please allow photo library permission.");
+      return null;
+    }
+
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    console.log("GALLERY RESULT:", JSON.stringify(res));
+
+    if (res.canceled || !res.assets?.length) return null;
+    return normalizePickedAsset(res.assets[0]);
+  } catch (e) {
+    console.log("GALLERY PICK ERROR:", e);
+    Alert.alert("Picker error", "Failed to open gallery.");
+    return null;
+  }
+}
+
+async function pickFromCamera(): Promise<Picked> {
+  try {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    console.log("CAMERA PERMISSION:", perm);
+
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Please allow camera permission.");
+      return null;
+    }
+
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+      cameraType: ImagePicker.CameraType.back,
+    });
+
+    console.log("CAMERA RESULT:", JSON.stringify(res));
+
+    if (res.canceled || !res.assets?.length) return null;
+    return normalizePickedAsset(res.assets[0]);
+  } catch (e) {
+    console.log("CAMERA PICK ERROR:", e);
+    Alert.alert("Camera error", "Failed to open camera.");
+    return null;
+  }
 }
 
 export default function KycScreen() {
@@ -54,7 +94,10 @@ export default function KycScreen() {
 
   const handleSubmit = async () => {
     if (!canSubmit) {
-      Alert.alert("Missing documents", "Please select all 3 images (passport, ID front, ID back).");
+      Alert.alert(
+        "Missing documents",
+        "Please select all 3 images (passport, ID front, ID back)."
+      );
       return;
     }
 
@@ -67,7 +110,6 @@ export default function KycScreen() {
         id_back: idBack!,
       });
 
-      // ✅ refresh profile + session so dashboard unlock logic updates when approved
       const me = await getMe();
       await mergeSessionUser({
         username: me.username,
@@ -81,6 +123,7 @@ export default function KycScreen() {
       Alert.alert("Submitted", "KYC submitted successfully. Wait for approval.");
       router.replace("/(tabs)/profile");
     } catch (e: any) {
+      console.log("KYC SUBMIT ERROR:", e?.response?.data || e?.message || e);
       Alert.alert("KYC failed", getErrorMessage(e));
     } finally {
       setSubmitting(false);
@@ -88,28 +131,37 @@ export default function KycScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 24 }}
+    >
       <Text style={styles.title}>Submit KYC</Text>
       <Text style={styles.sub}>
-        Upload your passport photo and both sides of your ID. After approval, loans and merry-go-round unlock.
+        Upload your passport photo and both sides of your ID. After approval,
+        loans and merry-go-round unlock.
       </Text>
 
       <DocPicker
         label="Passport Photo"
         value={passport}
-        onPick={async () => setPassport(await pickImage())}
+        onPickCamera={async () => setPassport(await pickFromCamera())}
+        onPickGallery={async () => setPassport(await pickFromGallery())}
         onClear={() => setPassport(null)}
       />
+
       <DocPicker
         label="ID Front"
         value={idFront}
-        onPick={async () => setIdFront(await pickImage())}
+        onPickCamera={async () => setIdFront(await pickFromCamera())}
+        onPickGallery={async () => setIdFront(await pickFromGallery())}
         onClear={() => setIdFront(null)}
       />
+
       <DocPicker
         label="ID Back"
         value={idBack}
-        onPick={async () => setIdBack(await pickImage())}
+        onPickCamera={async () => setIdBack(await pickFromCamera())}
+        onPickGallery={async () => setIdBack(await pickFromGallery())}
         onClear={() => setIdBack(null)}
       />
 
@@ -129,7 +181,11 @@ export default function KycScreen() {
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.9}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.backBtn}
+        activeOpacity={0.9}
+      >
         <Ionicons name="arrow-back" size={18} color={COLORS.primary} />
         <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
@@ -140,12 +196,14 @@ export default function KycScreen() {
 function DocPicker({
   label,
   value,
-  onPick,
+  onPickCamera,
+  onPickGallery,
   onClear,
 }: {
   label: string;
   value: Picked;
-  onPick: () => void;
+  onPickCamera: () => void;
+  onPickGallery: () => void;
   onClear: () => void;
 }) {
   return (
@@ -155,10 +213,15 @@ function DocPicker({
       {value?.uri ? (
         <View style={{ gap: 10 }}>
           <Image source={{ uri: value.uri }} style={styles.preview} />
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TouchableOpacity style={styles.smallBtn} onPress={onPick} activeOpacity={0.9}>
-              <Text style={styles.smallBtnText}>Change</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <TouchableOpacity style={styles.smallBtn} onPress={onPickCamera} activeOpacity={0.9}>
+              <Text style={styles.smallBtnText}>Retake</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.smallBtn} onPress={onPickGallery} activeOpacity={0.9}>
+              <Text style={styles.smallBtnText}>Choose Other</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.smallBtn, { backgroundColor: "#FEE2E2" }]}
               onPress={onClear}
@@ -169,10 +232,17 @@ function DocPicker({
           </View>
         </View>
       ) : (
-        <TouchableOpacity style={styles.pickBtn} onPress={onPick} activeOpacity={0.9}>
-          <Ionicons name="cloud-upload-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.pickBtnText}>Select Image</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          <TouchableOpacity style={styles.pickBtn} onPress={onPickCamera} activeOpacity={0.9}>
+            <Ionicons name="camera-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.pickBtnText}>Take Photo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.pickBtn} onPress={onPickGallery} activeOpacity={0.9}>
+            <Ionicons name="images-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.pickBtnText}>Choose Image</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -197,12 +267,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     alignItems: "center",
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.lightGray,
     backgroundColor: "#EEF2FF",
-    alignSelf: "flex-start",
   },
   pickBtnText: { fontWeight: "900", color: COLORS.primary },
 

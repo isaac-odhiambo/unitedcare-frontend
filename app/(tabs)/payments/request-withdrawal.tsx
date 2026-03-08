@@ -20,7 +20,16 @@ import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getApiErrorMessage, requestWithdrawal, WithdrawalSource } from "@/services/payments";
+import {
+  getApiErrorMessage,
+  getNetWithdrawalPayout,
+  getRequestedWithdrawalAmount,
+  getWithdrawalFee,
+  money,
+  requestWithdrawal,
+  WithdrawalRequest,
+  WithdrawalSource,
+} from "@/services/payments";
 import {
   canWithdraw,
   getMe,
@@ -41,18 +50,31 @@ function normalizePhone(value: string) {
   return v;
 }
 
-function formatKes(value?: string | number | null) {
-  const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "KES 0.00";
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
 function isPositiveAmount(value: string) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0;
+}
+
+function isValidKenyanPhone(phone: string) {
+  return /^(07|01)\d{8}$/.test(phone);
+}
+
+function SourceChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: WithdrawalSource;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Card onPress={onPress} style={[styles.sourceChip, active && styles.sourceChipActive]}>
+      <Text style={[styles.sourceChipText, active && styles.sourceChipTextActive]}>
+        {label}
+      </Text>
+    </Card>
+  );
 }
 
 export default function RequestWithdrawalScreen() {
@@ -66,13 +88,15 @@ export default function RequestWithdrawalScreen() {
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState<WithdrawalSource>("SAVINGS");
 
+  const [result, setResult] = useState<WithdrawalRequest | null>(null);
+
   const isAdmin = isAdminUser(user);
   const kycComplete = isKycComplete(user);
   const withdrawAllowed = canWithdraw(user);
 
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
   const amountOk = useMemo(() => isPositiveAmount(amount), [amount]);
-  const phoneOk = useMemo(() => /^0\d{9}$/.test(normalizedPhone), [normalizedPhone]);
+  const phoneOk = useMemo(() => isValidKenyanPhone(normalizedPhone), [normalizedPhone]);
   const canSubmit = withdrawAllowed && phoneOk && amountOk && !submitting;
 
   const load = useCallback(async () => {
@@ -145,6 +169,7 @@ export default function RequestWithdrawalScreen() {
 
     try {
       setSubmitting(true);
+      setResult(null);
 
       const payload = {
         phone: normalizedPhone,
@@ -153,10 +178,30 @@ export default function RequestWithdrawalScreen() {
       };
 
       const res = await requestWithdrawal(payload);
+      const withdrawal = res?.withdrawal ?? null;
+      setResult(withdrawal);
+
+      const requestedAmount = withdrawal
+        ? money(getRequestedWithdrawalAmount(withdrawal))
+        : money(amount);
+
+      const feeAmount = withdrawal
+        ? money(getWithdrawalFee(withdrawal))
+        : "Determined by backend";
+
+      const netPayout = withdrawal
+        ? money(getNetWithdrawalPayout(withdrawal))
+        : "Determined by backend";
 
       Alert.alert(
         "Withdrawal Request",
-        res?.message || "Withdrawal request submitted successfully.",
+        [
+          res?.message || "Withdrawal request submitted successfully.",
+          "",
+          `Requested amount: ${requestedAmount}`,
+          `Possible fee: ${feeAmount}`,
+          `Possible net payout: ${netPayout}`,
+        ].join("\n"),
         [
           {
             text: "OK",
@@ -169,7 +214,19 @@ export default function RequestWithdrawalScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [amount, amountOk, normalizedPhone, phoneOk, router, source, withdrawAllowed]);
+  }, [amount, amountOk, normalizedPhone, phoneOk, source, withdrawAllowed]);
+
+  const previewRequested = result
+    ? money(getRequestedWithdrawalAmount(result))
+    : money(amount || 0);
+
+  const previewFee = result
+    ? money(getWithdrawalFee(result))
+    : "Determined by backend";
+
+  const previewNet = result
+    ? money(getNetWithdrawalPayout(result))
+    : "Determined by backend";
 
   if (loading) {
     return (
@@ -261,7 +318,7 @@ export default function RequestWithdrawalScreen() {
             style={styles.input}
           />
 
-          <Text style={styles.label}>Amount</Text>
+          <Text style={styles.label}>Amount to Withdraw</Text>
           <TextInput
             value={amount}
             onChangeText={setAmount}
@@ -273,19 +330,27 @@ export default function RequestWithdrawalScreen() {
 
           <Text style={styles.label}>Source</Text>
           <View style={styles.sourceWrap}>
-            {WITHDRAWAL_SOURCES.map((s) => {
-              const active = source === s;
-              return (
-                <Button
-                  key={s}
-                  title={s}
-                  variant={active ? "primary" : "secondary"}
-                  onPress={() => setSource(s)}
-                  style={styles.sourceBtn}
-                />
-              );
-            })}
+            {WITHDRAWAL_SOURCES.map((s) => (
+              <SourceChip
+                key={s}
+                label={s}
+                active={source === s}
+                onPress={() => setSource(s)}
+              />
+            ))}
           </View>
+
+          <Card style={styles.noticeBox}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={COLORS.info}
+            />
+            <Text style={styles.noticeBoxText}>
+              Enter the amount you want removed from your {source.toLowerCase()} balance.
+              If a withdrawal fee is configured, your final Mpesa payout may be lower.
+            </Text>
+          </Card>
 
           <View style={styles.previewCard}>
             <View style={styles.previewRow}>
@@ -293,8 +358,16 @@ export default function RequestWithdrawalScreen() {
               <Text style={styles.previewValue}>{normalizedPhone || "—"}</Text>
             </View>
             <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Amount</Text>
-              <Text style={styles.previewValue}>{formatKes(amount || 0)}</Text>
+              <Text style={styles.previewLabel}>Requested amount</Text>
+              <Text style={styles.previewValue}>{previewRequested}</Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible fee</Text>
+              <Text style={styles.previewValue}>{previewFee}</Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible net payout</Text>
+              <Text style={styles.previewValue}>{previewNet}</Text>
             </View>
             <View style={styles.previewRow}>
               <Text style={styles.previewLabel}>Source</Text>
@@ -320,11 +393,46 @@ export default function RequestWithdrawalScreen() {
         </Card>
       </Section>
 
+      {result ? (
+        <Section title="Latest Request">
+          <Card style={styles.latestCard}>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Status</Text>
+              <Text style={styles.previewValue}>{result.status || "—"}</Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Requested amount</Text>
+              <Text style={styles.previewValue}>
+                {money(getRequestedWithdrawalAmount(result))}
+              </Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible fee</Text>
+              <Text style={styles.previewValue}>
+                {money(getWithdrawalFee(result))}
+              </Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Possible net payout</Text>
+              <Text style={styles.previewValue}>
+                {money(getNetWithdrawalPayout(result))}
+              </Text>
+            </View>
+            <View style={styles.previewRow}>
+              <Text style={styles.previewLabel}>Created</Text>
+              <Text style={styles.previewValue}>{result.created_at || "—"}</Text>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
       <Section title="Notes">
         <Card style={styles.notesCard}>
           <Text style={styles.noteText}>
             Withdrawal requests are reviewed before Mpesa payout. Use the same
-            phone number you want the payout sent to.
+            phone number you want the payout sent to. If admin has configured a
+            withdrawal fee, the money you receive on Mpesa may be less than the
+            amount requested.
           </Text>
         </Card>
       </Section>
@@ -422,8 +530,46 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
 
-  sourceBtn: {
-    minWidth: 96,
+  sourceChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+
+  sourceChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+  },
+
+  sourceChipText: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
+    color: COLORS.text,
+  },
+
+  sourceChipTextActive: {
+    color: COLORS.primary,
+  },
+
+  noticeBox: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+  },
+
+  noticeBoxText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: COLORS.gray,
   },
 
   previewCard: {
@@ -435,9 +581,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
 
+  latestCard: {
+    padding: SPACING.md,
+  },
+
   previewRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    gap: SPACING.md,
     paddingVertical: 6,
   },
 
@@ -448,6 +599,8 @@ const styles = StyleSheet.create({
   },
 
   previewValue: {
+    flexShrink: 1,
+    textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
     color: COLORS.dark,

@@ -1,30 +1,42 @@
+import { getErrorMessage } from "@/services/api";
+import { forgotPassword } from "@/services/auth";
+import { router } from "expo-router";
 import { useState } from "react";
 import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { router } from "expo-router";
-import { forgotPassword } from "@/services/auth";
 
 export default function ForgotPasswordScreen() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleRequestOtp = async () => {
-    if (!phone) {
+    const cleanPhone = phone.trim();
+
+    if (!cleanPhone) {
       Alert.alert("Missing phone", "Enter your phone number.");
       return;
     }
-    if (!/^(07|01)\d{8}$/.test(phone)) {
-      Alert.alert("Invalid phone", "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX.");
+
+    if (!/^(07|01)\d{8}$/.test(cleanPhone)) {
+      Alert.alert(
+        "Invalid phone",
+        "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX."
+      );
       return;
     }
 
     try {
       setLoading(true);
-      await forgotPassword({ phone });
+
+      await forgotPassword({ phone: cleanPhone });
+
       Alert.alert("OTP Sent", "Password reset OTP sent to your phone.");
-      router.push({ pathname: "/(auth)/reset-password", params: { phone } });
+
+      router.push({
+        pathname: "/(auth)/reset-password",
+        params: { phone: cleanPhone },
+      });
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || "Failed to send OTP.";
-      Alert.alert("Error", msg);
+      Alert.alert("Error", getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -39,6 +51,8 @@ export default function ForgotPasswordScreen() {
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
+        autoCapitalize="none"
+        autoCorrect={false}
         style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
       />
 
@@ -60,50 +74,3 @@ export default function ForgotPasswordScreen() {
     </View>
   );
 }
-
-// /* =========================
-//    STYLES
-// ========================= */
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     justifyContent: "center",
-//     padding: 24,
-//   },
-//   title: {
-//     fontSize: 26,
-//     fontWeight: "bold",
-//     textAlign: "center",
-//     color: "#0a7ea4",
-//     marginBottom: 8,
-//   },
-//   subtitle: {
-//     textAlign: "center",
-//     color: "#666",
-//     marginBottom: 30,
-//   },
-//   input: {
-//     borderWidth: 1,
-//     borderColor: "#ddd",
-//     borderRadius: 10,
-//     padding: 14,
-//     marginBottom: 16,
-//     backgroundColor: "#fff",
-//   },
-//   button: {
-//     backgroundColor: "#0a7ea4",
-//     padding: 16,
-//     borderRadius: 10,
-//     alignItems: "center",
-//     marginBottom: 20,
-//   },
-//   buttonText: {
-//     color: "#fff",
-//     fontSize: 16,
-//     fontWeight: "bold",
-//   },
-//   link: {
-//     color: "#0a7ea4",
-//     textAlign: "center",
-//   },
-// });

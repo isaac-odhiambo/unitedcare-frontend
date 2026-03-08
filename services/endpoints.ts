@@ -77,6 +77,7 @@ export const ENDPOINTS = {
 
   merry: {
     my: "/api/merry/my/",
+    available: "/api/merry/available/",
     create: "/api/merry/create/",
 
     detail: (merryId: number | string) => `/api/merry/${merryId}/`,

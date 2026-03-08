@@ -23,6 +23,9 @@ export type MerrySummaryCreated = {
   next_payout_date: string | null;
   payout_frequency: PayoutFrequency;
   payouts_per_period: number;
+  is_open?: boolean;
+  max_seats?: number;
+  available_seats?: number | null;
   members_count: number;
   seats_count: number;
   created_at: string;
@@ -37,6 +40,9 @@ export type MerrySummaryMembership = {
   next_payout_date: string | null;
   payout_frequency: PayoutFrequency;
   payouts_per_period: number;
+  is_open?: boolean;
+  max_seats?: number;
+  available_seats?: number | null;
   joined_at: string;
   seats_count: number;
 };
@@ -44,6 +50,30 @@ export type MerrySummaryMembership = {
 export type MyMerriesResponse = {
   created: MerrySummaryCreated[];
   memberships: MerrySummaryMembership[];
+};
+
+export type AvailableMerryRow = {
+  id: number;
+  name: string;
+  contribution_amount: string;
+  cycle_duration_weeks: number;
+  payout_order_type: PayoutOrderType;
+  next_payout_date: string | null;
+  payout_frequency: PayoutFrequency;
+  payouts_per_period: number;
+  is_open: boolean;
+  max_seats: number;
+  available_seats: number | null;
+  members_count: number;
+  seats_count: number;
+  my_join_request?: {
+    id: number;
+    status: JoinRequestStatus;
+    requested_seats: number;
+    created_at: string;
+    reviewed_at?: string | null;
+  } | null;
+  created_at: string;
 };
 
 export type MerryDetail = {
@@ -55,6 +85,9 @@ export type MerryDetail = {
   next_payout_date: string | null;
   payout_frequency: PayoutFrequency;
   payouts_per_period: number;
+  is_open?: boolean;
+  max_seats?: number;
+  available_seats?: number | null;
   members_count: number;
   seats_count: number;
   total_pool_per_slot?: string;
@@ -280,6 +313,9 @@ export type PayoutScheduleResponse = {
     seats_count: number;
     payout_frequency: PayoutFrequency;
     payouts_per_period: number;
+    is_open?: boolean;
+    max_seats?: number;
+    available_seats?: number | null;
   };
   current_period_key: string;
   used_slots_in_period: number[];
@@ -307,6 +343,7 @@ export type CreatePayoutResponse = {
   period_key: string;
   slot_no: number;
 };
+
 export function fmtKES(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
@@ -326,6 +363,11 @@ export async function getMyMerries(): Promise<MyMerriesResponse> {
   return res.data;
 }
 
+export async function getAvailableMerries(): Promise<AvailableMerryRow[]> {
+  const res = await api.get(ENDPOINTS.merry.available);
+  return res.data;
+}
+
 export async function createMerry(payload: {
   name: string;
   contribution_amount: string;
@@ -334,6 +376,8 @@ export async function createMerry(payload: {
   next_payout_date?: string | null;
   payout_frequency?: PayoutFrequency;
   payouts_per_period?: number;
+  is_open?: boolean;
+  max_seats?: number;
 }): Promise<MerryDetail> {
   const res = await api.post(ENDPOINTS.merry.create, payload);
   return res.data;

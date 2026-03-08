@@ -1,11 +1,5 @@
-// services/loans.ts (COMPLETE + UPDATED to use ENDPOINTS)
-// -------------------------------------------------------
-// ✅ Uses ENDPOINTS from services/api.ts (single source of truth)
-// ✅ Matches your show_urls for loans + payments STK
-// ✅ Keeps manual payLoan endpoint
-// ✅ Provides stkRepayLoan via centralized payments app
-
-import { api, ENDPOINTS } from "@/services/api";
+import { api } from "@/services/api";
+import { ENDPOINTS } from "@/services/endpoints";
 
 /* =========================================================
    Types (DRF-friendly)
@@ -64,9 +58,6 @@ export type PayLoanResponse = {
   outstanding_balance: string;
 };
 
-/**
- * Centralized Payments response may vary depending on your view
- */
 export type StkPushResponse = {
   message?: string;
   detail?: string;
@@ -86,7 +77,7 @@ export type RequestLoanPayload = {
   merry?: number;
   group?: number;
   product: number;
-  principal: string; // decimal string
+  principal: string;
   term_weeks: number;
 };
 
@@ -101,41 +92,34 @@ export type PayLoanPayload = {
   reference?: string;
 };
 
-/**
- * STK repayment payload (frontend)
- */
 export type StkLoanRepaymentPayload = {
-  phone: string; // 07XXXXXXXX / 01XXXXXXXX
-  amount: string; // decimal string
+  phone: string;
+  amount: string;
   loan_id: number;
-  reference?: string; // optional; default LOAN-<id>
+  reference?: string;
 };
 
 /* =========================================================
-   Loans API (matches show_urls)
+   Loans API
 ========================================================= */
 
-// ✅ GET /api/loans/myloans/
 export async function getMyLoans(): Promise<Loan[]> {
   const res = await api.get(ENDPOINTS.loans.myLoans);
   return res.data;
 }
 
-// ✅ POST /api/loans/request/
 export async function requestLoan(
   payload: RequestLoanPayload
 ): Promise<{ message: string; loan: Loan }> {
-  const res = await api.post(ENDPOINTS.loans.requestLoan, payload);
+  const res = await api.post(ENDPOINTS.loans.request, payload);
   return res.data;
 }
 
-// ✅ GET /api/loans/loan/<pk>/
 export async function getLoanDetail(loanId: number): Promise<Loan> {
-  const res = await api.get(ENDPOINTS.loans.loanDetail(loanId));
+  const res = await api.get(ENDPOINTS.loans.detail(loanId));
   return res.data;
 }
 
-// ✅ POST /api/loans/loan/add-guarantor/
 export async function addGuarantor(
   payload: AddGuarantorPayload
 ): Promise<{ message: string; guarantor: LoanGuarantor }> {
@@ -143,13 +127,11 @@ export async function addGuarantor(
   return res.data;
 }
 
-// ✅ GET /api/loans/guarantee/my-requests/
 export async function getMyGuaranteeRequests(): Promise<LoanGuarantor[]> {
   const res = await api.get(ENDPOINTS.loans.myGuaranteeRequests);
   return res.data;
 }
 
-// ✅ POST /api/loans/guarantee/<guarantor_id>/accept/
 export async function acceptGuarantee(
   guarantorId: number
 ): Promise<{ message: string }> {
@@ -157,7 +139,6 @@ export async function acceptGuarantee(
   return res.data;
 }
 
-// ✅ POST /api/loans/guarantee/<guarantor_id>/reject/
 export async function rejectGuarantee(
   guarantorId: number
 ): Promise<{ message: string }> {
@@ -165,48 +146,31 @@ export async function rejectGuarantee(
   return res.data;
 }
 
-// ✅ POST /api/loans/loan/<loan_id>/approve/
 export async function approveLoan(
   loanId: number
 ): Promise<{ message: string; loan: Loan }> {
-  const res = await api.post(ENDPOINTS.loans.approveLoan(loanId));
+  const res = await api.post(ENDPOINTS.loans.approve(loanId));
   return res.data;
 }
 
-/**
- * ✅ Manual pay endpoint (kept)
- * POST /api/loans/loan/<loan_id>/pay/
- */
 export async function payLoan(
   loanId: number,
   payload: PayLoanPayload
 ): Promise<PayLoanResponse> {
-  const res = await api.post(ENDPOINTS.loans.payLoan(loanId), payload);
+  const res = await api.post(ENDPOINTS.loans.pay(loanId), payload);
   return res.data;
 }
 
 /* =========================================================
-   ✅ Centralized Payments (STK) for Loan Repayment
-   Uses show_urls: POST /payments/mpesa/stk-push/
+   STK Repayment
 ========================================================= */
 
-/**
- * ✅ POST /payments/mpesa/stk-push/
- * Sends STK prompt and creates MpesaTransaction (purpose=LOAN_REPAYMENT).
- *
- * Your backend callback later:
- * - marks MpesaTransaction SUCCESS/FAILED
- * - posts PaymentLedger entries (ledger_posted idempotency)
- * - applies repayment to Loan
- */
 export async function stkRepayLoan(
   payload: StkLoanRepaymentPayload
 ): Promise<StkPushResponse> {
   const body = {
     phone: payload.phone,
     amount: payload.amount,
-
-    // ✅ your backend should use these to route business logic
     purpose: "LOAN_REPAYMENT",
     reference: payload.reference ?? `LOAN-${payload.loan_id}`,
     loan_id: payload.loan_id,
@@ -217,8 +181,9 @@ export async function stkRepayLoan(
 }
 
 /* =========================================================
-   Optional: clean UI error helper
+   Error helper
 ========================================================= */
+
 export function getApiErrorMessage(e: any) {
   const data = e?.response?.data;
 

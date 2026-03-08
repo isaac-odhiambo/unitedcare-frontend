@@ -38,8 +38,11 @@ type PaymentsUser = Partial<MeResponse> & Partial<SessionUser>;
 
 function money(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
-  if (!isFinite(n)) return "KES 0";
-  return `KES ${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (!isFinite(n)) return "KES 0.00";
+  return `KES ${n.toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function statusBadgeColor(status: string) {
@@ -66,6 +69,24 @@ function StatusPill({ label }: { label: string }) {
   );
 }
 
+function categoryLabel(category?: string) {
+  const c = String(category || "").toUpperCase();
+
+  if (c === "SAVINGS") return "Savings";
+  if (c === "LOANS") return "Loans";
+  if (c === "MERRY") return "Merry";
+  if (c === "GROUP") return "Group";
+  if (c === "WITHDRAWAL") return "Withdrawal";
+  if (c === "WITHDRAWAL_FEE") return "Withdrawal Fee";
+  if (c === "TRANSACTION_FEE") return "Transaction Fee";
+  return c || "Other";
+}
+
+function isFeeCategory(category?: string) {
+  const c = String(category || "").toUpperCase();
+  return c === "WITHDRAWAL_FEE" || c === "TRANSACTION_FEE";
+}
+
 function MiniRow({
   icon,
   title,
@@ -84,7 +105,7 @@ function MiniRow({
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.miniTitle}>{title}</Text>
-        <Text style={styles.miniSubtitle} numberOfLines={1}>
+        <Text style={styles.miniSubtitle} numberOfLines={2}>
           {subtitle}
         </Text>
       </View>
@@ -116,11 +137,17 @@ export default function PaymentsIndexScreen() {
 
   const successNotice = useMemo(() => {
     if (params.deposited === "1") {
-      return params.notice || `Deposit initiated for ${money(params.amount)} to ${params.phone || "your phone"}.`;
+      return (
+        params.notice ||
+        `Deposit initiated for ${money(params.amount)} to ${params.phone || "your phone"}. Final STK charge may include transaction fee.`
+      );
     }
 
     if (params.requested === "1") {
-      return params.notice || "Withdrawal request submitted successfully.";
+      return (
+        params.notice ||
+        "Withdrawal request submitted successfully. Final Mpesa payout may be lower if withdrawal fee applies."
+      );
     }
 
     return "";
@@ -226,7 +253,7 @@ export default function PaymentsIndexScreen() {
 
     const lastAmount = lastTxn?.amount ?? "0";
     const lastLabel = lastTxn
-      ? `${lastTxn.entry_type} • ${lastTxn.category} • ${money(lastAmount)}`
+      ? `${lastTxn.entry_type} • ${categoryLabel(lastTxn.category)} • ${money(lastAmount)}`
       : "No transactions yet";
 
     return {
@@ -370,7 +397,7 @@ export default function PaymentsIndexScreen() {
               />
             </View>
             <Text style={styles.actionTitle}>Deposit</Text>
-            <Text style={styles.actionSub}>STK push top-up</Text>
+            <Text style={styles.actionSub}>STK charge may include fee</Text>
           </Card>
 
           <Card
@@ -390,7 +417,7 @@ export default function PaymentsIndexScreen() {
             </View>
             <Text style={styles.actionTitle}>Withdraw</Text>
             <Text style={styles.actionSub}>
-              {withdrawAllowed ? "Request payout" : "KYC required"}
+              {withdrawAllowed ? "Net payout may be lower" : "KYC required"}
             </Text>
           </Card>
 
@@ -440,16 +467,20 @@ export default function PaymentsIndexScreen() {
               const isCredit = String(row.entry_type).toUpperCase() === "CREDIT";
               const amtColor = isCredit ? COLORS.success : COLORS.danger;
               const ref = typeof row.reference === "string" ? row.reference : "";
+              const feeRow = isFeeCategory(row.category);
 
               return (
-                <Card key={row.id} style={styles.txCard}>
+                <Card
+                  key={row.id}
+                  style={[styles.txCard, feeRow && styles.feeTxCard]}
+                >
                   <View style={styles.txTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.txTitle} numberOfLines={1}>
-                        {row.narration || row.category}
+                        {row.narration || categoryLabel(row.category)}
                       </Text>
-                      <Text style={styles.txMeta} numberOfLines={1}>
-                        {row.category}
+                      <Text style={styles.txMeta} numberOfLines={2}>
+                        {categoryLabel(row.category)}
                         {ref ? ` • ${ref}` : ""}
                         {row.created_at ? ` • ${row.created_at}` : ""}
                       </Text>
@@ -459,6 +490,12 @@ export default function PaymentsIndexScreen() {
                       {isCredit ? "+" : "-"} {money(row.amount)}
                     </Text>
                   </View>
+
+                  {feeRow ? (
+                    <Text style={styles.feeHint}>
+                      This entry is a system fee.
+                    </Text>
+                  ) : null}
                 </Card>
               );
             })}
@@ -496,7 +533,7 @@ export default function PaymentsIndexScreen() {
                     <Text style={styles.wdTitle} numberOfLines={1}>
                       Withdrawal • {w.source}
                     </Text>
-                    <Text style={styles.wdMeta} numberOfLines={1}>
+                    <Text style={styles.wdMeta} numberOfLines={2}>
                       {w.phone}
                       {w.created_at ? ` • ${w.created_at}` : ""}
                     </Text>
@@ -512,7 +549,7 @@ export default function PaymentsIndexScreen() {
         ) : (
           <EmptyState
             title="No withdrawals"
-            subtitle="When you request a withdrawal, it will show here."
+            subtitle="When you request a withdrawal, it will show here. Final payout may be lower if fee applies."
             actionLabel={withdrawAllowed ? "Request withdrawal" : "Complete KYC"}
             onAction={() =>
               withdrawAllowed
@@ -694,6 +731,11 @@ const styles = StyleSheet.create({
     ...SHADOW.card,
   },
 
+  feeTxCard: {
+    borderColor: COLORS.warning,
+    borderWidth: 1,
+  },
+
   txTop: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -717,6 +759,13 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: 13,
     fontFamily: FONT.semiBold,
+  },
+
+  feeHint: {
+    marginTop: 8,
+    fontSize: 11,
+    fontFamily: FONT.regular,
+    color: COLORS.warning,
   },
 
   wdCard: {

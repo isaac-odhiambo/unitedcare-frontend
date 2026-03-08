@@ -7,7 +7,6 @@
     "icon": "./assets/images/united-care-icon.png",
     "scheme": "united-care",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -16,7 +15,6 @@
         "foregroundImage": "./assets/images/united-care-icon.png",
         "backgroundColor": "#0A6E8A"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -37,6 +35,13 @@
           }
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow UNITED CARE to access your photos for KYC upload.",
+          "cameraPermission": "Allow UNITED CARE to use your camera to capture KYC documents."
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {
@@ -45,3 +50,51 @@
     }
   }
 }
+
+// {
+//   "expo": {
+//     "name": "UNITED CARE",
+//     "slug": "united-care",
+//     "version": "1.0.0",
+//     "orientation": "portrait",
+//     "icon": "./assets/images/united-care-icon.png",
+//     "scheme": "united-care",
+//     "userInterfaceStyle": "automatic",
+//     "newArchEnabled": true,
+//     "ios": {
+//       "supportsTablet": true
+//     },
+//     "android": {
+//       "adaptiveIcon": {
+//         "foregroundImage": "./assets/images/united-care-icon.png",
+//         "backgroundColor": "#0A6E8A"
+//       },
+//       "edgeToEdgeEnabled": true,
+//       "predictiveBackGestureEnabled": false
+//     },
+//     "web": {
+//       "output": "static",
+//       "favicon": "./assets/images/united-care-icon.png"
+//     },
+//     "plugins": [
+//       "expo-router",
+//       [
+//         "expo-splash-screen",
+//         {
+//           "image": "./assets/images/united-care-splash.png",
+//           "imageWidth": 220,
+//           "resizeMode": "contain",
+//           "backgroundColor": "#0A6E8A",
+//           "dark": {
+//             "backgroundColor": "#0A6E8A"
+//           }
+//         }
+//       ],
+//       "expo-secure-store"
+//     ],
+//     "experiments": {
+//       "typedRoutes": true,
+//       "reactCompiler": true
+//     }
+//   }
+// }

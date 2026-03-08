@@ -85,4 +85,4 @@ export async function resetPassword(
 export async function resendOtp(payload: ResendOtpPayload): Promise<AuthResponse> {
   const res = await api.post(ENDPOINTS.accounts.resendOtp, payload);
   return res.data;
-}s
+}

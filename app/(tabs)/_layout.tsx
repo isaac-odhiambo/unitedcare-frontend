@@ -103,10 +103,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="payments/ledger" options={{ href: null }} />
       <Tabs.Screen name="payments/deposit" options={{ href: null }} />
       <Tabs.Screen name="payments/withdrawals" options={{ href: null }} />
-      <Tabs.Screen
-        name="payments/request-withdrawal"
-        options={{ href: null }}
-      />
+      <Tabs.Screen name="payments/request-withdrawal" options={{ href: null }} />
 
       {/* Hidden loans screens */}
       <Tabs.Screen name="loans/request" options={{ href: null }} />
@@ -114,6 +111,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="loans/add-guarantor" options={{ href: null }} />
       <Tabs.Screen name="loans/guarantees" options={{ href: null }} />
       <Tabs.Screen name="loans/[id]" options={{ href: null }} />
+      <Tabs.Screen name="loans/admin-approve" options={{ href: null }} />
 
       {/* Hidden merry screens */}
       <Tabs.Screen name="merry/contribute" options={{ href: null }} />
@@ -128,7 +126,10 @@ export default function TabsLayout() {
 
       {/* Hidden group screens */}
       <Tabs.Screen name="groups/memberships" options={{ href: null }} />
-      <Tabs.Screen name="groups/add-membership" options={{ href: null }} />
+      <Tabs.Screen name="groups/add-member" options={{ href: null }} />
+      <Tabs.Screen name="groups/create" options={{ href: null }} />
+      <Tabs.Screen name="groups/history" options={{ href: null }} />
+      <Tabs.Screen name="groups/contribute" options={{ href: null }} />
       <Tabs.Screen name="groups/[id]" options={{ href: null }} />
 
       {/* Hidden profile screens */}

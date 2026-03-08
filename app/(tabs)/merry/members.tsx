@@ -1,53 +1,124 @@
 // app/(tabs)/merry/members.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
-
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { api, getErrorMessage } from "@/services/api";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
-type MemberRow = {
-  member_id: number;
-  user_id: number;
-  username: string | null;
-  phone: string | null;
-  joined_at: string;
-  seats_count: number;
-};
+import { ROUTES } from "@/constants/routes";
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
+import {
+  getApiErrorMessage,
+  getMerryDetail,
+  getMerryMembers,
+  MerryDetail,
+  MerryMemberRow,
+} from "@/services/merry";
+import { getMe, isAdminUser, MeResponse } from "@/services/profile";
+import { getSessionUser, SessionUser } from "@/services/session";
+
+type MerryMembersUser = Partial<MeResponse> & Partial<SessionUser>;
+
+function MemberCard({ member }: { member: MerryMemberRow }) {
+  return (
+    <Card style={styles.itemCard}>
+      <View style={styles.topRow}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.title}>
+            {member.username || `User #${member.user_id}`}
+          </Text>
+          <Text style={styles.sub}>
+            {member.phone || "No phone"}
+            {member.joined_at ? ` • Joined ${member.joined_at}` : ""}
+          </Text>
+        </View>
+
+        <View style={styles.seatBadge}>
+          <Ionicons name="person-outline" size={14} color={COLORS.primary} />
+          <Text style={styles.seatBadgeText}>
+            {member.seats_count} {Number(member.seats_count) === 1 ? "seat" : "seats"}
+          </Text>
+        </View>
+      </View>
+    </Card>
+  );
+}
 
 export default function MerryMembersScreen() {
-  const params = useLocalSearchParams();
-  const merryId = useMemo(() => String(params?.merryId || ""), [params]);
+  const params = useLocalSearchParams<{ merryId?: string }>();
+  const merryId = Number(params.merryId ?? 0);
 
-  const [rows, setRows] = useState<MemberRow[]>([]);
+  const [user, setUser] = useState<MerryMembersUser | null>(null);
+  const [merry, setMerry] = useState<MerryDetail | null>(null);
+  const [members, setMembers] = useState<MerryMemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const isAdmin = isAdminUser(user);
 
   const load = useCallback(async () => {
-    if (!merryId) return;
+    if (!merryId || !Number.isFinite(merryId)) {
+      setError("Missing or invalid merry ID.");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const res = await api.get(`/api/merry/${merryId}/members/`);
-      setRows(Array.isArray(res.data) ? (res.data as MemberRow[]) : []);
+      setError("");
+
+      const [sessionRes, meRes, merryRes, membersRes] = await Promise.allSettled([
+        getSessionUser(),
+        getMe(),
+        getMerryDetail(merryId),
+        getMerryMembers(merryId),
+      ]);
+
+      const sessionUser =
+        sessionRes.status === "fulfilled" ? sessionRes.value : null;
+      const meUser =
+        meRes.status === "fulfilled" ? meRes.value : null;
+
+      setUser(
+        sessionUser || meUser
+          ? {
+              ...(sessionUser ?? {}),
+              ...(meUser ?? {}),
+            }
+          : null
+      );
+
+      if (merryRes.status === "fulfilled") {
+        setMerry(merryRes.value);
+      } else {
+        setMerry(null);
+        setError(getApiErrorMessage(merryRes.reason) || getErrorMessage(merryRes.reason));
+      }
+
+      if (membersRes.status === "fulfilled") {
+        setMembers(Array.isArray(membersRes.value) ? membersRes.value : []);
+      } else {
+        setMembers([]);
+        setError(getApiErrorMessage(membersRes.reason) || getErrorMessage(membersRes.reason));
+      }
     } catch (e: any) {
-      Alert.alert("Members", e?.response?.data?.detail || getErrorMessage(e));
+      setMembers([]);
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [merryId]);
 
@@ -59,19 +130,68 @@ export default function MerryMembersScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
-  const totalSeats = useMemo(() => {
-    return rows.reduce((acc, r) => acc + Number(r.seats_count || 0), 0);
-  }, [rows]);
+  const totals = useMemo(() => {
+    const totalSeats = members.reduce(
+      (sum, m) => sum + (Number(m.seats_count || 0) || 0),
+      0
+    );
 
-  if (!merryId) {
+    return {
+      members: members.length,
+      seats: totalSeats,
+    };
+  }, [members]);
+
+  if (loading) {
     return (
-      <View style={[styles.container, { padding: SPACING.lg }]}>
-        <EmptyState title="Missing merryId" subtitle="Go back and open a merry again." />
-        <View style={{ height: SPACING.lg }} />
-        <Button title="Go back" variant="secondary" onPress={() => router.back()} />
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!merryId || !Number.isFinite(merryId)) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          title="Invalid merry"
+          subtitle="No merry was selected."
+          actionLabel="Back to Merry"
+          onAction={() => router.replace(ROUTES.tabs.merry)}
+        />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          title="Not signed in"
+          subtitle="Please login to view merry members."
+          actionLabel="Go to Login"
+          onAction={() => router.replace(ROUTES.auth.login)}
+        />
+      </View>
+    );
+  }
+
+  if (!merry && error) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          title="Unable to load merry"
+          subtitle={error}
+          actionLabel="Back to Merry"
+          onAction={() => router.replace(ROUTES.tabs.merry)}
+        />
       </View>
     );
   }
@@ -83,73 +203,64 @@ export default function MerryMembersScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
     >
-      <Card style={{ marginBottom: SPACING.lg }}>
-        <View style={styles.header}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.hTitle}>Members</Text>
-            <Text style={styles.hSub}>
-              {rows.length} member(s) • {totalSeats} seat(s)
-            </Text>
-          </View>
-          <Ionicons name="people-outline" size={22} color={COLORS.primary} />
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.hTitle}>Members</Text>
+          <Text style={styles.hSub}>
+            {merry?.name || `Merry #${merryId}`} • {isAdmin ? "Admin" : "Member"} view
+          </Text>
         </View>
-      </Card>
 
-      <Section
-        title="Member list"
-        right={
-          <Text style={styles.smallRight}>Merry #{merryId}</Text>
-        }
-      >
-        {loading ? (
-          <View style={{ paddingVertical: 10 }}>
-            <ActivityIndicator />
-          </View>
-        ) : rows.length === 0 ? (
+        <Button
+          variant="ghost"
+          title="Back"
+          onPress={() => router.back()}
+          leftIcon={
+            <Ionicons
+              name="arrow-back-outline"
+              size={16}
+              color={COLORS.primary}
+            />
+          }
+        />
+      </View>
+
+      {error ? (
+        <Card style={styles.errorCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+        </Card>
+      ) : null}
+
+      <View style={styles.summaryGrid}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Members</Text>
+          <Text style={styles.summaryValue}>{totals.members}</Text>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Total Seats</Text>
+          <Text style={styles.summaryValue}>{totals.seats}</Text>
+        </View>
+      </View>
+
+      <Section title="Member List">
+        {members.length === 0 ? (
           <EmptyState
             icon="people-outline"
-            title="No members yet"
-            subtitle="Once join requests are approved, members will appear here."
+            title="No members found"
+            subtitle="Approved merry members will appear here."
           />
         ) : (
-          rows.map((m) => (
-            <Card key={`m-${m.member_id}`} style={{ marginBottom: SPACING.md }}>
-              <View style={styles.rowTop}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={styles.name}>{m.username || `User #${m.user_id}`}</Text>
-                  <Text style={styles.meta}>
-                    {m.phone ? `Phone: ${m.phone}` : "Phone: —"}
-                  </Text>
-                </View>
-
-                <View style={styles.seatPill}>
-                  <Ionicons name="albums-outline" size={14} color={COLORS.primary} />
-                  <Text style={styles.seatText}>{Number(m.seats_count || 0)} seat(s)</Text>
-                </View>
-              </View>
-
-              <View style={styles.kvRow}>
-                <Text style={styles.kvLabel}>Joined</Text>
-                <Text style={styles.kvValue}>{m.joined_at ? String(m.joined_at) : "—"}</Text>
-              </View>
-            </Card>
+          members.map((member) => (
+            <MemberCard key={member.member_id} member={member} />
           ))
         )}
       </Section>
-
-      <View style={{ height: SPACING.sm }} />
-
-      <Button
-        title="Back to Merry"
-        variant="secondary"
-        onPress={() =>
-          router.push({
-            pathname: "/merry/[merryId]" as any,
-            params: { merryId },
-          })
-        }
-        leftIcon={<Ionicons name="chevron-back-outline" size={18} color={COLORS.dark} />}
-      />
 
       <View style={{ height: 24 }} />
     </ScrollView>
@@ -160,45 +271,125 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg, paddingBottom: 24 },
 
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
+  },
+
   header: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    ...SHADOW.card,
   },
-  hTitle: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
-  hSub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  smallRight: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.primary },
-
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
+  hTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    color: COLORS.dark,
   },
-  name: { fontFamily: FONT.bold, fontSize: 14, color: COLORS.dark },
-  meta: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  seatPill: {
+  hSub: {
+    marginTop: 6,
+    fontSize: 12,
+    color: COLORS.gray,
+    fontFamily: FONT.regular,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: RADIUS.round,
-    backgroundColor: COLORS.gray50,
+    gap: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  seatText: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.primary },
 
-  kvRow: {
-    marginTop: 10,
+  errorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  summaryGrid: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+  },
+
+  summaryCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  summaryLabel: {
+    fontSize: 12,
+    color: COLORS.gray,
+    fontFamily: FONT.regular,
+  },
+
+  summaryValue: {
+    marginTop: 6,
+    fontSize: 16,
+    fontFamily: FONT.bold,
+    color: COLORS.dark,
+  },
+
+  itemCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: SPACING.md,
   },
-  kvLabel: { fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
-  kvValue: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.dark },
+
+  title: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
+  },
+
+  sub: {
+    fontSize: 12,
+    color: COLORS.gray,
+    marginTop: 4,
+    fontFamily: FONT.regular,
+  },
+
+  seatBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.round,
+  },
+
+  seatBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT.medium,
+    color: COLORS.primary,
+  },
 });

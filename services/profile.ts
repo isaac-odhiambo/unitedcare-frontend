@@ -29,6 +29,11 @@ export type MeResponse = {
   [key: string]: any;
 };
 
+export type UpdateMePayload = {
+  username?: string;
+  email?: string | null;
+};
+
 export type KycFile = {
   uri: string;
   name?: string;
@@ -121,6 +126,12 @@ export function getApiErrorMessage(error: any): string {
 // GET /api/accounts/me/
 export async function getMe(): Promise<MeResponse> {
   const res = await api.get(ENDPOINTS.accounts.me);
+  return res.data;
+}
+
+// PATCH /api/accounts/me/
+export async function updateMe(payload: UpdateMePayload): Promise<MeResponse> {
+  const res = await api.patch(ENDPOINTS.accounts.me, payload);
   return res.data;
 }
 

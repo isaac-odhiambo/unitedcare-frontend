@@ -18,6 +18,7 @@ export const ROUTES = {
 
     savings: "/(tabs)/savings",
     savingsCreate: "/(tabs)/savings/create",
+    savingsHistory: "/(tabs)/savings/history",
 
     payments: "/(tabs)/payments",
     paymentsLedger: "/(tabs)/payments/ledger",
@@ -55,6 +56,12 @@ export const ROUTES = {
     loanDetail: (id: number | string) => `/(tabs)/loans/${id}`,
     merryDetail: (id: number | string) => `/(tabs)/merry/${id}`,
     groupDetail: (id: number | string) => `/(tabs)/groups/${id}`,
+
+    // Use this if your real file is app/(tabs)/savings/[id].tsx
+    savingsAccountDetail: (accountId: number | string) =>
+      `/(tabs)/savings/${accountId}`,
+
+    // Use this if your real file is app/(tabs)/savings/history.tsx
     savingsAccountHistory: (accountId: number | string) =>
       `/(tabs)/savings/history?accountId=${accountId}`,
   },
