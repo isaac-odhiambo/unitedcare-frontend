@@ -1,7 +1,6 @@
-// app/(tabs)/loans/guarantees.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   RefreshControl,
@@ -11,21 +10,22 @@ import {
   View,
 } from "react-native";
 
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
-import {
-  acceptGuarantee,
-  getMyGuaranteeRequests,
-  LoanGuarantor,
-  rejectGuarantee,
-} from "@/services/loans";
-
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
-function formatKes(value?: string | number) {
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
+import {
+  acceptGuarantee,
+  getApiErrorMessage,
+  getMyGuaranteeRequests,
+  LoanGuarantor,
+  rejectGuarantee,
+} from "@/services/loans";
+
+function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
   return `KES ${n.toLocaleString("en-KE", {
@@ -34,7 +34,20 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
-function Pill({ label, tone }: { label: string; tone: "ok" | "warn" | "bad" }) {
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function Pill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warn" | "bad";
+}) {
   const bg =
     tone === "ok"
       ? "rgba(46, 125, 50, 0.12)"
@@ -43,7 +56,11 @@ function Pill({ label, tone }: { label: string; tone: "ok" | "warn" | "bad" }) {
       : "rgba(242, 140, 40, 0.14)";
 
   const color =
-    tone === "ok" ? COLORS.success : tone === "bad" ? COLORS.danger : COLORS.accent;
+    tone === "ok"
+      ? COLORS.success
+      : tone === "bad"
+      ? COLORS.danger
+      : COLORS.accent;
 
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
@@ -64,15 +81,14 @@ function GuaranteeCard({
   busy?: boolean;
 }) {
   const accepted = !!item.accepted;
+  const guarantorName = item.guarantor_detail?.full_name || "Selected member";
 
   return (
-    <Card style={{ marginBottom: SPACING.md }}>
+    <Card style={styles.itemCard}>
       <View style={styles.topRow}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>Guarantee Request #{item.id}</Text>
-          <Text style={styles.sub}>
-            Loan #{item.loan} • Borrower User #{item.guarantor ? "—" : "—"}
-          </Text>
+          <Text style={styles.title}>Guarantee Request</Text>
+          <Text style={styles.sub}>Requested for {guarantorName}</Text>
         </View>
 
         {accepted ? (
@@ -85,24 +101,43 @@ function GuaranteeCard({
       <View style={styles.grid}>
         <View style={styles.cell}>
           <Text style={styles.label}>Loan</Text>
-          <Text style={styles.value}>#{item.loan}</Text>
+          <Text style={styles.value}>Loan request</Text>
         </View>
         <View style={styles.cell}>
           <Text style={styles.label}>Reserved</Text>
-          <Text style={styles.value}>{formatKes(item.reserved_amount ?? "0.00")}</Text>
+          <Text style={styles.value}>
+            {formatKes(item.reserved_amount ?? "0.00")}
+          </Text>
         </View>
       </View>
 
+      <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Accepted at</Text>
+          <Text style={styles.value}>{formatDateTime(item.accepted_at)}</Text>
+        </View>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Requested</Text>
+          <Text style={styles.value}>{formatDateTime(item.created_at)}</Text>
+        </View>
+      </View>
+
+      {item.request_note ? (
+        <Text style={styles.note}>Request note: {item.request_note}</Text>
+      ) : null}
+
       {accepted ? (
         <View style={styles.acceptedRow}>
-          <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.success} />
-          <Text style={styles.acceptedText}>
-            Accepted {item.accepted_at ? `• ${new Date(item.accepted_at).toLocaleString()}` : ""}
-          </Text>
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={18}
+            color={COLORS.success}
+          />
+          <Text style={styles.acceptedText}>Guarantee accepted.</Text>
 
           <Text
             style={styles.link}
-            onPress={() => router.push(`/loans/${item.loan}` as any)}
+            onPress={() => router.push(`/(tabs)/loans/${item.loan}` as any)}
           >
             View Loan
           </Text>
@@ -127,8 +162,9 @@ function GuaranteeCard({
         </View>
       )}
 
-      <Text style={styles.note}>
-        Note: Reserved amount is set by the system at loan approval (coverage/security).
+      <Text style={styles.helpText}>
+        Reserved amount is applied by the system at loan approval after security
+        coverage is computed.
       </Text>
     </Card>
   );
@@ -138,16 +174,17 @@ export default function GuaranteesScreen() {
   const [items, setItems] = useState<LoanGuarantor[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
+      setError("");
       const data = await getMyGuaranteeRequests();
       setItems(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      Alert.alert("Guarantees", getErrorMessage(e));
+      setItems([]);
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -155,59 +192,94 @@ export default function GuaranteesScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       load();
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   const pending = useMemo(() => items.filter((x) => !x.accepted), [items]);
   const accepted = useMemo(() => items.filter((x) => x.accepted), [items]);
 
-  const doAccept = async (id: number) => {
-    try {
-      setBusyId(id);
-      const res = await acceptGuarantee(id);
-      Alert.alert("Success", res?.message || "Guarantee accepted.");
-      await load();
-    } catch (e: any) {
-      Alert.alert("Accept Guarantee", getErrorMessage(e));
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const doAccept = useCallback(
+    async (id: number) => {
+      try {
+        setBusyId(id);
+        setError("");
+        const res = await acceptGuarantee(id);
+        Alert.alert("Success", res?.message || "Guarantee accepted.");
+        await load();
+      } catch (e: any) {
+        const msg = getApiErrorMessage(e) || getErrorMessage(e);
+        setError(msg);
+        Alert.alert("Accept Guarantee", msg);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [load]
+  );
 
-  const doReject = async (id: number) => {
-    try {
-      setBusyId(id);
-      const res = await rejectGuarantee(id);
-      Alert.alert("Done", res?.message || "Guarantee rejected.");
-      await load();
-    } catch (e: any) {
-      Alert.alert("Reject Guarantee", getErrorMessage(e));
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const doReject = useCallback(
+    async (id: number) => {
+      try {
+        setBusyId(id);
+        setError("");
+        const res = await rejectGuarantee(id);
+        Alert.alert("Done", res?.message || "Guarantee rejected.");
+        await load();
+      } catch (e: any) {
+        const msg = getApiErrorMessage(e) || getErrorMessage(e);
+        setError(msg);
+        Alert.alert("Reject Guarantee", msg);
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [load]
+  );
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.hTitle}>Guarantee Requests</Text>
-          <Text style={styles.hSub}>Accept or reject requests to guarantee a loan.</Text>
+          <Text style={styles.hSub}>
+            Accept or reject requests to guarantee a loan.
+          </Text>
         </View>
-        <Ionicons name="shield-checkmark-outline" size={22} color={COLORS.primary} />
+        <Ionicons
+          name="shield-checkmark-outline"
+          size={22}
+          color={COLORS.primary}
+        />
       </View>
+
+      {error ? (
+        <Card style={styles.errorCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+        </Card>
+      ) : null}
 
       <Section title={`Pending (${pending.length})`}>
         {loading ? (
@@ -269,22 +341,101 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    ...SHADOW.card,
   },
-  hTitle: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
-  hSub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  muted: { marginTop: 6, fontFamily: FONT.regular, color: COLORS.gray },
+  hTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    color: COLORS.dark,
+  },
 
-  topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  title: { fontFamily: FONT.bold, fontSize: 14, color: COLORS.dark },
-  sub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+  hSub: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
 
-  grid: { marginTop: SPACING.md, flexDirection: "row", justifyContent: "space-between" },
-  cell: { width: "48%" },
-  label: { fontFamily: FONT.regular, fontSize: 11, color: COLORS.gray },
-  value: { marginTop: 6, fontFamily: FONT.bold, fontSize: 13, color: COLORS.dark },
+  muted: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    color: COLORS.gray,
+  },
 
-  actionsRow: { marginTop: SPACING.md, flexDirection: "row", alignItems: "center" },
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  errorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
+
+  itemCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  title: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
+  },
+
+  sub: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  grid: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  cell: {
+    width: "48%",
+  },
+
+  label: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+  },
+
+  value: {
+    marginTop: 6,
+    fontFamily: FONT.bold,
+    fontSize: 13,
+    color: COLORS.dark,
+  },
+
+  actionsRow: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+  },
 
   acceptedRow: {
     marginTop: SPACING.md,
@@ -292,11 +443,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  acceptedText: { flex: 1, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
-  link: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.primary },
 
-  note: { marginTop: 10, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+  acceptedText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+  },
 
-  pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  pillText: { fontFamily: FONT.bold, fontSize: 11, letterSpacing: 0.3 },
+  link: {
+    fontFamily: FONT.bold,
+    fontSize: 12,
+    color: COLORS.primary,
+  },
+
+  note: {
+    marginTop: 10,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  helpText: {
+    marginTop: 10,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  pillText: {
+    fontFamily: FONT.bold,
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
 });

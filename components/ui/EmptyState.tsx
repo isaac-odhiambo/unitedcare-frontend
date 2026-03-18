@@ -21,7 +21,10 @@ export default function EmptyState({
 }: Props) {
   return (
     <View style={styles.box}>
-      <Ionicons name={icon} size={28} color={COLORS.gray} />
+      {/* Icon badge */}
+      <View style={styles.iconWrap}>
+        <Ionicons name={icon} size={26} color={COLORS.primary} />
+      </View>
 
       <Text style={styles.title}>{title}</Text>
 
@@ -32,7 +35,7 @@ export default function EmptyState({
           title={actionLabel}
           onPress={onAction}
           variant="primary"
-          style={{ marginTop: SPACING.md }}
+          style={styles.action}
         />
       )}
     </View>
@@ -45,21 +48,40 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.lg,
+    padding: SPACING.xl,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: SPACING.sm,
+  },
+
+  iconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 48,
+    backgroundColor: COLORS.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.xs,
   },
 
   title: {
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
+    fontSize: 16,
+    color: COLORS.text,
+    textAlign: "center",
   },
 
   sub: {
     fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+    fontSize: 13,
+    color: COLORS.textMuted,
     textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 260,
+  },
+
+  action: {
+    marginTop: SPACING.md,
+    minWidth: 140,
   },
 });

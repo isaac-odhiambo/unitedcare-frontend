@@ -1,4 +1,3 @@
-// app/(tabs)/payments/deposit.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -9,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -18,20 +18,32 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import {
+  COLORS,
+  FONT,
+  getMpesaMethodColors,
+  P,
+  RADIUS,
+  SPACING,
+  TYPE,
+} from "@/constants/theme";
 import {
   getApiErrorMessage,
-  getBaseAmount,
-  getChargedAmount,
-  getTransactionFee,
   money,
   stkDepositSavings,
   StkPushResponse,
 } from "@/services/payments";
 import { getMe, isAdminUser, MeResponse } from "@/services/profile";
-import { getSessionUser, SessionUser } from "@/services/session";
+import {
+  getSessionUser,
+  saveSessionUser,
+  SessionUser,
+} from "@/services/session";
 
 type DepositUser = Partial<MeResponse> & Partial<SessionUser>;
+type DepositMethod = "STK" | "PAYBILL";
+
+const FALLBACK_PAYBILL_NUMBER = "PAYBILL_NUMBER";
 
 function normalizePhone(value: string) {
   const v = value.trim().replace(/\s+/g, "");
@@ -49,6 +61,121 @@ function isPositiveAmount(value: string) {
   return Number.isFinite(n) && n > 0;
 }
 
+function sanitizeAmount(value: string) {
+  return value.replace(/[^\d.]/g, "");
+}
+
+function formatDisplayName(user?: DepositUser | null) {
+  if (!user) return "Member";
+  return (
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    user?.username ||
+    (typeof user?.phone === "string" ? user.phone : "") ||
+    "Member"
+  );
+}
+
+function getUserId(user?: DepositUser | null) {
+  const raw =
+    (user as any)?.id ??
+    (user as any)?.user_id ??
+    (user as any)?.pk ??
+    null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function getPaybillNumber(user?: DepositUser | null) {
+  const raw =
+    (user as any)?.mpesa_paybill_number ||
+    (user as any)?.paybill_number ||
+    (user as any)?.business_number ||
+    (user as any)?.mpesa_business_number ||
+    (user as any)?.paybill ||
+    FALLBACK_PAYBILL_NUMBER;
+
+  const value = String(raw || "").trim();
+  return value || FALLBACK_PAYBILL_NUMBER;
+}
+
+function getSavingsReference(user?: DepositUser | null) {
+  const userId = getUserId(user);
+  if (userId) return `saving${userId}`;
+  return "saving";
+}
+
+function SmallMethodCard({
+  active,
+  title,
+  subtitle,
+  icon,
+  onPress,
+}: {
+  active: boolean;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  const tone = getMpesaMethodColors(active);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[
+        styles.methodCard,
+        {
+          backgroundColor: tone.bg,
+          borderColor: tone.border,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.methodIconWrap,
+          {
+            backgroundColor: tone.iconBg,
+          },
+        ]}
+      >
+        <Ionicons name={icon} size={18} color={tone.icon} />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.methodTitle, { color: tone.title }]}>{title}</Text>
+        <Text style={[styles.methodSubtitle, { color: tone.subtitle }]}>
+          {subtitle}
+        </Text>
+      </View>
+
+      {active ? (
+        <Ionicons name="checkmark-circle" size={18} color={COLORS.mpesa} />
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 export default function DepositScreen() {
   const [user, setUser] = useState<DepositUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,18 +185,34 @@ export default function DepositScreen() {
 
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<DepositMethod>("STK");
   const [result, setResult] = useState<StkPushResponse | null>(null);
 
   const isAdmin = isAdminUser(user);
 
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
-  const phoneOk = useMemo(() => isValidKenyanPhone(normalizedPhone), [normalizedPhone]);
+  const phoneOk = useMemo(
+    () => isValidKenyanPhone(normalizedPhone),
+    [normalizedPhone]
+  );
   const amountOk = useMemo(() => isPositiveAmount(amount), [amount]);
-  const canSubmit = phoneOk && amountOk && !submitting;
+
+  const cleanAmount = useMemo(() => {
+    const n = Number(amount);
+    return Number.isFinite(n) && n > 0 ? String(n) : "";
+  }, [amount]);
+
+  const accountReference = useMemo(() => getSavingsReference(user), [user]);
+  const paybillNumber = useMemo(() => getPaybillNumber(user), [user]);
+  const paybillEnabled = useMemo(
+    () => paybillNumber !== FALLBACK_PAYBILL_NUMBER,
+    [paybillNumber]
+  );
+
+  const canSubmit = method === "STK" && phoneOk && amountOk && !submitting;
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
       setError("");
 
       const [sessionRes, meRes] = await Promise.allSettled([
@@ -91,6 +234,10 @@ export default function DepositScreen() {
 
       setUser(mergedUser);
 
+      if (mergedUser) {
+        await saveSessionUser(mergedUser);
+      }
+
       const defaultPhone = String(meUser?.phone || sessionUser?.phone || "");
       setPhone(defaultPhone);
 
@@ -99,14 +246,21 @@ export default function DepositScreen() {
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      const run = async () => {
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      run();
     }, [load])
   );
 
@@ -120,37 +274,28 @@ export default function DepositScreen() {
   }, [load]);
 
   const handleSubmit = useCallback(async () => {
-    if (!phoneOk || !amountOk) return;
+    if (!canSubmit) return;
 
     try {
       setSubmitting(true);
+      setError("");
       setResult(null);
 
       const res = await stkDepositSavings(
         normalizedPhone,
-        String(Number(amount))
+        cleanAmount,
+        accountReference
       );
 
       setResult(res);
-
-      const tx = res?.tx;
-      const baseAmount = money(getBaseAmount(tx) || Number(amount));
-      const feeAmount =
-        tx ? money(getTransactionFee(tx)) : "Determined by backend";
-      const chargedAmount =
-        tx ? money(getChargedAmount(tx)) : "Determined by backend";
-
-      const message =
-        res?.message ||
-        "STK push initiated successfully. Complete the prompt on your phone.";
 
       router.push({
         pathname: ROUTES.tabs.payments as any,
         params: {
           deposited: "1",
-          amount: String(Number(amount)),
+          amount: cleanAmount,
           phone: normalizedPhone,
-          notice: `${message}\nRequested credit: ${baseAmount}\nPossible fee: ${feeAmount}\nPossible charged amount: ${chargedAmount}`,
+          notice: res?.message || "STK sent.",
         },
       });
     } catch (e: any) {
@@ -158,24 +303,12 @@ export default function DepositScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [amount, amountOk, normalizedPhone, phoneOk]);
-
-  const previewBase = result?.tx
-    ? money(getBaseAmount(result.tx))
-    : money(amount || 0);
-
-  const previewFee = result?.tx
-    ? money(getTransactionFee(result.tx))
-    : "Determined by backend";
-
-  const previewCharged = result?.tx
-    ? money(getChargedAmount(result.tx))
-    : "Determined by backend";
+  }, [accountReference, canSubmit, cleanAmount, normalizedPhone]);
 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={COLORS.mpesa} />
       </View>
     );
   }
@@ -187,7 +320,7 @@ export default function DepositScreen() {
           title="Not signed in"
           subtitle="Please login to make a deposit."
           actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
+          onAction={() => router.replace(ROUTES.auth.login as any)}
         />
       </View>
     );
@@ -203,153 +336,198 @@ export default function DepositScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Deposit</Text>
-          <Text style={styles.hSub}>
-            Send money to your savings through M-Pesa STK • {isAdmin ? "Admin" : "Member"}
-          </Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: SPACING.md }}>
+            <Text style={styles.heroEyebrow}>M-PESA DEPOSIT</Text>
+            <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
+            <Text style={styles.heroSubtitle}>
+              {isAdmin ? "Admin view" : "Savings deposit"}
+            </Text>
+          </View>
+
+          <View style={styles.heroIconWrap}>
+            <Ionicons
+              name="phone-portrait-outline"
+              size={24}
+              color={COLORS.white}
+            />
+          </View>
         </View>
 
-        <Button
-          variant="ghost"
-          title="Back"
-          onPress={() => router.back()}
-          leftIcon={
-            <Ionicons
-              name="arrow-back-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
-        />
+        <View style={styles.heroPills}>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>STK</Text>
+          </View>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>Paybill</Text>
+          </View>
+        </View>
       </View>
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <Section title="Deposit Details">
-        <Card style={styles.formCard}>
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="07XXXXXXXX"
-            placeholderTextColor={COLORS.gray}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            style={styles.input}
+      <Section title="Method">
+        <View style={styles.methodGrid}>
+          <SmallMethodCard
+            active={method === "STK"}
+            title="STK Push"
+            subtitle="Prompt to phone"
+            icon="phone-portrait-outline"
+            onPress={() => setMethod("STK")}
           />
-
-          <Text style={styles.label}>Amount to Credit</Text>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="e.g. 1000"
-            placeholderTextColor={COLORS.gray}
-            keyboardType="numeric"
-            style={styles.input}
+          <SmallMethodCard
+            active={method === "PAYBILL"}
+            title="Paybill"
+            subtitle={paybillEnabled ? "Manual payment" : "Not available"}
+            icon="grid-outline"
+            onPress={() => setMethod("PAYBILL")}
           />
-
-          <Card style={styles.noticeCard}>
-            <Ionicons
-              name="information-circle-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              Enter the amount you want credited to savings. If a deposit transaction fee
-              is configured, the STK prompt on your phone may be higher than the amount entered.
-            </Text>
-          </Card>
-
-          <View style={styles.previewCard}>
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Phone</Text>
-              <Text style={styles.previewValue}>{normalizedPhone || "—"}</Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Amount to credit</Text>
-              <Text style={styles.previewValue}>{previewBase}</Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Possible fee</Text>
-              <Text style={styles.previewValue}>{previewFee}</Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Possible charged amount</Text>
-              <Text style={styles.previewValue}>{previewCharged}</Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Purpose</Text>
-              <Text style={styles.previewValue}>SAVINGS_DEPOSIT</Text>
-            </View>
-          </View>
-
-          <Button
-            title={submitting ? "Sending STK..." : "Deposit via STK"}
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-          />
-        </Card>
+        </View>
       </Section>
 
-      {result ? (
-        <Section title="Latest STK Request">
+      {method === "STK" ? (
+        <Section title="Deposit">
+          <Card style={styles.formCard}>
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="07XXXXXXXX"
+              placeholderTextColor={COLORS.placeholder}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Amount</Text>
+            <TextInput
+              value={amount}
+              onChangeText={(v) => setAmount(sanitizeAmount(v))}
+              placeholder="1000"
+              placeholderTextColor={COLORS.placeholder}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+
+            <View style={styles.summaryBox}>
+              <InfoRow label="Phone" value={normalizedPhone || "—"} />
+              <InfoRow label="Amount" value={money(amount || 0)} />
+              <InfoRow label="Method" value="STK" />
+              <InfoRow label="Ref" value={accountReference} />
+            </View>
+
+            <Button
+              title={submitting ? "Sending..." : "Send STK"}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
+              leftIcon={
+                <Ionicons
+                  name="paper-plane-outline"
+                  size={18}
+                  color={COLORS.white}
+                />
+              }
+            />
+          </Card>
+        </Section>
+      ) : (
+        <Section title="Paybill">
+          <Card style={styles.paybillCard}>
+            <View style={styles.paybillTop}>
+              <View style={styles.paybillBadge}>
+                <Ionicons name="grid-outline" size={18} color={COLORS.mpesa} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.paybillTitle}>Manual Payment</Text>
+                <Text style={styles.paybillSubtitle}>
+                  {paybillEnabled
+                    ? "Use the details below."
+                    : "Admin has not set the paybill number yet."}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.summaryBox}>
+              <InfoRow
+                label="Business No."
+                value={paybillEnabled ? paybillNumber : "Not set"}
+                valueColor={!paybillEnabled ? COLORS.danger : undefined}
+              />
+              <InfoRow label="Account" value={accountReference} />
+              <InfoRow
+                label="Phone"
+                value={normalizedPhone || "Use your M-Pesa line"}
+              />
+              <InfoRow label="Amount" value={money(amount || 0)} />
+            </View>
+
+            {!paybillEnabled ? (
+              <Card style={styles.tipCard}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={COLORS.accentDark}
+                />
+                <Text style={styles.tipText}>
+                  Paybill number not available yet.
+                </Text>
+              </Card>
+            ) : null}
+          </Card>
+        </Section>
+      )}
+
+      {result?.tx ? (
+        <Section title="Latest Request">
           <Card style={styles.latestCard}>
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Status</Text>
-              <Text style={styles.previewValue}>{result.tx?.status || "—"}</Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Requested credit</Text>
-              <Text style={styles.previewValue}>
-                {money(getBaseAmount(result.tx))}
-              </Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Possible fee</Text>
-              <Text style={styles.previewValue}>
-                {money(getTransactionFee(result.tx))}
-              </Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Possible charged amount</Text>
-              <Text style={styles.previewValue}>
-                {money(getChargedAmount(result.tx))}
-              </Text>
-            </View>
-
-            <View style={styles.previewRow}>
-              <Text style={styles.previewLabel}>Checkout ID</Text>
-              <Text style={styles.previewValue}>
-                {result.tx?.checkout_request_id || "—"}
-              </Text>
-            </View>
+            <InfoRow label="Status" value={result.tx.status || "—"} />
+            <InfoRow
+              label="Amount"
+              value={money(result.tx.base_amount || amount || 0)}
+            />
+            <InfoRow label="Phone" value={normalizedPhone || "—"} />
+            <InfoRow label="Ref" value={result.tx.reference || accountReference} />
+            <InfoRow
+              label="Checkout ID"
+              value={result.tx.checkout_request_id || "—"}
+            />
           </Card>
         </Section>
       ) : null}
 
-      <Section title="Notes">
-        <Card style={styles.notesCard}>
-          <Text style={styles.noteText}>
-            A prompt will be sent to your phone. Enter your M-Pesa PIN to complete
-            the deposit. Savings deposits are allowed even before full KYC. Where
-            transaction fees are configured, the amount charged on STK may be higher
-            than the amount credited into savings.
-          </Text>
-        </Card>
+      <Section title="Need">
+        <View style={styles.needGrid}>
+          <Card
+            onPress={() => router.push(ROUTES.tabs.payments as any)}
+            style={styles.needCard}
+          >
+            <View style={styles.needIconWrap}>
+              <Ionicons name="receipt-outline" size={18} color={COLORS.mpesa} />
+            </View>
+            <Text style={styles.needTitle}>Payments</Text>
+          </Card>
+
+          <Card
+            onPress={() => router.push(ROUTES.tabs.savings as any)}
+            style={styles.needCard}
+          >
+            <View style={styles.needIconWrap}>
+              <Ionicons name="wallet-outline" size={18} color={COLORS.mpesa} />
+            </View>
+            <Text style={styles.needTitle}>Savings</Text>
+          </Card>
+        </View>
       </Section>
 
       <View style={{ height: 24 }} />
@@ -358,8 +536,14 @@ export default function DepositScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    ...P.page,
+  },
+
+  content: {
+    ...P.content,
+    paddingBottom: 24,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -368,29 +552,72 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
+  heroCard: {
+    ...P.paymentHero,
     marginBottom: SPACING.lg,
+  },
+
+  heroTop: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
   },
 
-  hTitle: {
+  heroEyebrow: {
+    ...TYPE.caption,
+    color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    letterSpacing: 1,
   },
 
-  hSub: {
+  heroTitle: {
     marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 24,
+    lineHeight: 30,
+  },
+
+  heroSubtitle: {
+    ...TYPE.subtext,
+    marginTop: 8,
+    color: "rgba(255,255,255,0.90)",
+  },
+
+  heroIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.round,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.20)",
+  },
+
+  heroPills: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  heroPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  heroPillText: {
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 11,
   },
 
   errorCard: {
+    ...P.paymentError,
     marginBottom: SPACING.md,
-    padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
@@ -398,94 +625,166 @@ const styles = StyleSheet.create({
 
   errorText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    ...TYPE.subtext,
     color: COLORS.danger,
-    fontFamily: FONT.regular,
   },
 
-  formCard: {
-    padding: SPACING.md,
-  },
-
-  label: {
-    marginBottom: 8,
-    fontFamily: FONT.medium,
-    fontSize: 12,
-    color: COLORS.dark,
-  },
-
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 14,
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.white,
-    color: COLORS.dark,
-  },
-
-  noticeCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
+  methodGrid: {
     gap: SPACING.sm,
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
   },
 
-  noticeText: {
-    flex: 1,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
-  },
-
-  previewCard: {
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
-  },
-
-  latestCard: {
-    padding: SPACING.md,
-  },
-
-  previewRow: {
+  methodCard: {
+    ...P.methodCard,
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 6,
+    alignItems: "center",
     gap: SPACING.md,
   },
 
-  previewLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+  methodIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  previewValue: {
+  methodTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+  },
+
+  methodSubtitle: {
+    marginTop: 4,
+    ...TYPE.subtext,
+  },
+
+  formCard: {
+    ...P.paymentCard,
+  },
+
+  label: {
+    ...TYPE.label,
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+
+  input: {
+    ...P.input,
+    height: 50,
+    marginBottom: SPACING.md,
+  },
+
+  summaryBox: {
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+
+  infoRow: {
+    paddingVertical: 7,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: SPACING.md,
+  },
+
+  infoLabel: {
+    ...TYPE.body,
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+
+  infoValue: {
     flexShrink: 1,
     textAlign: "right",
+    ...TYPE.bodyStrong,
+    fontSize: 12,
+    color: COLORS.text,
+  },
+
+  paybillCard: {
+    ...P.paymentCard,
+  },
+
+  paybillTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+
+  paybillBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.mpesaSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  paybillTitle: {
+    ...TYPE.title,
     fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
-  notesCard: {
+  paybillSubtitle: {
+    marginTop: 5,
+    ...TYPE.subtext,
+  },
+
+  tipCard: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.paymentWarningBg,
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: "rgba(217,119,6,0.18)",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
   },
 
-  noteText: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
+  tipText: {
+    flex: 1,
+    ...TYPE.subtext,
+    color: COLORS.accentDark,
+  },
+
+  latestCard: {
+    ...P.paymentCard,
+  },
+
+  needGrid: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+  },
+
+  needCard: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    padding: SPACING.md,
+    alignItems: "center",
+  },
+
+  needIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.mpesaSoft,
+    marginBottom: SPACING.sm,
+  },
+
+  needTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+    color: COLORS.text,
   },
 });

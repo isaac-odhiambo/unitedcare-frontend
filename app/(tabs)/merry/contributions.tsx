@@ -24,7 +24,7 @@ import {
   getMyMerryPayments,
   MerryPaymentRow,
 } from "@/services/merry";
-import { getMe, isAdminUser, MeResponse } from "@/services/profile";
+import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryPaymentsUser = Partial<MeResponse> & Partial<SessionUser>;
@@ -38,11 +38,18 @@ function formatKes(value?: string | number | null) {
   })}`;
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("en-KE");
+}
+
 function statusColor(status: string) {
   const s = String(status || "").toUpperCase();
-  if (["CONFIRMED", "SUCCESS", "PAID"].includes(s)) return COLORS.success;
-  if (["PENDING", "INITIATED", "PROCESSING"].includes(s)) return COLORS.warning;
-  if (["FAILED", "CANCELLED", "REJECTED"].includes(s)) return COLORS.danger;
+  if (["CONFIRMED"].includes(s)) return COLORS.success;
+  if (["PENDING"].includes(s)) return COLORS.warning;
+  if (["FAILED", "CANCELLED"].includes(s)) return COLORS.danger;
   return COLORS.gray;
 }
 
@@ -66,7 +73,7 @@ function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
             {payment.merry_name || `Merry #${payment.merry_id}`}
           </Text>
           <Text style={styles.itemMeta}>
-            {payment.created_at ? payment.created_at : "—"}
+            {formatDateTime(payment.created_at)}
           </Text>
         </View>
 
@@ -91,6 +98,11 @@ function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
         <Text style={styles.kvValue}>{payment.mpesa_receipt_number || "—"}</Text>
       </View>
 
+      <View style={styles.kvRow}>
+        <Text style={styles.kvLabel}>Paid At</Text>
+        <Text style={styles.kvValue}>{formatDateTime(payment.paid_at)}</Text>
+      </View>
+
       <View style={styles.actionsRow}>
         <Button
           title="Open Merry"
@@ -109,8 +121,6 @@ export default function MerryContributionsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-
-  const isAdmin = isAdminUser(user);
 
   const load = useCallback(async () => {
     try {
@@ -168,11 +178,14 @@ export default function MerryContributionsScreen() {
 
   const totals = useMemo(() => {
     const totalAmount = payments.reduce((sum, p) => sum + (Number(p.amount || 0) || 0), 0);
-    const confirmed = payments.filter((p) =>
-      ["CONFIRMED", "SUCCESS", "PAID"].includes(String(p.status || "").toUpperCase())
+    const confirmed = payments.filter(
+      (p) => String(p.status || "").toUpperCase() === "CONFIRMED"
     ).length;
-    const pending = payments.filter((p) =>
-      ["PENDING", "INITIATED", "PROCESSING"].includes(String(p.status || "").toUpperCase())
+    const pending = payments.filter(
+      (p) => String(p.status || "").toUpperCase() === "PENDING"
+    ).length;
+    const failed = payments.filter((p) =>
+      ["FAILED", "CANCELLED"].includes(String(p.status || "").toUpperCase())
     ).length;
 
     return {
@@ -180,6 +193,7 @@ export default function MerryContributionsScreen() {
       totalAmount,
       confirmed,
       pending,
+      failed,
     };
   }, [payments]);
 
@@ -215,7 +229,7 @@ export default function MerryContributionsScreen() {
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.hTitle}>My Merry Payments</Text>
           <Text style={styles.hSub}>
-            Track your merry contribution history • {isAdmin ? "Admin" : "Member"}
+            Personal merry payment history
           </Text>
         </View>
 
@@ -258,12 +272,25 @@ export default function MerryContributionsScreen() {
         </View>
       </View>
 
+      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Failed / Cancelled</Text>
+          <Text style={styles.summaryValue}>{totals.failed}</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}> </Text>
+          <Text style={styles.summaryValue}> </Text>
+        </View>
+      </View>
+
       <Section title="Payment History">
         {payments.length === 0 ? (
           <EmptyState
             icon="cash-outline"
             title="No merry payments yet"
             subtitle="Your contribution history will appear here after payment."
+            actionLabel="Go to Merry"
+            onAction={() => router.push(ROUTES.tabs.merry)}
           />
         ) : (
           payments.map((payment) => (

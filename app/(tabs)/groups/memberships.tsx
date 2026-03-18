@@ -1,15 +1,24 @@
 // app/(tabs)/groups/memberships.tsx
+// ------------------------------------------------
+// ✅ Updated to match latest groups flow
+// ✅ Uses listGroupMemberships() only for my memberships
+// ✅ Uses listAvailableGroups() instead of old listGroups()
+// ✅ Removes old "Add Membership" direct flow
+// ✅ Uses browse/join-request flow
+// ✅ Uses richer Group type
+// ✅ Uses ROUTES consistently
+// ------------------------------------------------
+
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -25,10 +34,8 @@ import {
   getGroupNameFromMembership,
   Group,
   GroupMembership,
+  listAvailableGroups,
   listGroupMemberships,
-  listGroups,
-  removeGroupMember,
-  updateGroupMembership,
 } from "@/services/groups";
 import {
   canJoinGroup,
@@ -41,6 +48,13 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type MembershipsUser = Partial<MeResponse> & Partial<SessionUser>;
 
+function fmtDate(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString();
+}
+
 function statusColor(active: boolean) {
   return active ? COLORS.success : COLORS.gray;
 }
@@ -48,8 +62,15 @@ function statusColor(active: boolean) {
 function roleColor(role: string) {
   const r = String(role || "").toUpperCase();
   if (r === "ADMIN") return COLORS.info;
+  if (r === "TREASURER") return COLORS.warning;
+  if (r === "SECRETARY") return COLORS.primary;
   if (r === "MEMBER") return COLORS.primary;
   return COLORS.gray;
+}
+
+function roleText(role?: string) {
+  const r = String(role || "").toUpperCase();
+  return r ? r.replaceAll("_", " ") : "—";
 }
 
 function Pill({
@@ -69,16 +90,8 @@ function Pill({
 
 function MembershipCard({
   membership,
-  isAdmin,
-  onToggleStatus,
-  onToggleRole,
-  onRemove,
 }: {
   membership: GroupMembership;
-  isAdmin: boolean;
-  onToggleStatus: (m: GroupMembership) => void;
-  onToggleRole: (m: GroupMembership) => void;
-  onRemove: (m: GroupMembership) => void;
 }) {
   const groupName = getGroupNameFromMembership(membership);
   const groupId = getGroupIdFromMembership(membership);
@@ -89,13 +102,14 @@ function MembershipCard({
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.title}>{groupName}</Text>
           <Text style={styles.sub}>
-            Group ID: {groupId ?? "—"} {membership.joined_at ? `• Joined ${membership.joined_at}` : ""}
+            Group ID: {groupId ?? "—"}
+            {membership.joined_at ? ` • Joined ${fmtDate(membership.joined_at)}` : ""}
           </Text>
         </View>
 
         <View style={{ gap: 8, alignItems: "flex-end" }}>
           <Pill
-            label={String(membership.role || "—").toUpperCase()}
+            label={roleText(membership.role).toUpperCase()}
             color={roleColor(String(membership.role))}
           />
           <Pill
@@ -107,7 +121,7 @@ function MembershipCard({
 
       <View style={styles.actionsRow}>
         <Button
-          title="View Group"
+          title="Open Group"
           variant="secondary"
           onPress={() => {
             if (groupId != null) {
@@ -116,43 +130,7 @@ function MembershipCard({
           }}
           style={{ flex: 1 }}
         />
-
-        {isAdmin ? (
-          <>
-            <View style={{ width: SPACING.sm }} />
-            <Button
-              title={membership.is_active ? "Deactivate" : "Activate"}
-              variant="secondary"
-              onPress={() => onToggleStatus(membership)}
-              style={{ flex: 1 }}
-            />
-          </>
-        ) : null}
       </View>
-
-      {isAdmin ? (
-        <>
-          <View style={{ height: SPACING.sm }} />
-          <View style={styles.actionsRow}>
-            <Button
-              title={
-                String(membership.role).toUpperCase() === "ADMIN"
-                  ? "Make Member"
-                  : "Make Admin"
-              }
-              variant="secondary"
-              onPress={() => onToggleRole(membership)}
-              style={{ flex: 1 }}
-            />
-            <View style={{ width: SPACING.sm }} />
-            <Button
-              title="Remove"
-              onPress={() => onRemove(membership)}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </>
-      ) : null}
     </Card>
   );
 }
@@ -163,7 +141,6 @@ export default function GroupMembershipsScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [submittingId, setSubmittingId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const isAdmin = isAdminUser(user);
@@ -172,7 +149,6 @@ export default function GroupMembershipsScreen() {
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
       setError("");
 
       const [sessionRes, meRes, membershipsRes, groupsRes] =
@@ -180,7 +156,7 @@ export default function GroupMembershipsScreen() {
           getSessionUser(),
           getMe(),
           listGroupMemberships(),
-          listGroups(),
+          listAvailableGroups(),
         ]);
 
       const sessionUser =
@@ -211,23 +187,39 @@ export default function GroupMembershipsScreen() {
 
       if (membershipsRes.status === "rejected") {
         setError(getApiErrorMessage(membershipsRes.reason));
+      } else if (groupsRes.status === "rejected") {
+        setError(getApiErrorMessage(groupsRes.reason));
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      let mounted = true;
+
+      const run = async () => {
+        if (!mounted) return;
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      };
+
+      run();
+
+      return () => {
+        mounted = false;
+      };
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     try {
+      setRefreshing(true);
       await load();
     } finally {
       setRefreshing(false);
@@ -252,77 +244,6 @@ export default function GroupMembershipsScreen() {
     return groups.filter((g) => !joinedGroupIds.has(g.id)).length;
   }, [groups, joinedGroupIds]);
 
-  const handleToggleStatus = useCallback(
-    async (membership: GroupMembership) => {
-      if (!isAdmin) return;
-
-      try {
-        setSubmittingId(membership.id);
-        await updateGroupMembership(membership.id, {
-          is_active: !membership.is_active,
-        });
-        await load();
-      } catch (e: any) {
-        Alert.alert("Membership", getApiErrorMessage(e));
-      } finally {
-        setSubmittingId(null);
-      }
-    },
-    [isAdmin, load]
-  );
-
-  const handleToggleRole = useCallback(
-    async (membership: GroupMembership) => {
-      if (!isAdmin) return;
-
-      const nextRole =
-        String(membership.role).toUpperCase() === "ADMIN" ? "MEMBER" : "ADMIN";
-
-      try {
-        setSubmittingId(membership.id);
-        await updateGroupMembership(membership.id, {
-          role: nextRole,
-        });
-        await load();
-      } catch (e: any) {
-        Alert.alert("Membership", getApiErrorMessage(e));
-      } finally {
-        setSubmittingId(null);
-      }
-    },
-    [isAdmin, load]
-  );
-
-  const handleRemove = useCallback(
-    async (membership: GroupMembership) => {
-      if (!isAdmin) return;
-
-      Alert.alert(
-        "Remove Member",
-        `Remove this membership from ${getGroupNameFromMembership(membership)}?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Remove",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                setSubmittingId(membership.id);
-                await removeGroupMember(membership.id);
-                await load();
-              } catch (e: any) {
-                Alert.alert("Membership", getApiErrorMessage(e));
-              } finally {
-                setSubmittingId(null);
-              }
-            },
-          },
-        ]
-      );
-    },
-    [isAdmin, load]
-  );
-
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -338,7 +259,7 @@ export default function GroupMembershipsScreen() {
           title="Not signed in"
           subtitle="Please login to access memberships."
           actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
+          onAction={() => router.replace(ROUTES.auth.login as any)}
         />
       </View>
     );
@@ -355,9 +276,11 @@ export default function GroupMembershipsScreen() {
     >
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Group Memberships</Text>
+          <Text style={styles.hTitle}>My Group Memberships</Text>
           <Text style={styles.hSub}>
-            {isAdmin ? "Manage group members and roles" : "View your joined groups"}
+            {isAdmin
+              ? "View your memberships and open groups you manage"
+              : "View the groups you have joined"}
           </Text>
         </View>
 
@@ -393,7 +316,7 @@ export default function GroupMembershipsScreen() {
             <Button
               title="Complete KYC"
               variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profileKyc)}
+              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
             />
           </Card>
         </Section>
@@ -426,19 +349,19 @@ export default function GroupMembershipsScreen() {
       <Section title="Quick Actions">
         <View style={styles.actionsRow}>
           <Button
-            title={joinAllowed ? "Add Membership" : "Complete KYC"}
+            title={joinAllowed ? "Browse Groups" : "Complete KYC"}
             onPress={() =>
               joinAllowed
-                ? router.push(ROUTES.tabs.groupsAddMembership)
-                : router.push(ROUTES.tabs.profileKyc)
+                ? router.push(ROUTES.tabs.groupsAvailable as any)
+                : router.push(ROUTES.tabs.profileKyc as any)
             }
             style={{ flex: 1 }}
           />
           <View style={{ width: SPACING.sm }} />
           <Button
-            title="Browse Groups"
+            title="My Join Requests"
             variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.groups)}
+            onPress={() => router.push(ROUTES.tabs.groupsJoinRequests as any)}
             style={{ flex: 1 }}
           />
         </View>
@@ -451,43 +374,25 @@ export default function GroupMembershipsScreen() {
             title="No active memberships"
             subtitle={
               joinAllowed
-                ? "Join a group to start participating."
+                ? "Browse available groups and send a join request."
                 : "Complete KYC before joining a group."
             }
-            actionLabel={joinAllowed ? "Add Membership" : "Complete KYC"}
+            actionLabel={joinAllowed ? "Browse Groups" : "Complete KYC"}
             onAction={() =>
               joinAllowed
-                ? router.push(ROUTES.tabs.groupsAddMembership)
-                : router.push(ROUTES.tabs.profileKyc)
+                ? router.push(ROUTES.tabs.groupsAvailable as any)
+                : router.push(ROUTES.tabs.profileKyc as any)
             }
           />
         ) : (
-          grouped.active.map((m) => (
-            <View key={m.id} style={{ opacity: submittingId === m.id ? 0.7 : 1 }}>
-              <MembershipCard
-                membership={m}
-                isAdmin={isAdmin}
-                onToggleStatus={handleToggleStatus}
-                onToggleRole={handleToggleRole}
-                onRemove={handleRemove}
-              />
-            </View>
-          ))
+          grouped.active.map((m) => <MembershipCard key={m.id} membership={m} />)
         )}
       </Section>
 
       {grouped.inactive.length > 0 ? (
         <Section title="Inactive Memberships">
           {grouped.inactive.map((m) => (
-            <View key={m.id} style={{ opacity: submittingId === m.id ? 0.7 : 1 }}>
-              <MembershipCard
-                membership={m}
-                isAdmin={isAdmin}
-                onToggleStatus={handleToggleStatus}
-                onToggleRole={handleToggleRole}
-                onRemove={handleRemove}
-              />
-            </View>
+            <MembershipCard key={m.id} membership={m} />
           ))}
         </Section>
       ) : null}
@@ -586,6 +491,8 @@ const styles = StyleSheet.create({
 
   membershipCard: {
     marginBottom: SPACING.md,
+    padding: SPACING.md,
+    ...SHADOW.card,
   },
 
   rowTop: {
@@ -611,12 +518,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  link: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.primary,
   },
 
   pill: {

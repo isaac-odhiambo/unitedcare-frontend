@@ -26,9 +26,22 @@ import {
   MeResponse,
 } from "@/services/profile";
 import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
-import { getSessionUser, SessionUser } from "@/services/session";
+import {
+  getSessionUser,
+  saveSessionUser,
+  SessionUser,
+} from "@/services/session";
 
 type SavingsUser = Partial<MeResponse> & Partial<SessionUser>;
+
+const SURFACE = "#F4F6F8";
+const SURFACE_2 = "#EEF2F6";
+const SURFACE_3 = "#E8EDF3";
+const BORDER = "#D9E1EA";
+const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
+const TEXT_MAIN = "#0F172A";
+const TEXT_SOFT = "#334155";
+const TEXT_MUTED = "#64748B";
 
 function formatKes(value?: string | number) {
   const n = Number(value ?? 0);
@@ -39,81 +52,165 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
-function TypePill({ type }: { type: string }) {
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const n = Number(value.replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function formatDisplayName(user?: SavingsUser | null) {
+  if (!user) return "Member";
+  return (
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    user?.username ||
+    (typeof user?.phone === "string" ? user.phone : "") ||
+    "Member"
+  );
+}
+
+function formatStatus(user?: SavingsUser | null) {
+  return String((user as any)?.status || "ACTIVE").replaceAll("_", " ");
+}
+
+function getAccountTypeLabel(type?: string) {
+  const t = String(type || "").toUpperCase();
+  if (t === "FLEXIBLE") return "Flexible Savings";
+  if (t === "FIXED") return "Fixed Savings";
+  if (t === "TARGET") return "Target Savings";
+  return "Savings Account";
+}
+
+function getAccountTypeTone(type?: string) {
   const t = String(type || "").toUpperCase();
 
-  const bg =
-    t === "FLEXIBLE"
-      ? "rgba(37, 99, 235, 0.12)"
-      : t === "FIXED"
-      ? "rgba(242, 140, 40, 0.14)"
-      : "rgba(46, 125, 50, 0.12)";
+  if (t === "FLEXIBLE") {
+    return {
+      bg: "rgba(37, 99, 235, 0.10)",
+      color: COLORS.info,
+    };
+  }
 
-  const color =
-    t === "FLEXIBLE"
-      ? COLORS.info
-      : t === "FIXED"
-      ? COLORS.accent
-      : COLORS.success;
+  if (t === "FIXED") {
+    return {
+      bg: "rgba(245, 158, 11, 0.12)",
+      color: COLORS.warning,
+    };
+  }
 
+  return {
+    bg: "rgba(34, 197, 94, 0.10)",
+    color: COLORS.success,
+  };
+}
+
+function getPrimaryAccount(accounts: SavingsAccount[]) {
+  if (!accounts.length) return null;
+
+  const activeAccounts = accounts.filter((a) => a.is_active);
+  const source = activeAccounts.length ? activeAccounts : accounts;
+
+  const mainWallet =
+    source.find(
+      (a) =>
+        String(a.account_type || "").toUpperCase() === "FLEXIBLE" &&
+        String(a.name || "").trim().length > 0
+    ) || source[0];
+
+  return mainWallet;
+}
+
+function getExtraAccounts(accounts: SavingsAccount[], primaryId?: number | null) {
+  return accounts.filter((a) => a.id !== primaryId);
+}
+
+function canWithdrawFromAccountNow(account?: SavingsAccount | null) {
+  if (!account) return false;
+  if (!account.is_active) return false;
+
+  const type = String(account.account_type || "").toUpperCase();
+
+  if (type === "FIXED" && account.locked_until) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const lockedUntil = new Date(account.locked_until);
+    if (!Number.isNaN(lockedUntil.getTime())) {
+      lockedUntil.setHours(0, 0, 0, 0);
+      return today >= lockedUntil;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
+function getPrimaryAccountDescription(account?: SavingsAccount | null) {
+  if (!account) return "No main savings wallet available.";
+
+  const type = String(account.account_type || "").toUpperCase();
+
+  if (type === "FLEXIBLE") {
+    return "This is your main wallet for regular deposits and day-to-day savings use.";
+  }
+
+  if (type === "FIXED" && account.locked_until) {
+    return `This account is fixed and locked until ${account.locked_until}.`;
+  }
+
+  if (type === "TARGET" && account.target_amount && account.target_deadline) {
+    return `This target account is set for ${formatKes(
+      account.target_amount
+    )} by ${account.target_deadline}.`;
+  }
+
+  if (type === "TARGET" && account.target_deadline) {
+    return `This target account has a deadline of ${account.target_deadline}.`;
+  }
+
+  return "This is your current primary savings wallet.";
+}
+
+function InfoRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
   return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      <Text style={[styles.pillText, { color }]}>{t}</Text>
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
     </View>
   );
 }
 
-function AccountCard({ acct }: { acct: SavingsAccount }) {
-  const lockedText =
-    acct.account_type === "FIXED" && acct.locked_until
-      ? `Locked until ${acct.locked_until}`
-      : acct.account_type === "TARGET" && acct.target_deadline
-      ? `Target by ${acct.target_deadline}`
-      : "Available for normal use";
-
+function SmallAction({
+  title,
+  icon,
+  onPress,
+  tone,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  tone: string;
+}) {
   return (
-    <Card style={styles.card}>
-      <View style={styles.topRow}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>{acct.name}</Text>
-          <Text style={styles.sub}>{lockedText}</Text>
-        </View>
-        <TypePill type={acct.account_type} />
+    <Card onPress={onPress} style={styles.smallActionCard} variant="default">
+      <View style={[styles.smallActionIconWrap, { backgroundColor: `${tone}18` }]}>
+        <Ionicons name={icon} size={17} color={tone} />
       </View>
-
-      <View style={styles.grid}>
-        <View style={styles.metric}>
-          <Text style={styles.mLabel}>Balance</Text>
-          <Text style={styles.mValue}>{formatKes(acct.balance)}</Text>
-        </View>
-
-        <View style={styles.metric}>
-          <Text style={styles.mLabel}>Reserved</Text>
-          <Text style={styles.mValue}>{formatKes(acct.reserved_amount)}</Text>
-        </View>
-
-        <View style={styles.metric}>
-          <Text style={styles.mLabel}>Available</Text>
-          <Text style={styles.mValue}>{formatKes(acct.available_balance)}</Text>
-        </View>
-
-        <View style={styles.metric}>
-          <Text style={styles.mLabel}>Status</Text>
-          <Text style={styles.mValue}>{acct.is_active ? "Active" : "Inactive"}</Text>
-        </View>
-      </View>
-
-      <View style={styles.actionsRow}>
-        <Text
-          style={styles.link}
-          onPress={() =>
-            router.push(ROUTES.dynamic.savingsAccountHistory(acct.id) as any)
-          }
-        >
-          View history
-        </Text>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
-      </View>
+      <Text style={styles.smallActionText}>{title}</Text>
     </Card>
   );
 }
@@ -126,16 +223,15 @@ export default function SavingsIndexScreen() {
   const [error, setError] = useState("");
 
   const kycComplete = isKycComplete(user);
-  const withdrawAllowed = canWithdraw(user);
+  const withdrawAllowedByProfile = canWithdraw(user);
 
   const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profileKyc);
+    router.push(ROUTES.tabs.profileKyc as any);
   }, []);
 
   const load = useCallback(async () => {
     try {
       setError("");
-      setLoading(true);
 
       const [sessionRes, meRes, accountsRes] = await Promise.allSettled([
         getSessionUser(),
@@ -157,25 +253,42 @@ export default function SavingsIndexScreen() {
 
       setUser(mergedUser);
 
+      if (mergedUser) {
+        await saveSessionUser(mergedUser);
+      }
+
       setAccounts(
         accountsRes.status === "fulfilled" && Array.isArray(accountsRes.value)
           ? accountsRes.value
           : []
       );
 
-      if (accountsRes.status === "rejected") {
-        setError(getErrorMessage(accountsRes.reason));
+      let nextError = "";
+
+      if (meRes.status === "rejected") {
+        nextError = getErrorMessage(meRes.reason);
+      } else if (accountsRes.status === "rejected") {
+        nextError = getErrorMessage(accountsRes.reason);
       }
+
+      setError(nextError);
     } catch (e: any) {
       setError(getErrorMessage(e));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      const run = async () => {
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      run();
     }, [load])
   );
 
@@ -199,6 +312,27 @@ export default function SavingsIndexScreen() {
     };
   }, [accounts]);
 
+  const displayName = useMemo(() => formatDisplayName(user), [user]);
+  const memberStatus = useMemo(() => formatStatus(user), [user]);
+  const primaryAccount = useMemo(() => getPrimaryAccount(accounts), [accounts]);
+  const extraAccounts = useMemo(
+    () => getExtraAccounts(accounts, primaryAccount?.id ?? null),
+    [accounts, primaryAccount]
+  );
+
+  const typeTone = useMemo(
+    () => getAccountTypeTone(primaryAccount?.account_type),
+    [primaryAccount]
+  );
+
+  const canWithdrawThisAccount = useMemo(
+    () => canWithdrawFromAccountNow(primaryAccount),
+    [primaryAccount]
+  );
+
+  const finalWithdrawalAllowed =
+    Boolean(withdrawAllowedByProfile) && Boolean(canWithdrawThisAccount);
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -214,7 +348,7 @@ export default function SavingsIndexScreen() {
           title="Not signed in"
           subtitle="Please login to access savings."
           actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
+          onAction={() => router.replace(ROUTES.auth.login as any)}
         />
       </View>
     );
@@ -229,125 +363,304 @@ export default function SavingsIndexScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.hTitle}>Savings</Text>
-          <Text style={styles.hSub}>Personal wallets, fixed and target accounts</Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroGlowOne} />
+        <View style={styles.heroGlowTwo} />
+
+        <View style={styles.heroTop}>
+          <View style={styles.heroAvatar}>
+            <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.heroEyebrow}>SAVINGS PROFILE</Text>
+            <Text style={styles.heroTitle}>{displayName}</Text>
+            <Text style={styles.heroSubtitle}>
+              {accounts.length > 0
+                ? "Your main wallet is shown first for normal savings use. Add another account only when you need a specific savings purpose."
+                : "Create your main savings wallet first, then continue with deposits from one clear flow."}
+            </Text>
+          </View>
         </View>
 
-        <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
+        <View style={styles.heroMetaWrap}>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>{memberStatus}</Text>
+          </View>
+
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>
+              {kycComplete ? "KYC Complete" : "KYC Pending"}
+            </Text>
+          </View>
+
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>
+              Main wallet {primaryAccount ? "ready" : "not set"}
+            </Text>
+          </View>
+        </View>
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+        <Card style={styles.errorCard} variant="default">
+          <View style={styles.errorIcon}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
+          </View>
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      {!kycComplete && (
-        <Section title="KYC Notice">
-          <Card style={styles.noticeCard} onPress={goToKyc}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              You can create savings accounts and deposit funds, but withdrawal
-              requests require completed KYC.
-            </Text>
+      {!kycComplete ? (
+        <Section
+          title="Verification"
+          subtitle="Withdrawals need completed KYC."
+        >
+          <Card style={styles.noticeCard} variant="default" onPress={goToKyc}>
+            <View style={styles.noticeIcon}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={COLORS.info}
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>Complete account verification</Text>
+              <Text style={styles.noticeText}>
+                Deposits are available now, but withdrawals need completed KYC.
+              </Text>
+            </View>
+
+            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
           </Card>
         </Section>
+      ) : null}
+
+      {accounts.length === 0 ? (
+        <Section
+          title="Main Wallet"
+          subtitle="Start with one main savings wallet."
+        >
+          <Card style={styles.emptyStartCard} variant="default">
+            <View style={styles.emptyStartIcon}>
+              <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.emptyStartTitle}>No savings wallet yet</Text>
+            <Text style={styles.emptyStartText}>
+              Create your main wallet first. Additional accounts should only be added when you need a fixed or target savings purpose.
+            </Text>
+
+            <View style={{ marginTop: SPACING.md }}>
+              <Button
+                title="Create Main Wallet"
+                onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
+                leftIcon={
+                  <Ionicons
+                    name="add-circle-outline"
+                    size={18}
+                    color={COLORS.white}
+                  />
+                }
+              />
+            </View>
+          </Card>
+        </Section>
+      ) : (
+        <>
+          <Section
+            title="Main Wallet"
+            subtitle="Your main savings wallet is the primary account for deposits."
+          >
+            <Card style={styles.mainAccountCard} variant="default">
+              <View style={styles.mainAccountTop}>
+                <View style={styles.mainAccountIconWrap}>
+                  <Ionicons
+                    name="wallet-outline"
+                    size={20}
+                    color={COLORS.primary}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mainAccountTitle}>
+                    {primaryAccount?.name || "Main wallet"}
+                  </Text>
+                  <Text style={styles.mainAccountSubtitle}>
+                    {getPrimaryAccountDescription(primaryAccount)}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.typePill,
+                    { backgroundColor: typeTone.bg },
+                  ]}
+                >
+                  <Text style={[styles.typePillText, { color: typeTone.color }]}>
+                    {getAccountTypeLabel(primaryAccount?.account_type)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              <InfoRow
+                label="Balance"
+                value={formatKes(primaryAccount?.balance)}
+              />
+              <InfoRow
+                label="Reserved"
+                value={formatKes(primaryAccount?.reserved_amount)}
+                valueColor={
+                  toNumber(primaryAccount?.reserved_amount) > 0
+                    ? COLORS.warning
+                    : TEXT_MAIN
+                }
+              />
+              <InfoRow
+                label="Available"
+                value={formatKes(primaryAccount?.available_balance)}
+                valueColor={COLORS.success}
+              />
+              <InfoRow
+                label="Status"
+                value={primaryAccount?.is_active ? "Active" : "Inactive"}
+                valueColor={
+                  primaryAccount?.is_active ? COLORS.success : COLORS.danger
+                }
+              />
+
+              <View style={{ marginTop: SPACING.md }}>
+                <Button
+                  title="Deposit Funds"
+                  onPress={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
+                  leftIcon={
+                    <Ionicons
+                      name="arrow-down-circle-outline"
+                      size={18}
+                      color={COLORS.white}
+                    />
+                  }
+                />
+              </View>
+            </Card>
+          </Section>
+
+          <Section
+            title="More Options"
+            subtitle="Only open these when you need something beyond the main wallet."
+          >
+            <View style={styles.smallActionsGrid}>
+              <SmallAction
+                title="Add Another Account"
+                icon="add-circle-outline"
+                tone={COLORS.primary}
+                onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
+              />
+
+              <SmallAction
+                title="History"
+                icon="time-outline"
+                tone={COLORS.warning}
+                onPress={() =>
+                  primaryAccount
+                    ? router.push(
+                        ROUTES.dynamic.savingsAccountHistory(primaryAccount.id) as any
+                      )
+                    : router.push(ROUTES.tabs.savingsCreate as any)
+                }
+              />
+
+              <SmallAction
+                title={finalWithdrawalAllowed ? "Withdraw" : "Withdraw Info"}
+                icon={
+                  finalWithdrawalAllowed
+                    ? "arrow-up-circle-outline"
+                    : "information-circle-outline"
+                }
+                tone={finalWithdrawalAllowed ? COLORS.success : COLORS.info}
+                onPress={() =>
+                  finalWithdrawalAllowed
+                    ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
+                    : !kycComplete
+                    ? goToKyc()
+                    : primaryAccount
+                    ? router.push(
+                        ROUTES.dynamic.savingsAccountHistory(primaryAccount.id) as any
+                      )
+                    : router.push(ROUTES.tabs.savingsCreate as any)
+                }
+              />
+
+              <SmallAction
+                title="Summary"
+                icon="stats-chart-outline"
+                tone={COLORS.info}
+                onPress={() => {}}
+              />
+            </View>
+          </Section>
+
+          {extraAccounts.length > 0 ? (
+            <Section
+              title="Additional Accounts"
+              subtitle="These appear only because you created more than one savings account."
+            >
+              <Card style={styles.summaryCard} variant="default">
+                <InfoRow
+                  label="Extra accounts"
+                  value={String(extraAccounts.length)}
+                />
+                <InfoRow
+                  label="Combined balance"
+                  value={formatKes(
+                    extraAccounts.reduce(
+                      (sum, account) => sum + toNumber(account.balance),
+                      0
+                    )
+                  )}
+                />
+                <InfoRow
+                  label="Combined available"
+                  value={formatKes(
+                    extraAccounts.reduce(
+                      (sum, account) =>
+                        sum + toNumber(account.available_balance),
+                      0
+                    )
+                  )}
+                  valueColor={COLORS.success}
+                />
+              </Card>
+            </Section>
+          ) : null}
+
+          <Section
+            title="Savings Summary"
+            subtitle="A quick combined view across all your savings accounts."
+          >
+            <Card style={styles.summaryCard} variant="default">
+              <InfoRow label="Total balance" value={formatKes(totals.balance)} />
+              <InfoRow
+                label="Total available"
+                value={formatKes(totals.available)}
+                valueColor={COLORS.success}
+              />
+              <InfoRow
+                label="Total reserved"
+                value={formatKes(totals.reserved)}
+                valueColor={totals.reserved > 0 ? COLORS.warning : TEXT_MAIN}
+              />
+            </Card>
+          </Section>
+        </>
       )}
-
-      <View style={styles.summaryGrid}>
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Total Balance</Text>
-          <Text style={styles.summaryValue}>{formatKes(totals.balance)}</Text>
-        </View>
-
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Available</Text>
-          <Text style={styles.summaryValue}>{formatKes(totals.available)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.actionBar}>
-        <Button
-          title="Add Account"
-          onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
-          style={{ flex: 1 }}
-        />
-        <View style={{ width: SPACING.sm }} />
-        <Button
-          title="Deposit"
-          variant="secondary"
-          onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
-          style={{ flex: 1 }}
-        />
-      </View>
-
-      <Section
-        title="My Accounts"
-        right={
-          <Text
-            style={styles.smallLink}
-            onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
-          >
-            New
-          </Text>
-        }
-      >
-        {accounts.length === 0 ? (
-          <EmptyState
-            icon="wallet-outline"
-            title="No savings accounts"
-            subtitle="Create a savings account to start tracking your deposits."
-            actionLabel="Add Account"
-            onAction={() => router.push(ROUTES.tabs.savingsCreate as any)}
-          />
-        ) : (
-          accounts.map((a) => <AccountCard key={a.id} acct={a} />)
-        )}
-      </Section>
-
-      <Section
-        title="Withdraw"
-        right={
-          <Text
-            style={styles.smallLink}
-            onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
-                : goToKyc()
-            }
-          >
-            {withdrawAllowed ? "Request" : "Complete KYC"}
-          </Text>
-        }
-      >
-        <Card>
-          <Text style={styles.note}>
-            Withdrawals are requested from personal savings and require admin
-            approval before Mpesa payout.
-          </Text>
-          <View style={{ height: SPACING.sm }} />
-          <Button
-            title={withdrawAllowed ? "Request Withdrawal" : "Complete KYC"}
-            variant="secondary"
-            onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
-                : goToKyc()
-            }
-          />
-        </Card>
-      </Section>
 
       <View style={{ height: 24 }} />
     </ScrollView>
@@ -355,8 +668,15 @@ export default function SavingsIndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.md,
+    paddingBottom: 24,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -365,193 +685,305 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
-    padding: SPACING.lg,
-    backgroundColor: COLORS.white,
+  heroCard: {
+    backgroundColor: COLORS.primary,
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    overflow: "hidden",
+    ...SHADOW.strong,
+  },
+
+  heroGlowOne: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    top: -60,
+    right: -40,
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    bottom: -30,
+    left: -20,
+  },
+
+  heroTop: {
     flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+  },
+
+  heroAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
   },
 
-  hTitle: {
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    fontSize: 11,
+    letterSpacing: 1,
   },
 
-  hSub: {
+  heroTitle: {
     marginTop: 6,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 22,
+    lineHeight: 28,
+  },
+
+  heroSubtitle: {
+    marginTop: 7,
+    color: "rgba(255,255,255,0.86)",
     fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  heroMetaWrap: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  heroPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  heroPillText: {
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 11,
   },
 
   errorCard: {
-    marginTop: SPACING.md,
+    backgroundColor: "#FFF4F4",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.18)",
+    borderRadius: RADIUS.xl,
     padding: SPACING.md,
+    marginBottom: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  },
+
+  errorIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239,68,68,0.10)",
   },
 
   errorText: {
     flex: 1,
+    color: COLORS.danger,
+    fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    fontFamily: FONT.regular,
-    color: COLORS.danger,
   },
 
   noticeCard: {
+    backgroundColor: SURFACE,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  noticeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: `${COLORS.info}18`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  noticeTitle: {
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 14,
   },
 
   noticeText: {
-    flex: 1,
+    marginTop: 4,
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    fontFamily: FONT.regular,
-    color: COLORS.textMuted,
   },
 
-  summaryGrid: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
+  emptyStartCard: {
+    backgroundColor: SURFACE,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: CARD_BORDER,
     padding: SPACING.md,
   },
 
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
-  },
-
-  actionBar: {
-    flexDirection: "row",
-    marginTop: SPACING.md,
+  emptyStartIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.md,
     alignItems: "center",
-  },
-
-  muted: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    color: COLORS.gray,
-  },
-
-  smallLink: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.primary,
-  },
-
-  card: {
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}16`,
     marginBottom: SPACING.md,
   },
 
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  title: {
+  emptyStartTitle: {
+    color: TEXT_MAIN,
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
+    fontSize: 16,
   },
 
-  sub: {
+  emptyStartText: {
     marginTop: 6,
+    color: TEXT_MUTED,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  grid: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm as any,
-  },
-
-  metric: {
-    width: "48%",
-    backgroundColor: "rgba(0,0,0,0.02)",
-    borderRadius: RADIUS.md,
-    padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  mLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: COLORS.gray,
-  },
-
-  mValue: {
-    marginTop: 6,
-    fontFamily: FONT.bold,
-    fontSize: 13,
-    color: COLORS.dark,
-  },
-
-  actionsRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  link: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.primary,
-  },
-
-  note: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
     lineHeight: 18,
   },
 
-  pill: {
+  mainAccountCard: {
+    backgroundColor: SURFACE,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  mainAccountTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+  },
+
+  mainAccountIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}16`,
+  },
+
+  mainAccountTitle: {
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 16,
+  },
+
+  mainAccountSubtitle: {
+    marginTop: 5,
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  typePill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
 
-  pillText: {
+  typePillText: {
     fontFamily: FONT.bold,
     fontSize: 11,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+
+  summaryCard: {
+    backgroundColor: SURFACE_3,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: BORDER,
+    marginVertical: SPACING.md,
+  },
+
+  infoRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  infoLabel: {
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+  },
+
+  infoValue: {
+    flexShrink: 1,
+    textAlign: "right",
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 12,
+  },
+
+  smallActionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm as any,
+  },
+
+  smallActionCard: {
+    width: "48.5%",
+    backgroundColor: SURFACE,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  smallActionIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  smallActionText: {
+    flex: 1,
+    color: TEXT_SOFT,
+    fontFamily: FONT.bold,
+    fontSize: 13,
   },
 });

@@ -1,15 +1,18 @@
-
 // app/(tabs)/groups/[id].tsx
 // ------------------------------------------------
-// ✅ Updated to match services/groups.ts
+// ✅ Updated to match latest services/groups.ts
+// ✅ Uses getGroup() for real group details
 // ✅ Uses getMyGroupContributions()
-// ✅ Uses GroupContribution type
+// ✅ Uses getMyGroupSavingsSummary() to show my share/fund view
+// ✅ Uses source / note fields instead of old method / mpesa_receipt_number
+// ✅ Uses ROUTES for navigation
 // ------------------------------------------------
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -23,22 +26,25 @@ import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
+import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-
 import {
   getApiErrorMessage,
+  getGroup,
   getMyGroupContributions,
+  getMyGroupSavingsSummary,
+  Group,
   GroupContribution,
+  MyGroupSavingsRow,
 } from "@/services/groups";
 
 /* ------------------------------------------------
 Helpers
 ------------------------------------------------ */
 
-function formatKes(value?: string | number) {
+function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
-
-  if (Number.isNaN(n)) return "KES 0.00";
+  if (!Number.isFinite(n)) return "KES 0.00";
 
   return `KES ${n.toLocaleString("en-KE", {
     minimumFractionDigits: 2,
@@ -46,19 +52,40 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
-function fmtDate(s?: string) {
+function fmtDate(s?: string | null) {
   if (!s) return "—";
-  return String(s).replace("T", " ").slice(0, 16);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return String(s).replace("T", " ").slice(0, 16);
+  return d.toLocaleString();
+}
+
+function getSourceLabel(source?: string | null) {
+  const v = String(source || "").toUpperCase();
+  if (!v) return "—";
+  if (v === "MPESA") return "M-Pesa";
+  return v.replaceAll("_", " ");
+}
+
+function getJoinPolicyLabel(value?: string | null) {
+  const v = String(value || "").toUpperCase();
+  if (!v) return "—";
+  return v.replaceAll("_", " ");
+}
+
+function getGroupTypeLabel(group?: Group | null) {
+  return group?.group_type_display || group?.group_type || "—";
 }
 
 /* ------------------------------------------------
 Screen
 ------------------------------------------------ */
 
-export default function GroupContributionHistoryScreen() {
-  const { id } = useLocalSearchParams();
-  const groupId = Number(id);
+export default function GroupDetailScreen() {
+  const params = useLocalSearchParams();
+  const groupId = Number(params.id);
 
+  const [group, setGroup] = useState<Group | null>(null);
+  const [mySummary, setMySummary] = useState<MyGroupSavingsRow | null>(null);
   const [rows, setRows] = useState<GroupContribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,37 +97,75 @@ export default function GroupContributionHistoryScreen() {
     }
 
     try {
-      setLoading(true);
+      const [groupRes, contributionsRes, savingsRes] = await Promise.all([
+        getGroup(groupId),
+        getMyGroupContributions(groupId),
+        getMyGroupSavingsSummary(),
+      ]);
 
-      const data = await getMyGroupContributions(groupId);
+      setGroup(groupRes ?? null);
+      setRows(Array.isArray(contributionsRes) ? contributionsRes : []);
 
-      setRows(Array.isArray(data) ? data : []);
+      const mine =
+        Array.isArray(savingsRes)
+          ? savingsRes.find((r) => Number(r?.group?.id) === groupId) || null
+          : null;
+
+      setMySummary(mine);
     } catch (e: any) {
       Alert.alert("Group", getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
+      setGroup(null);
+      setRows([]);
+      setMySummary(null);
     }
   }, [groupId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      let mounted = true;
+
+      const run = async () => {
+        if (!mounted) return;
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      };
+
+      run();
+
+      return () => {
+        mounted = false;
+      };
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   const total = useMemo(() => {
     return rows.reduce((acc, r) => acc + Number(r.amount || 0), 0);
   }, [rows]);
 
-  /* ------------------------------------------------
-  UI
-  ------------------------------------------------ */
+  const myRole = mySummary?.my_role || group?.my_membership?.role || "—";
+  const myShare = mySummary?.my_share;
+  const fund = mySummary?.fund;
+
+  if (loading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -113,34 +178,95 @@ export default function GroupContributionHistoryScreen() {
     >
       {/* Header */}
 
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Group Contributions</Text>
-          <Text style={styles.hSub}>Group #{groupId}</Text>
+      <View style={styles.headerCard}>
+        <View style={styles.headerTop}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.hTitle}>{group?.name || `Group #${groupId}`}</Text>
+            <Text style={styles.hSub}>
+              {getGroupTypeLabel(group)} • {getJoinPolicyLabel(group?.join_policy)}
+            </Text>
+          </View>
+
+          <Button
+            variant="ghost"
+            title="Back"
+            onPress={() => router.back()}
+            leftIcon={
+              <Ionicons name="chevron-back" size={16} color={COLORS.primary} />
+            }
+          />
         </View>
 
-        <Button
-          variant="ghost"
-          title="Back"
-          onPress={() => router.back()}
-          leftIcon={
-            <Ionicons
-              name="chevron-back"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
-        />
-      </View>
+        {group?.description ? (
+          <Text style={styles.description}>{group.description}</Text>
+        ) : null}
 
-      {/* Summary */}
+        <View style={styles.metaGrid}>
+          <View style={styles.metaBox}>
+            <Text style={styles.metaLabel}>Members</Text>
+            <Text style={styles.metaValue}>{group?.member_count ?? "—"}</Text>
+          </View>
 
-      <View style={styles.summaryGrid}>
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>My Total Contribution</Text>
-          <Text style={styles.summaryValue}>{formatKes(total)}</Text>
+          <View style={styles.metaBox}>
+            <Text style={styles.metaLabel}>My Role</Text>
+            <Text style={styles.metaValue}>{String(myRole)}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.metaGrid, { marginTop: SPACING.sm }]}>
+          <View style={styles.metaBox}>
+            <Text style={styles.metaLabel}>Contribution Rule</Text>
+            <Text style={styles.metaValue}>
+              {group?.requires_contributions
+                ? formatKes(group?.contribution_amount)
+                : "Optional"}
+            </Text>
+          </View>
+
+          <View style={styles.metaBox}>
+            <Text style={styles.metaLabel}>Frequency</Text>
+            <Text style={styles.metaValue}>
+              {group?.contribution_frequency || "—"}
+            </Text>
+          </View>
         </View>
       </View>
+
+      {/* My Summary */}
+
+      <Section title="My Group Summary">
+        <View style={styles.summaryGrid}>
+          <View style={[styles.summaryCard, SHADOW.card]}>
+            <Text style={styles.summaryLabel}>My Total Contribution</Text>
+            <Text style={styles.summaryValue}>
+              {formatKes(myShare?.total_contributed ?? total)}
+            </Text>
+          </View>
+
+          <View style={[styles.summaryCard, SHADOW.card]}>
+            <Text style={styles.summaryLabel}>Available Share</Text>
+            <Text style={styles.summaryValue}>
+              {formatKes(myShare?.available_share ?? "0")}
+            </Text>
+          </View>
+        </View>
+
+        <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
+          <View style={[styles.summaryCard, SHADOW.card]}>
+            <Text style={styles.summaryLabel}>Reserved Share</Text>
+            <Text style={styles.summaryValue}>
+              {formatKes(myShare?.reserved_share ?? "0")}
+            </Text>
+          </View>
+
+          <View style={[styles.summaryCard, SHADOW.card]}>
+            <Text style={styles.summaryLabel}>Group Fund</Text>
+            <Text style={styles.summaryValue}>
+              {fund?.balance == null ? "Admins only" : formatKes(fund.balance)}
+            </Text>
+          </View>
+        </View>
+      </Section>
 
       {/* Actions */}
 
@@ -148,25 +274,49 @@ export default function GroupContributionHistoryScreen() {
         <Button
           title="Contribute"
           onPress={() =>
-            router.push(`/groups/contribute?group_id=${groupId}` as any)
+            router.push(ROUTES.dynamic.groupContribute(groupId) as any)
           }
           style={{ flex: 1 }}
           leftIcon={
-            <Ionicons
-              name="cash-outline"
-              size={18}
-              color={COLORS.white}
-            />
+            <Ionicons name="cash-outline" size={18} color={COLORS.white} />
+          }
+        />
+        <View style={{ width: SPACING.sm }} />
+        <Button
+          title="My Memberships"
+          variant="secondary"
+          onPress={() =>
+            router.push(ROUTES.dynamic.groupMemberships(groupId) as any)
+          }
+          style={{ flex: 1 }}
+          leftIcon={
+            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
           }
         />
       </View>
 
-      {/* Transactions */}
+      {/* Fund Notice */}
 
-      <Section title="Contribution History">
-        {loading ? (
-          <Text style={styles.muted}>Loading…</Text>
-        ) : rows.length === 0 ? (
+      {fund?.balance == null ? (
+        <Card style={styles.noticeCard}>
+          <View style={styles.noticeTop}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={COLORS.info}
+            />
+            <Text style={styles.noticeText}>
+              Group fund totals are visible to group admins only. You can still
+              see your own contribution share above.
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
+      {/* Contribution History */}
+
+      <Section title="My Contribution History">
+        {rows.length === 0 ? (
           <EmptyState
             icon="time-outline"
             title="No contributions yet"
@@ -178,6 +328,7 @@ export default function GroupContributionHistoryScreen() {
               <Card key={r.id ?? index} style={styles.rowCard}>
                 <View style={styles.rowTop}>
                   <Text style={styles.amount}>{formatKes(r.amount)}</Text>
+                  <Text style={styles.sourcePill}>{getSourceLabel(r.source)}</Text>
                 </View>
 
                 <Text style={styles.meta}>
@@ -185,17 +336,7 @@ export default function GroupContributionHistoryScreen() {
                   {r.reference ? ` • Ref: ${r.reference}` : ""}
                 </Text>
 
-                {r.method ? (
-                  <Text style={styles.narration}>
-                    Method: {r.method}
-                  </Text>
-                ) : null}
-
-                {r.mpesa_receipt_number ? (
-                  <Text style={styles.narration}>
-                    MPESA: {r.mpesa_receipt_number}
-                  </Text>
-                ) : null}
+                {r.note ? <Text style={styles.narration}>{r.note}</Text> : null}
               </Card>
             );
           })
@@ -219,12 +360,28 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
 
-  header: {
+  loadingWrap: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  headerCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  headerTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.md,
-    marginBottom: SPACING.md,
   },
 
   hTitle: {
@@ -238,6 +395,42 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
+  },
+
+  description: {
+    marginTop: SPACING.md,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: COLORS.gray,
+  },
+
+  metaGrid: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.md,
+  },
+
+  metaBox: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  metaLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+
+  metaValue: {
+    marginTop: 8,
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
   },
 
   summaryGrid: {
@@ -270,13 +463,27 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: "row",
     marginTop: SPACING.md,
+    marginBottom: SPACING.md,
     alignItems: "center",
   },
 
-  muted: {
-    marginTop: 6,
+  noticeCard: {
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+
+  noticeTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  noticeText: {
+    flex: 1,
     fontFamily: FONT.regular,
+    fontSize: 12,
     color: COLORS.gray,
+    lineHeight: 18,
   },
 
   rowCard: {
@@ -289,12 +496,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: SPACING.md,
   },
 
   amount: {
     fontFamily: FONT.bold,
     fontSize: 14,
     color: COLORS.dark,
+  },
+
+  sourcePill: {
+    fontFamily: FONT.bold,
+    fontSize: 11,
+    color: COLORS.primary,
   },
 
   meta: {
@@ -309,338 +523,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.textMuted,
+    lineHeight: 18,
   },
 });
-// // app/(tabs)/savings/[id].tsx (COMPLETE + UPDATED)
-// // ------------------------------------------------
-// // ✅ Updated to match the latest services/savings.ts
-// // ✅ Uses getSavingsHistoryRows() instead of getSavingsAccountHistory()
-// // ✅ Uses savingsStatementPdfUrl() helper name
-// // ✅ Supports both entry_type and txn_type history rows safely
-
-// import { Ionicons } from "@expo/vector-icons";
-// import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-// import React, { useCallback, useMemo, useState } from "react";
-// import {
-//   Alert,
-//   Linking,
-//   RefreshControl,
-//   ScrollView,
-//   StyleSheet,
-//   Text,
-//   View,
-// } from "react-native";
-
-// import Button from "@/components/ui/Button";
-// import Card from "@/components/ui/Card";
-// import EmptyState from "@/components/ui/EmptyState";
-// import Section from "@/components/ui/Section";
-
-// import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-// import { getErrorMessage } from "@/services/api";
-// import {
-//   getSavingsHistoryRows,
-//   SavingsHistoryRow,
-//   savingsStatementPdfUrl,
-// } from "@/services/savings";
-
-// function formatKes(value?: string | number) {
-//   const n = Number(value ?? 0);
-//   if (Number.isNaN(n)) return "KES 0.00";
-//   return `KES ${n.toLocaleString("en-KE", {
-//     minimumFractionDigits: 2,
-//     maximumFractionDigits: 2,
-//   })}`;
-// }
-
-// function fmtDate(s?: string) {
-//   if (!s) return "—";
-//   return String(s).replace("T", " ").slice(0, 16);
-// }
-
-// function getDisplayEntryType(row: SavingsHistoryRow): "CREDIT" | "DEBIT" {
-//   const entryType = String(row.entry_type || "").toUpperCase();
-//   const txnType = String(row.txn_type || "").toUpperCase();
-
-//   if (entryType === "CREDIT" || entryType === "DEBIT") {
-//     return entryType as "CREDIT" | "DEBIT";
-//   }
-
-//   if (txnType === "DEPOSIT") return "CREDIT";
-//   return "DEBIT";
-// }
-
-// function getDisplayNarration(row: SavingsHistoryRow) {
-//   return row.narration || row.note || "";
-// }
-
-// function EntryPill({ t }: { t: "CREDIT" | "DEBIT" }) {
-//   const isCredit = t === "CREDIT";
-
-//   return (
-//     <View
-//       style={[
-//         styles.pill,
-//         {
-//           backgroundColor: isCredit
-//             ? "rgba(46,125,50,0.12)"
-//             : "rgba(220,38,38,0.12)",
-//         },
-//       ]}
-//     >
-//       <Text
-//         style={[
-//           styles.pillText,
-//           { color: isCredit ? COLORS.success : COLORS.danger },
-//         ]}
-//       >
-//         {t}
-//       </Text>
-//     </View>
-//   );
-// }
-
-// export default function SavingsAccountHistoryScreen() {
-//   const { id } = useLocalSearchParams();
-//   const accountId = Number(id);
-
-//   const [rows, setRows] = useState<SavingsHistoryRow[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [refreshing, setRefreshing] = useState(false);
-
-//   const load = useCallback(async () => {
-//     if (!accountId || Number.isNaN(accountId)) {
-//       Alert.alert("Savings", "Invalid account id.");
-//       return;
-//     }
-
-//     try {
-//       setLoading(true);
-//       const data = await getSavingsHistoryRows(accountId);
-//       setRows(Array.isArray(data) ? data : []);
-//     } catch (e: any) {
-//       Alert.alert("Savings", getErrorMessage(e));
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [accountId]);
-
-//   useFocusEffect(
-//     useCallback(() => {
-//       load();
-//     }, [load])
-//   );
-
-//   const onRefresh = useCallback(async () => {
-//     setRefreshing(true);
-//     await load();
-//     setRefreshing(false);
-//   }, [load]);
-
-//   const totals = useMemo(() => {
-//     const credit = rows.reduce((acc, r) => {
-//       return acc + (getDisplayEntryType(r) === "CREDIT" ? Number(r.amount || 0) : 0);
-//     }, 0);
-
-//     const debit = rows.reduce((acc, r) => {
-//       return acc + (getDisplayEntryType(r) === "DEBIT" ? Number(r.amount || 0) : 0);
-//     }, 0);
-
-//     return { credit, debit };
-//   }, [rows]);
-
-//   const openStatement = useCallback(async () => {
-//     try {
-//       const url = savingsStatementPdfUrl(accountId);
-//       const ok = await Linking.canOpenURL(url);
-//       if (!ok) {
-//         Alert.alert("Statement", "Cannot open statement URL on this device.");
-//         return;
-//       }
-//       await Linking.openURL(url);
-//     } catch {
-//       Alert.alert("Statement", "Failed to open statement.");
-//     }
-//   }, [accountId]);
-
-//   return (
-//     <ScrollView
-//       style={styles.container}
-//       contentContainerStyle={styles.content}
-//       refreshControl={
-//         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-//       }
-//       showsVerticalScrollIndicator={false}
-//     >
-//       {/* Header */}
-//       <View style={styles.header}>
-//         <View style={{ flex: 1 }}>
-//           <Text style={styles.hTitle}>Savings History</Text>
-//           <Text style={styles.hSub}>Account #{accountId}</Text>
-//         </View>
-
-//         <Button
-//           variant="ghost"
-//           title="Back"
-//           onPress={() => router.back()}
-//           leftIcon={
-//             <Ionicons
-//               name="chevron-back"
-//               size={16}
-//               color={COLORS.primary}
-//             />
-//           }
-//         />
-//       </View>
-
-//       {/* Summary */}
-//       <View style={styles.summaryGrid}>
-//         <View style={[styles.summaryCard, SHADOW.card]}>
-//           <Text style={styles.summaryLabel}>Total Credits</Text>
-//           <Text style={styles.summaryValue}>{formatKes(totals.credit)}</Text>
-//         </View>
-
-//         <View style={[styles.summaryCard, SHADOW.card]}>
-//           <Text style={styles.summaryLabel}>Total Debits</Text>
-//           <Text style={styles.summaryValue}>{formatKes(totals.debit)}</Text>
-//         </View>
-//       </View>
-
-//       {/* Actions */}
-//       <View style={styles.actionBar}>
-//         <Button
-//           title="Deposit"
-//           onPress={() => router.push("/(tabs)/payments/deposit" as any)}
-//           style={{ flex: 1 }}
-//           leftIcon={
-//             <Ionicons
-//               name="arrow-down-circle-outline"
-//               size={18}
-//               color={COLORS.white}
-//             />
-//           }
-//         />
-//         <View style={{ width: SPACING.sm }} />
-//         <Button
-//           title="Statement PDF"
-//           variant="secondary"
-//           onPress={openStatement}
-//           style={{ flex: 1 }}
-//           leftIcon={
-//             <Ionicons
-//               name="document-text-outline"
-//               size={18}
-//               color={COLORS.primary}
-//             />
-//           }
-//         />
-//       </View>
-
-//       <Section title="Transactions">
-//         {loading ? (
-//           <Text style={styles.muted}>Loading…</Text>
-//         ) : rows.length === 0 ? (
-//           <EmptyState
-//             icon="time-outline"
-//             title="No history yet"
-//             subtitle="Your deposits and withdrawals will appear here after confirmation."
-//           />
-//         ) : (
-//           rows.slice(0, 300).map((r) => {
-//             const displayType = getDisplayEntryType(r);
-//             const narration = getDisplayNarration(r);
-
-//             return (
-//               <Card key={r.id} style={styles.rowCard}>
-//                 <View style={styles.rowTop}>
-//                   <EntryPill t={displayType} />
-//                   <Text style={styles.amount}>{formatKes(r.amount)}</Text>
-//                 </View>
-
-//                 <Text style={styles.meta}>
-//                   {fmtDate(r.created_at)}
-//                   {r.reference ? ` • Ref: ${r.reference}` : ""}
-//                   {r.txn_type ? ` • ${String(r.txn_type).toUpperCase()}` : ""}
-//                 </Text>
-
-//                 {narration ? (
-//                   <Text style={styles.narration}>{narration}</Text>
-//                 ) : null}
-//               </Card>
-//             );
-//           })
-//         )}
-//       </Section>
-
-//       <View style={{ height: 24 }} />
-//     </ScrollView>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, backgroundColor: COLORS.background },
-//   content: { padding: SPACING.lg, paddingBottom: 24 },
-
-//   header: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "space-between",
-//     gap: SPACING.md,
-//     marginBottom: SPACING.md,
-//   },
-
-//   hTitle: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
-//   hSub: {
-//     marginTop: 6,
-//     fontFamily: FONT.regular,
-//     fontSize: 12,
-//     color: COLORS.gray,
-//   },
-
-//   summaryGrid: { flexDirection: "row", gap: SPACING.sm as any },
-//   summaryCard: {
-//     flex: 1,
-//     backgroundColor: COLORS.white,
-//     borderRadius: RADIUS.lg,
-//     borderWidth: 1,
-//     borderColor: COLORS.border,
-//     padding: SPACING.md,
-//   },
-//   summaryLabel: { fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
-//   summaryValue: {
-//     marginTop: 8,
-//     fontFamily: FONT.bold,
-//     fontSize: 16,
-//     color: COLORS.dark,
-//   },
-
-//   actionBar: { flexDirection: "row", marginTop: SPACING.md, alignItems: "center" },
-
-//   muted: { marginTop: 6, fontFamily: FONT.regular, color: COLORS.gray },
-
-//   rowCard: { marginBottom: SPACING.md, padding: SPACING.md, ...SHADOW.card },
-//   rowTop: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "space-between",
-//   },
-
-//   amount: { fontFamily: FONT.bold, fontSize: 14, color: COLORS.dark },
-
-//   meta: {
-//     marginTop: 10,
-//     fontFamily: FONT.regular,
-//     fontSize: 12,
-//     color: COLORS.gray,
-//   },
-//   narration: {
-//     marginTop: 6,
-//     fontFamily: FONT.regular,
-//     fontSize: 12,
-//     color: COLORS.textMuted,
-//     lineHeight: 18,
-//   },
-
-//   pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-//   pillText: { fontFamily: FONT.bold, fontSize: 11, letterSpacing: 0.3 },
-// });

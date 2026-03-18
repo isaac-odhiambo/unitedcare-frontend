@@ -5,6 +5,9 @@
 // --------------------------------------------------
 
 export const ENDPOINTS = {
+  /* =========================================================
+     ACCOUNTS
+  ========================================================= */
   accounts: {
     register: "/api/accounts/register/",
     verifyOtp: "/api/accounts/verify-otp/",
@@ -16,6 +19,9 @@ export const ENDPOINTS = {
     kycSubmit: "/api/accounts/kyc/",
   },
 
+  /* =========================================================
+     SAVINGS
+  ========================================================= */
   savings: {
     accounts: "/api/savings/accounts/",
     createAccount: "/api/savings/accounts/create/",
@@ -24,6 +30,9 @@ export const ENDPOINTS = {
       `/api/savings/accounts/${accountId}/history/`,
   },
 
+  /* =========================================================
+     PAYMENTS (Centralized payment engine)
+  ========================================================= */
   payments: {
     myLedger: "/payments/ledger/my/",
     adminLedger: "/payments/ledger/admin/",
@@ -31,8 +40,10 @@ export const ENDPOINTS = {
     myWithdrawals: "/payments/withdrawals/my/",
     adminWithdrawals: "/payments/withdrawals/admin/",
     requestWithdrawal: "/payments/withdrawals/request/",
+
     approveWithdrawal: (withdrawalId: number | string) =>
       `/payments/withdrawals/${withdrawalId}/approve/`,
+
     rejectWithdrawal: (withdrawalId: number | string) =>
       `/payments/withdrawals/${withdrawalId}/reject/`,
 
@@ -40,80 +51,147 @@ export const ENDPOINTS = {
     adminMpesa: "/payments/mpesa/admin/",
   },
 
+  /* =========================================================
+     GROUPS
+  ========================================================= */
   groups: {
     root: "/api/groups/",
+
+    // Group CRUD
     groups: "/api/groups/groups/",
     detail: (groupId: number | string) => `/api/groups/groups/${groupId}/`,
 
+    // Available groups (from @action in GroupViewSet)
+    available: "/api/groups/groups/available/",
+
+    /* -----------------------------
+       Memberships
+    ----------------------------- */
     memberships: "/api/groups/memberships/",
     membershipDetail: (membershipId: number | string) =>
       `/api/groups/memberships/${membershipId}/`,
 
-    contribute: "/api/groups/contribute/",
-    mySavings: "/api/groups/my-savings/",
+    /* -----------------------------
+       Join Requests
+    ----------------------------- */
+    joinRequests: "/api/groups/join-requests/",
+    joinRequestDetail: (requestId: number | string) =>
+      `/api/groups/join-requests/${requestId}/`,
 
+    approveJoinRequest: (requestId: number | string) =>
+      `/api/groups/join-requests/${requestId}/approve/`,
+
+    rejectJoinRequest: (requestId: number | string) =>
+      `/api/groups/join-requests/${requestId}/reject/`,
+
+    cancelJoinRequest: (requestId: number | string) =>
+      `/api/groups/join-requests/${requestId}/cancel/`,
+
+    /* -----------------------------
+       Group Savings
+    ----------------------------- */
+    mySavings: "/api/groups/my-savings/",
+    contribute: "/api/groups/contribute/",
+
+    /* -----------------------------
+       Contribution History
+    ----------------------------- */
     myContributions: (groupId: number | string) =>
       `/api/groups/${groupId}/contributions/my/`,
+
     allContributions: (groupId: number | string) =>
       `/api/groups/${groupId}/contributions/all/`,
   },
 
+  /* =========================================================
+     LOANS
+  ========================================================= */
   loans: {
     myLoans: "/api/loans/myloans/",
+    eligibility: "/api/loans/eligibility/",
+    guarantorCandidates: "/api/loans/guarantor-candidates/",
     request: "/api/loans/request/",
 
-    detail: (loanId: number | string) => `/api/loans/loan/${loanId}/`,
-    approve: (loanId: number | string) => `/api/loans/loan/${loanId}/approve/`,
-    pay: (loanId: number | string) => `/api/loans/loan/${loanId}/pay/`,
+    detail: (loanId: number | string) =>
+      `/api/loans/loan/${loanId}/`,
+
+    approve: (loanId: number | string) =>
+      `/api/loans/loan/${loanId}/approve/`,
+
+    pay: (loanId: number | string) =>
+      `/api/loans/loan/${loanId}/pay/`,
 
     addGuarantor: "/api/loans/loan/add-guarantor/",
 
     myGuaranteeRequests: "/api/loans/guarantee/my-requests/",
+
     acceptGuarantee: (guarantorId: number | string) =>
       `/api/loans/guarantee/${guarantorId}/accept/`,
+
     rejectGuarantee: (guarantorId: number | string) =>
       `/api/loans/guarantee/${guarantorId}/reject/`,
   },
 
+  /* =========================================================
+     MERRY-GO-ROUND
+  ========================================================= */
   merry: {
     my: "/api/merry/my/",
     available: "/api/merry/available/",
     create: "/api/merry/create/",
 
-    detail: (merryId: number | string) => `/api/merry/${merryId}/`,
+    detail: (merryId: number | string) =>
+      `/api/merry/${merryId}/`,
 
-    duesAdmin: (merryId: number | string) => `/api/merry/${merryId}/dues/`,
+    duesAdmin: (merryId: number | string) =>
+      `/api/merry/${merryId}/dues/`,
+
     ensureDues: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/ensure/`,
-    duesMy: (merryId: number | string) => `/api/merry/${merryId}/dues/my/`,
+
+    duesMy: (merryId: number | string) =>
+      `/api/merry/${merryId}/dues/my/`,
 
     joinRequest: (merryId: number | string) =>
       `/api/merry/${merryId}/join/request/`,
+
     adminJoinRequests: (merryId: number | string) =>
       `/api/merry/${merryId}/join/requests/`,
 
-    members: (merryId: number | string) => `/api/merry/${merryId}/members/`,
-    seats: (merryId: number | string) => `/api/merry/${merryId}/seats/`,
-    slots: (merryId: number | string) => `/api/merry/${merryId}/slots/`,
+    members: (merryId: number | string) =>
+      `/api/merry/${merryId}/members/`,
+
+    seats: (merryId: number | string) =>
+      `/api/merry/${merryId}/seats/`,
+
+    slots: (merryId: number | string) =>
+      `/api/merry/${merryId}/slots/`,
 
     paymentIntent: (merryId: number | string) =>
       `/api/merry/${merryId}/payments/intent/`,
+
     myPayments: "/api/merry/payments/my/",
+
     confirmPayment: (paymentId: number | string) =>
       `/api/merry/payments/${paymentId}/confirm/`,
 
     createPayout: (merryId: number | string) =>
       `/api/merry/${merryId}/payouts/create/`,
+
     payoutSchedule: (merryId: number | string) =>
       `/api/merry/${merryId}/payouts/schedule/`,
+
     markPayoutPaid: (payoutId: number | string) =>
       `/api/merry/payouts/${payoutId}/paid/`,
 
     myJoinRequests: "/api/merry/join/requests/my/",
+
     approveJoinRequest: (requestId: number | string) =>
       `/api/merry/join/requests/${requestId}/approve/`,
+
     cancelJoinRequest: (requestId: number | string) =>
       `/api/merry/join/requests/${requestId}/cancel/`,
+
     rejectJoinRequest: (requestId: number | string) =>
       `/api/merry/join/requests/${requestId}/reject/`,
   },

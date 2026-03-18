@@ -1,4 +1,4 @@
-// app/(tabs)/merry/admin-join-requests.tsx
+// app/(tabs)/merry/join-request.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -9,90 +9,72 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
+import Input from "@/components/ui/Input";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
 import {
-  adminApproveJoinRequest,
-  adminListJoinRequests,
-  adminRejectJoinRequest,
+  AvailableMerryRow,
+  fmtKES,
   getApiErrorMessage,
-  getMerryDetail,
-  JoinRequestRow,
-  MerryDetail,
+  getAvailableMerries,
+  requestToJoinMerry,
 } from "@/services/merry";
-import { getMe, isAdminUser, MeResponse } from "@/services/profile";
-import { getSessionUser, SessionUser } from "@/services/session";
-
-type AdminJoinUser = Partial<MeResponse> & Partial<SessionUser>;
-type FilterStatus = "ALL" | "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 function statusColor(status: string) {
   const s = String(status || "").toUpperCase();
   if (s === "APPROVED") return COLORS.success;
   if (s === "PENDING") return COLORS.warning;
-  if (["REJECTED", "CANCELLED"].includes(s)) return COLORS.danger;
+  if (s === "REJECTED" || s === "CANCELLED") return COLORS.danger;
   return COLORS.gray;
 }
 
-function StatusPill({ status }: { status: string }) {
-  const color = statusColor(status);
-
+function StatusPill({ label }: { label: string }) {
+  const color = statusColor(label);
   return (
     <View style={[styles.pill, { borderColor: color }]}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-      <Text style={styles.pillText}>{String(status || "—").toUpperCase()}</Text>
+      <View style={[styles.pillDot, { backgroundColor: color }]} />
+      <Text style={styles.pillText}>{String(label || "—").toUpperCase()}</Text>
     </View>
   );
 }
 
-function FilterChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: FilterStatus;
-  active: boolean;
-  onPress: () => void;
-}) {
+function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <Card onPress={onPress} style={[styles.filterChip, active && styles.filterChipActive]}>
-      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-        {label}
-      </Text>
-    </Card>
+    <View style={styles.summaryRow}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
   );
 }
 
-export default function AdminJoinRequestsScreen() {
-  const params = useLocalSearchParams<{ merryId?: string }>();
-  const merryId = Number(params.merryId ?? 0);
+export default function MerryJoinRequestScreen() {
+  const params = useLocalSearchParams<{ merryId?: string; id?: string }>();
+  const merryId = useMemo(
+    () => Number(params.merryId || params.id || 0),
+    [params.merryId, params.id]
+  );
 
-  const [user, setUser] = useState<AdminJoinUser | null>(null);
-  const [merry, setMerry] = useState<MerryDetail | null>(null);
-  const [requests, setRequests] = useState<JoinRequestRow[]>([]);
+  const [merry, setMerry] = useState<AvailableMerryRow | null>(null);
+  const [requestedSeats, setRequestedSeats] = useState("1");
+  const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [submittingId, setSubmittingId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<FilterStatus>("PENDING");
-  const [rejectNotes, setRejectNotes] = useState<Record<number, string>>({});
-
-  const isAdmin = isAdminUser(user);
 
   const load = useCallback(async () => {
     if (!merryId || !Number.isFinite(merryId)) {
       setError("Missing or invalid merry ID.");
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -100,47 +82,37 @@ export default function AdminJoinRequestsScreen() {
       setLoading(true);
       setError("");
 
-      const [sessionRes, meRes, merryRes, reqRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-        getMerryDetail(merryId),
-        adminListJoinRequests(merryId, filter === "ALL" ? undefined : filter),
-      ]);
+      const rows = await getAvailableMerries();
+      const row = Array.isArray(rows)
+        ? rows.find((r) => Number(r.id) === merryId) || null
+        : null;
 
-      const sessionUser =
-        sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser =
-        meRes.status === "fulfilled" ? meRes.value : null;
+      setMerry(row);
 
-      setUser(
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null
-      );
-
-      if (merryRes.status === "fulfilled") {
-        setMerry(merryRes.value);
+      if (!row) {
+        setError("This merry is not available to join.");
       } else {
-        setMerry(null);
-        setError(getApiErrorMessage(merryRes.reason) || getErrorMessage(merryRes.reason));
-      }
-
-      if (reqRes.status === "fulfilled") {
-        setRequests(Array.isArray(reqRes.value) ? reqRes.value : []);
-      } else {
-        setRequests([]);
-        setError(getApiErrorMessage(reqRes.reason) || getErrorMessage(reqRes.reason));
+        const maxSeatsAllowed =
+          row.available_seats == null
+            ? 1
+            : Math.max(1, Math.min(Number(row.available_seats || 1), 50));
+        setRequestedSeats((prev) => {
+          const n = Number(prev || 1);
+          if (!Number.isFinite(n) || n < 1) return "1";
+          if (row.available_seats != null && n > maxSeatsAllowed) {
+            return String(maxSeatsAllowed);
+          }
+          return String(n);
+        });
       }
     } catch (e: any) {
-      setRequests([]);
-      setError(getApiErrorMessage(e) || getErrorMessage(e));
+      setError(getApiErrorMessage(e));
+      setMerry(null);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [filter, merryId]);
+  }, [merryId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -150,58 +122,100 @@ export default function AdminJoinRequestsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
+    await load();
   }, [load]);
 
-  const totals = useMemo(() => {
-    return {
-      total: requests.length,
-      pending: requests.filter((r) => String(r.status).toUpperCase() === "PENDING").length,
-      approved: requests.filter((r) => String(r.status).toUpperCase() === "APPROVED").length,
-      rejected: requests.filter((r) =>
-        ["REJECTED", "CANCELLED"].includes(String(r.status).toUpperCase())
-      ).length,
-    };
-  }, [requests]);
+  const parsedRequestedSeats = useMemo(() => {
+    const n = Number(requestedSeats || 0);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+  }, [requestedSeats]);
 
-  const handleApprove = useCallback(
-    async (req: JoinRequestRow) => {
-      try {
-        setSubmittingId(req.id);
-        await adminApproveJoinRequest(req.id);
+  const alreadyPending =
+    String(merry?.my_join_request?.status || "").toUpperCase() === "PENDING";
 
-        Alert.alert("Approved", "Join request approved successfully.");
-        await load();
-      } catch (e: any) {
-        Alert.alert("Approve failed", getApiErrorMessage(e) || getErrorMessage(e));
-      } finally {
-        setSubmittingId(null);
+  const isClosed = merry?.is_open === false;
+  const noSeatsLeft = merry?.available_seats === 0;
+
+  const maxRequestableSeats = useMemo(() => {
+    if (!merry) return 0;
+    if (merry.available_seats == null) return 50;
+    return Math.max(0, Math.min(Number(merry.available_seats || 0), 50));
+  }, [merry]);
+
+  const canSubmit = useMemo(() => {
+    if (!merry) return false;
+    if (alreadyPending) return false;
+    if (isClosed) return false;
+    if (noSeatsLeft) return false;
+    if (!parsedRequestedSeats || parsedRequestedSeats < 1) return false;
+    if (parsedRequestedSeats > maxRequestableSeats) return false;
+    if (merry.can_request_join === false) return false;
+    return true;
+  }, [
+    merry,
+    alreadyPending,
+    isClosed,
+    noSeatsLeft,
+    parsedRequestedSeats,
+    maxRequestableSeats,
+  ]);
+
+  const seatNumbersText = useMemo(() => {
+    if (!merry?.available_seat_numbers?.length) return "";
+    return merry.available_seat_numbers.join(", ");
+  }, [merry?.available_seat_numbers]);
+
+  const submit = useCallback(async () => {
+    if (!merry) {
+      Alert.alert("Join request", "This merry could not be found.");
+      return;
+    }
+
+    if (!canSubmit) {
+      let msg = "This request cannot be submitted.";
+      if (alreadyPending) msg = "You already have a pending join request.";
+      else if (isClosed) msg = "This merry is currently closed for joining.";
+      else if (noSeatsLeft) msg = "No seats are currently available.";
+      else if (!parsedRequestedSeats || parsedRequestedSeats < 1) {
+        msg = "Requested seats must be at least 1.";
+      } else if (parsedRequestedSeats > maxRequestableSeats) {
+        msg = `You can request up to ${maxRequestableSeats} seat(s).`;
       }
-    },
-    [load]
-  );
+      Alert.alert("Join request", msg);
+      return;
+    }
 
-  const handleReject = useCallback(
-    async (req: JoinRequestRow) => {
-      try {
-        setSubmittingId(req.id);
-        const note = (rejectNotes[req.id] || "").trim();
+    try {
+      setSubmitting(true);
 
-        await adminRejectJoinRequest(req.id, note ? { note } : {});
-        Alert.alert("Rejected", "Join request rejected.");
-        await load();
-      } catch (e: any) {
-        Alert.alert("Reject failed", getApiErrorMessage(e) || getErrorMessage(e));
-      } finally {
-        setSubmittingId(null);
-      }
-    },
-    [load, rejectNotes]
-  );
+      const res = await requestToJoinMerry(merry.id, {
+        note: note.trim() || undefined,
+        requested_seats: parsedRequestedSeats,
+      });
+
+      Alert.alert(
+        "Join request sent",
+        `Your request for ${res.requested_seats} seat(s) has been submitted.`
+      );
+
+      router.replace({
+        pathname: ROUTES.tabs.merry as any,
+      });
+    } catch (e: any) {
+      Alert.alert("Join request", getApiErrorMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    merry,
+    canSubmit,
+    note,
+    parsedRequestedSeats,
+    alreadyPending,
+    isClosed,
+    noSeatsLeft,
+    maxRequestableSeats,
+  ]);
 
   if (loading) {
     return (
@@ -213,23 +227,23 @@ export default function AdminJoinRequestsScreen() {
 
   if (!merryId || !Number.isFinite(merryId)) {
     return (
-      <View style={styles.container}>
+      <View style={styles.page}>
         <EmptyState
           title="Invalid merry"
           subtitle="No merry was selected."
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry)}
+          actionLabel="Back"
+          onAction={() => router.back()}
         />
       </View>
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!merry) {
     return (
-      <View style={styles.container}>
+      <View style={styles.page}>
         <EmptyState
-          title="Admin access required"
-          subtitle="Only admins can manage merry join requests."
+          title="Merry not available"
+          subtitle={error || "This merry is not available for joining."}
           actionLabel="Back to Merry"
           onAction={() => router.replace(ROUTES.tabs.merry)}
         />
@@ -239,179 +253,144 @@ export default function AdminJoinRequestsScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Join Requests</Text>
-          <Text style={styles.hSub}>
-            {merry?.name || `Merry #${merryId}`} • Admin Review
-          </Text>
+          <Text style={styles.hTitle}>Join Merry</Text>
+          <Text style={styles.hSub}>{merry.name}</Text>
         </View>
 
         <Button
           variant="ghost"
           title="Back"
           onPress={() => router.back()}
-          leftIcon={
-            <Ionicons
-              name="arrow-back-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
+          leftIcon={<Ionicons name="arrow-back-outline" size={16} color={COLORS.primary} />}
         />
       </View>
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Requests</Text>
-          <Text style={styles.summaryValue}>{totals.total}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Pending</Text>
-          <Text style={styles.summaryValue}>{totals.pending}</Text>
-        </View>
-      </View>
+      {alreadyPending ? (
+        <Card style={styles.noticeCard}>
+          <View style={styles.noticeTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>Request already pending</Text>
+              <Text style={styles.noticeText}>
+                Your earlier join request is still waiting for admin review.
+              </Text>
+            </View>
+            <StatusPill label={merry.my_join_request?.status || "PENDING"} />
+          </View>
+        </Card>
+      ) : null}
 
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Approved</Text>
-          <Text style={styles.summaryValue}>{totals.approved}</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Rejected</Text>
-          <Text style={styles.summaryValue}>{totals.rejected}</Text>
-        </View>
-      </View>
+      {isClosed ? (
+        <Card style={styles.noticeCard}>
+          <Text style={styles.noticeTitle}>Joining is closed</Text>
+          <Text style={styles.noticeText}>
+            This merry is currently not accepting new join requests.
+          </Text>
+        </Card>
+      ) : null}
 
-      <Section title="Filter">
-        <View style={styles.filterRow}>
-          {(["ALL", "PENDING", "APPROVED", "REJECTED", "CANCELLED"] as FilterStatus[]).map(
-            (item) => (
-              <FilterChip
-                key={item}
-                label={item}
-                active={filter === item}
-                onPress={() => setFilter(item)}
-              />
-            )
-          )}
-        </View>
+      {noSeatsLeft ? (
+        <Card style={styles.noticeCard}>
+          <Text style={styles.noticeTitle}>No seats available</Text>
+          <Text style={styles.noticeText}>
+            All available seats have already been allocated.
+          </Text>
+        </Card>
+      ) : null}
+
+      <Section title="Overview">
+        <Card style={styles.sectionCard}>
+          <SummaryRow label="Contribution / Seat" value={fmtKES(merry.contribution_amount)} />
+          <SummaryRow label="Order Type" value={String(merry.payout_order_type || "—")} />
+          <SummaryRow label="Frequency" value={String(merry.payout_frequency || "—")} />
+          <SummaryRow label="Slots / Period" value={String(merry.payouts_per_period || 1)} />
+          <SummaryRow label="Members" value={String(merry.members_count || 0)} />
+          <SummaryRow label="Seats" value={String(merry.seats_count || 0)} />
+          <SummaryRow
+            label="Open for Joining"
+            value={merry.is_open === false ? "No" : "Yes"}
+          />
+          <SummaryRow
+            label="Available Seats"
+            value={merry.available_seats == null ? "Unlimited" : String(merry.available_seats)}
+          />
+          <SummaryRow label="Next Payout" value={merry.next_payout_date || "—"} />
+        </Card>
       </Section>
 
-      <Section title="Requests">
-        {requests.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No join requests"
-            subtitle="No requests were found for this filter."
+      {seatNumbersText ? (
+        <Section title="Available Seat Numbers">
+          <Card style={styles.sectionCard}>
+            <Text style={styles.seatNumbersText}>{seatNumbersText}</Text>
+            <Text style={styles.helpText}>
+              Seat numbers are assigned during approval. This list helps you know what is still free.
+            </Text>
+          </Card>
+        </Section>
+      ) : null}
+
+      <Section title="Request Details">
+        <Card style={styles.formCard}>
+          <Input
+            label="Requested Seats"
+            placeholder="Enter number of seats"
+            keyboardType="number-pad"
+            value={requestedSeats}
+            onChangeText={(text: string) => setRequestedSeats(text.replace(/[^\d]/g, ""))}
           />
-        ) : (
-          requests.map((req) => {
-            const pending = String(req.status).toUpperCase() === "PENDING";
-            const busy = submittingId === req.id;
 
-            return (
-              <Card key={req.id} style={styles.itemCard}>
-                <View style={styles.topRow}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.title}>
-                      {req.username || `User #${req.user_id ?? "—"}`}
-                    </Text>
-                    <Text style={styles.sub}>
-                      {req.phone || "No phone"} {req.created_at ? `• ${req.created_at}` : ""}
-                    </Text>
-                  </View>
+          <Text style={styles.helpText}>
+            {merry.available_seats == null
+              ? "You may request one or more seats, up to 50."
+              : `You may request up to ${maxRequestableSeats} seat(s).`}
+          </Text>
 
-                  <StatusPill status={req.status} />
-                </View>
+          <View style={{ height: SPACING.md }} />
 
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Requested seats</Text>
-                  <Text style={styles.kvValue}>{String(req.requested_seats ?? 0)}</Text>
-                </View>
+          <Input
+            label="Note (optional)"
+            placeholder="Add a note for the admin"
+            value={note}
+            onChangeText={setNote}
+            multiline
+          />
+        </Card>
+      </Section>
 
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Note</Text>
-                  <Text style={styles.kvValue}>{req.note || "—"}</Text>
-                </View>
+      <Section title="Actions">
+        <Card style={styles.actionCard}>
+          <Button
+            title={submitting ? "Submitting..." : alreadyPending ? "Request Pending" : "Submit Join Request"}
+            onPress={submit}
+            disabled={!canSubmit || submitting}
+            leftIcon={
+              !submitting ? (
+                <Ionicons name="paper-plane-outline" size={18} color={COLORS.white} />
+              ) : undefined
+            }
+          />
 
-                {pending ? (
-                  <>
-                    <Text style={styles.inputLabel}>Reject note (optional)</Text>
-                    <TextInput
-                      value={rejectNotes[req.id] || ""}
-                      onChangeText={(text) =>
-                        setRejectNotes((prev) => ({ ...prev, [req.id]: text }))
-                      }
-                      placeholder="Reason for rejection"
-                      placeholderTextColor={COLORS.gray}
-                      style={styles.input}
-                    />
+          <View style={{ height: SPACING.sm }} />
 
-                    <View style={styles.actionsRow}>
-                      <Button
-                        title={busy ? "Working..." : "Approve"}
-                        onPress={() => handleApprove(req)}
-                        disabled={busy}
-                        style={{ flex: 1 }}
-                        leftIcon={
-                          <Ionicons
-                            name="checkmark-outline"
-                            size={18}
-                            color={COLORS.white}
-                          />
-                        }
-                      />
-                      <View style={{ width: SPACING.sm }} />
-                      <Button
-                        title={busy ? "Working..." : "Reject"}
-                        variant="secondary"
-                        onPress={() => handleReject(req)}
-                        disabled={busy}
-                        style={{ flex: 1 }}
-                        leftIcon={
-                          <Ionicons
-                            name="close-outline"
-                            size={18}
-                            color={COLORS.dark}
-                          />
-                        }
-                      />
-                    </View>
-                  </>
-                ) : (
-                  <View style={styles.actionsRow}>
-                    <Button
-                      title="Open Merry"
-                      variant="secondary"
-                      onPress={() =>
-                        router.push(ROUTES.dynamic.merryDetail(merryId) as any)
-                      }
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-                )}
-              </Card>
-            );
-          })
-        )}
+          <Button
+            title="Back to Merry List"
+            variant="secondary"
+            onPress={() => router.replace(ROUTES.tabs.merry)}
+          />
+        </Card>
       </Section>
 
       <View style={{ height: 24 }} />
@@ -420,7 +399,7 @@ export default function AdminJoinRequestsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  page: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg, paddingBottom: 24 },
 
   loadingWrap: {
@@ -431,16 +410,10 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
     marginBottom: SPACING.lg,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    ...SHADOW.card,
+    gap: SPACING.md,
   },
 
   hTitle: {
@@ -451,177 +424,122 @@ const styles = StyleSheet.create({
 
   hSub: {
     marginTop: 6,
+    fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
-    fontFamily: FONT.regular,
   },
 
-  errorCard: {
-    marginBottom: SPACING.md,
+  sectionCard: {
     padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
 
-  errorText: {
-    flex: 1,
-    color: COLORS.danger,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  summaryGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  formCard: {
     padding: SPACING.md,
-    ...SHADOW.card,
+  },
+
+  actionCard: {
+    padding: SPACING.md,
+  },
+
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    gap: SPACING.md,
   },
 
   summaryLabel: {
+    fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
-    fontFamily: FONT.regular,
   },
 
   summaryValue: {
-    marginTop: 6,
-    fontSize: 16,
-    fontFamily: FONT.bold,
+    flexShrink: 1,
+    textAlign: "right",
+    fontFamily: FONT.semiBold,
+    fontSize: 12,
     color: COLORS.dark,
   },
 
-  filterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm as any,
-  },
-
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-
-  filterChipActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.surface,
-  },
-
-  filterChipText: {
-    fontSize: 12,
-    fontFamily: FONT.medium,
-    color: COLORS.text,
-  },
-
-  filterChipTextActive: {
-    color: COLORS.primary,
-  },
-
-  itemCard: {
+  noticeCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
     ...SHADOW.card,
   },
 
-  topRow: {
+  noticeTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
     gap: SPACING.md,
   },
 
-  title: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
+  noticeTitle: {
+    fontFamily: FONT.semiBold,
+    fontSize: 13,
     color: COLORS.dark,
   },
 
-  sub: {
-    fontSize: 12,
-    color: COLORS.gray,
-    marginTop: 4,
+  noticeText: {
+    marginTop: 6,
     fontFamily: FONT.regular,
-  },
-
-  kvRow: {
-    marginTop: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-
-  kvLabel: {
     fontSize: 12,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
+    lineHeight: 18,
+  },
+
+  seatNumbersText: {
+    fontFamily: FONT.medium,
+    fontSize: 13,
+    color: COLORS.dark,
+    lineHeight: 20,
+  },
+
+  helpText: {
+    marginTop: 6,
     fontFamily: FONT.regular,
-  },
-
-  kvValue: {
-    flexShrink: 1,
-    textAlign: "right",
-    fontSize: 12,
-    fontFamily: FONT.medium,
-    color: COLORS.dark,
-  },
-
-  inputLabel: {
-    marginTop: SPACING.md,
-    marginBottom: 8,
-    fontFamily: FONT.medium,
-    fontSize: 12,
-    color: COLORS.dark,
-  },
-
-  input: {
-    height: 46,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 12,
-    backgroundColor: COLORS.white,
-    color: COLORS.dark,
-  },
-
-  actionsRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
+    fontSize: 11,
+    color: COLORS.gray,
+    lineHeight: 17,
   },
 
   pill: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: RADIUS.round,
     borderWidth: 1,
     backgroundColor: COLORS.surface,
   },
 
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 6,
-    marginRight: 6,
+  pillDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 8,
   },
 
   pillText: {
     fontSize: 11,
     fontFamily: FONT.medium,
     color: COLORS.text,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    ...SHADOW.card,
+  },
+
+  errorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
 });

@@ -28,6 +28,15 @@ export type MpesaTxStatus =
   | "TIMEOUT"
   | string;
 
+export type MpesaAllocationStatus =
+  | "UNALLOCATED"
+  | "AUTO_ALLOCATED"
+  | "PARTIALLY_ALLOCATED"
+  | "MANUAL_REVIEW"
+  | "MANUALLY_ALLOCATED"
+  | "INVALID_REFERENCE"
+  | string;
+
 export type MpesaPurpose =
   | "SAVINGS_DEPOSIT"
   | "MERRY_CONTRIBUTION"
@@ -48,7 +57,7 @@ export type MpesaTransaction = {
   amount: string;
 
   direction: "IN" | "OUT" | string;
-  channel: "STK" | "B2C" | string;
+  channel: "STK" | "C2B" | "B2C" | string;
   purpose: MpesaPurpose | string;
   status: MpesaTxStatus;
 
@@ -69,6 +78,14 @@ export type MpesaTransaction = {
   ledger_posted?: boolean;
   created_at?: string;
   updated_at?: string;
+
+  /**
+   * New allocation workflow fields from backend
+   */
+  allocation_status?: MpesaAllocationStatus;
+  allocation_notes?: string | null;
+  allocated_by_id?: number | null;
+  allocated_at?: string | null;
 
   /**
    * Optional future-proof fields.
@@ -227,6 +244,22 @@ export function getTransactionFee(tx?: MpesaTransaction | null): number {
   return 0;
 }
 
+export function getAllocationStatus(tx?: MpesaTransaction | null): string {
+  return String(tx?.allocation_status ?? "");
+}
+
+export function isAllocationPending(tx?: MpesaTransaction | null): boolean {
+  return ["UNALLOCATED", "MANUAL_REVIEW", "INVALID_REFERENCE"].includes(
+    String(tx?.allocation_status || "").toUpperCase()
+  );
+}
+
+export function isAllocationDone(tx?: MpesaTransaction | null): boolean {
+  return ["AUTO_ALLOCATED", "MANUALLY_ALLOCATED", "PARTIALLY_ALLOCATED"].includes(
+    String(tx?.allocation_status || "").toUpperCase()
+  );
+}
+
 /**
  * For withdrawals:
  * - amount may be the requested source amount
@@ -351,6 +384,10 @@ export async function getAdminMpesaTransactions(): Promise<MpesaTransaction[]> {
  * Savings deposit STK
  * User enters desired credited amount.
  * Backend may add deposit transaction fee on top of the STK charge.
+ *
+ * New simple reference examples:
+ * - saving23
+ * - sav23
  */
 export function stkDepositSavings(
   phone: string,
@@ -368,8 +405,7 @@ export function stkDepositSavings(
 
 /**
  * Loan repayment STK
- * Backend expects reference like LOAN-<loan_id>.
- * Fee, if configured in backend later, should remain backend-controlled.
+ * Backend now supports simple reference like: loan35
  */
 export function stkRepayLoan(
   phone: string,
@@ -380,14 +416,14 @@ export function stkRepayLoan(
     phone,
     amount,
     purpose: "LOAN_REPAYMENT",
-    reference: `LOAN-${loanId}`,
+    reference: `loan${loanId}`,
     narration: `Loan repayment (Loan#${loanId})`,
   });
 }
 
 /**
  * Group contribution STK
- * Backend expects reference like GROUP-<group_id>.
+ * Backend now supports simple reference like: grp9
  */
 export function stkContributeGroup(
   phone: string,
@@ -398,14 +434,36 @@ export function stkContributeGroup(
     phone,
     amount,
     purpose: "GROUP_CONTRIBUTION",
-    reference: `GROUP-${groupId}`,
+    reference: `grp${groupId}`,
     narration: `Group contribution (Group#${groupId})`,
   });
 }
 
 /**
- * Merry contribution STK
- * Backend expects reference like MERRY-PAYMENT-<payment_id>.
+ * Merry contribution STK by simple user reference
+ * Backend now supports simple reference like: mus12
+ *
+ * NOTE:
+ * This should be the app user id / member reference id
+ * that your backend expects for cross-merry allocation.
+ */
+export function stkContributeMerryByUserId(
+  phone: string,
+  amount: string,
+  userId: number
+) {
+  return mpesaStkPush({
+    phone,
+    amount,
+    purpose: "MERRY_CONTRIBUTION",
+    reference: `mus${userId}`,
+    narration: `Merry contribution`,
+  });
+}
+
+/**
+ * Backward-compatible legacy merry contribution wrapper.
+ * Prefer stkContributeMerryByUserId going forward.
  */
 export function stkContributeMerryByPaymentId(
   phone: string,
@@ -416,8 +474,8 @@ export function stkContributeMerryByPaymentId(
     phone,
     amount,
     purpose: "MERRY_CONTRIBUTION",
-    reference: `MERRY-PAYMENT-${merryPaymentId}`,
-    narration: `Merry contribution (Payment#${merryPaymentId})`,
+    reference: `mus${merryPaymentId}`,
+    narration: `Merry contribution`,
   });
 }
 

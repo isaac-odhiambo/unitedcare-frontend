@@ -8,20 +8,42 @@ import {
   ViewStyle,
 } from "react-native";
 
+export type CardVariant = "default" | "soft" | "elevated";
+
 type Props = {
   children: React.ReactNode;
-  style?: StyleProp<ViewStyle>; // <-- ADD THIS instead of changing the rest
+
+  style?: StyleProp<ViewStyle>;
+
   onPress?: (event: GestureResponderEvent) => void;
+
+  variant?: CardVariant;
+
+  padding?: boolean;
 };
 
-export default function Card({ children, style, onPress }: Props) {
+export default function Card({
+  children,
+  style,
+  onPress,
+  variant = "default",
+  padding = true,
+}: Props) {
   return (
     <Pressable
       disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.card,
+        styles.base,
+
+        variant === "default" && styles.default,
+        variant === "soft" && styles.soft,
+        variant === "elevated" && styles.elevated,
+
+        padding && styles.padding,
+
         pressed && onPress ? styles.pressed : null,
+
         style,
       ]}
     >
@@ -31,16 +53,33 @@ export default function Card({ children, style, onPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.white,
+  base: {
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+
+  padding: {
+    padding: SPACING.md,
+  },
+
+  default: {
+    backgroundColor: COLORS.card,
     ...SHADOW.card,
   },
 
+  soft: {
+    backgroundColor: COLORS.surfaceMuted,
+    borderColor: COLORS.gray200,
+  },
+
+  elevated: {
+    backgroundColor: COLORS.card,
+    ...SHADOW.strong,
+  },
+
   pressed: {
-    opacity: 0.96,
+    transform: [{ scale: 0.99 }],
+    opacity: 0.97,
   },
 });

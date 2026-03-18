@@ -1,6 +1,7 @@
 // services/auth.ts
 import { api, saveAuthTokens } from "@/services/api";
 import { ENDPOINTS } from "@/services/endpoints";
+import type { SessionUser } from "@/services/session";
 
 export type RegisterPayload = {
   username: string;
@@ -36,28 +37,39 @@ export type ResendOtpPayload = {
 export type AuthResponse = {
   access?: string;
   refresh?: string;
-  role?: string;
-  status?: string;
-  is_admin?: boolean;
+
+  user?: SessionUser;
+
   detail?: string;
+  message?: string;
+
   [key: string]: any;
 };
 
-export async function registerUser(payload: RegisterPayload): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.register, payload);
+export async function registerUser(
+  payload: RegisterPayload
+): Promise<AuthResponse> {
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.register, payload);
   return res.data;
 }
 
-export async function verifyOtp(payload: VerifyOtpPayload): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.verifyOtp, payload);
+export async function verifyOtp(
+  payload: VerifyOtpPayload
+): Promise<AuthResponse> {
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.verifyOtp, payload);
   return res.data;
 }
 
-export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.login, payload);
+export async function loginUser(
+  payload: LoginPayload
+): Promise<AuthResponse> {
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.login, payload);
 
-  if (res.data?.access) {
-    await saveAuthTokens(res.data.access, res.data.refresh);
+  const access = res.data?.access;
+  const refresh = res.data?.refresh;
+
+  if (typeof access === "string" && access.split(".").length === 3) {
+    await saveAuthTokens(access, refresh);
   }
 
   return res.data;
@@ -66,23 +78,34 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
 export async function forgotPassword(
   payload: ForgotPasswordPayload
 ): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.forgotPassword, payload);
+  const res = await api.post<AuthResponse>(
+    ENDPOINTS.accounts.forgotPassword,
+    payload
+  );
   return res.data;
 }
 
 export async function resetPassword(
   payload: ResetPasswordPayload
 ): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.resetPassword, payload);
+  const res = await api.post<AuthResponse>(
+    ENDPOINTS.accounts.resetPassword,
+    payload
+  );
 
-  if (res.data?.access) {
-    await saveAuthTokens(res.data.access, res.data.refresh);
+  const access = res.data?.access;
+  const refresh = res.data?.refresh;
+
+  if (typeof access === "string" && access.split(".").length === 3) {
+    await saveAuthTokens(access, refresh);
   }
 
   return res.data;
 }
 
-export async function resendOtp(payload: ResendOtpPayload): Promise<AuthResponse> {
-  const res = await api.post(ENDPOINTS.accounts.resendOtp, payload);
+export async function resendOtp(
+  payload: ResendOtpPayload
+): Promise<AuthResponse> {
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.resendOtp, payload);
   return res.data;
 }

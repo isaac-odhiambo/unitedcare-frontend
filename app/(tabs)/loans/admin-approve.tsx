@@ -1,26 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
-
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
-import { approveLoan, getMyLoans, Loan } from "@/services/loans";
-import { getSessionUser } from "@/services/session";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
-function formatKes(value?: string | number) {
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
+import { approveLoan, getApiErrorMessage, getMyLoans, Loan } from "@/services/loans";
+import { getSessionUser } from "@/services/session";
+
+function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
   return `KES ${n.toLocaleString("en-KE", {
@@ -29,30 +29,58 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
-function ctxLabel(l: Loan) {
-  if (l.merry) return `Merry #${l.merry}`;
-  if (l.group) return `Group #${l.group}`;
-  return "—";
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function productLabel(loan: Loan) {
+  return (
+    loan.product_detail?.name ||
+    loan.product_name ||
+    `Product #${loan.product}`
+  );
+}
+
+function borrowerLabel(loan: Loan) {
+  return loan.borrower_detail?.full_name || `User #${loan.borrower}`;
+}
+
+function statusColor(status?: string) {
+  switch ((status || "").toUpperCase()) {
+    case "APPROVED":
+      return COLORS.success;
+    case "COMPLETED":
+      return COLORS.primary;
+    case "PENDING":
+    case "UNDER_REVIEW":
+      return COLORS.warning;
+    case "DEFAULTED":
+    case "REJECTED":
+    case "CANCELLED":
+      return COLORS.danger;
+    default:
+      return COLORS.gray;
+  }
 }
 
 export default function AdminApproveLoansScreen() {
-  const me = getSessionUser?.() as any;
-
-  // ✅ Admin gate (frontend UX only)
-  const isAdmin = !!me?.is_admin || String(me?.role || "").toLowerCase() === "admin";
-
   const [items, setItems] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
-      const data = await getMyLoans(); // if backend later adds admin list endpoint, swap here
+      setError("");
+      const data = await getMyLoans();
       setItems(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      Alert.alert("Admin Loans", getErrorMessage(e));
+      setItems([]);
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -60,50 +88,61 @@ export default function AdminApproveLoansScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       load();
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
-  // What we can approve: PENDING / UNDER_REVIEW
+  const sessionUser = getSessionUser?.() as any;
+  const isAdmin =
+    !!sessionUser?.is_admin ||
+    !!sessionUser?.is_staff ||
+    !!sessionUser?.is_superuser ||
+    String(sessionUser?.role || "").toLowerCase() === "admin" ||
+    String(sessionUser?.role || "").toLowerCase() === "superadmin";
+
   const pending = useMemo(() => {
     return items.filter((l) =>
       ["PENDING", "UNDER_REVIEW"].includes(String(l.status || "").toUpperCase())
     );
   }, [items]);
 
-  const doApprove = async (loanId: number) => {
-    try {
-      Alert.alert(
-        "Approve Loan",
-        `Approve Loan #${loanId}?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Approve",
-            style: "default",
-            onPress: async () => {
-              try {
-                setBusyId(loanId);
-                const res = await approveLoan(loanId);
-                Alert.alert("Success", res?.message || "Loan approved.");
-                await load();
-              } catch (e: any) {
-                Alert.alert("Approve Loan", getErrorMessage(e));
-              } finally {
-                setBusyId(null);
-              }
-            },
+  const doApprove = useCallback(
+    async (loanId: number) => {
+      Alert.alert("Approve Loan", `Approve Loan #${loanId}?`, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Approve",
+          style: "default",
+          onPress: async () => {
+            try {
+              setBusyId(loanId);
+              setError("");
+              const res = await approveLoan(loanId);
+              Alert.alert("Success", res?.message || "Loan approved.");
+              await load();
+            } catch (e: any) {
+              const msg = getApiErrorMessage(e) || getErrorMessage(e);
+              setError(msg);
+              Alert.alert("Approve Loan", msg);
+            } finally {
+              setBusyId(null);
+            }
           },
-        ]
-      );
-    } catch {}
-  };
+        },
+      ]);
+    },
+    [load]
+  );
 
   if (!isAdmin) {
     return (
@@ -123,60 +162,127 @@ export default function AdminApproveLoansScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.hTitle}>Approve Loans</Text>
           <Text style={styles.hSub}>
-            Approve pending loan requests (admin workflow).
+            Review and approve pending global loan requests.
           </Text>
         </View>
-        <Ionicons name="checkmark-done-outline" size={22} color={COLORS.primary} />
+        <Ionicons
+          name="checkmark-done-outline"
+          size={22}
+          color={COLORS.primary}
+        />
       </View>
+
+      {error ? (
+        <Card style={styles.errorCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+        </Card>
+      ) : null}
 
       <Section title={`Pending Requests (${pending.length})`}>
         {loading ? (
-          <Text style={styles.muted}>Loading…</Text>
+          <View style={styles.loadingWrap}>
+            <Text style={styles.muted}>Loading…</Text>
+          </View>
         ) : pending.length === 0 ? (
           <EmptyState
             title="No pending loans"
             subtitle="Pending and under-review loans will appear here."
           />
         ) : (
-          pending.map((l) => {
-            const busy = busyId === l.id;
+          pending.map((loan) => {
+            const busy = busyId === loan.id;
+            const guarantorCount = Array.isArray(loan.guarantors)
+              ? loan.guarantors.length
+              : 0;
+            const acceptedGuarantors = Array.isArray(loan.guarantors)
+              ? loan.guarantors.filter((g) => g.accepted).length
+              : 0;
+
             return (
-              <Card key={l.id} style={{ marginBottom: SPACING.md }}>
+              <Card key={loan.id} style={styles.itemCard}>
                 <View style={styles.rowTop}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.title}>Loan #{l.id}</Text>
+                    <Text style={styles.title}>Loan #{loan.id}</Text>
                     <Text style={styles.sub}>
-                      {ctxLabel(l)} • Product #{l.product} • {l.term_weeks} weeks
+                      {productLabel(loan)} • {loan.term_weeks} week(s)
                     </Text>
                   </View>
 
-                  <Text style={styles.status}>
-                    {String(l.status || "").toUpperCase()}
+                  <Text
+                    style={[
+                      styles.status,
+                      { color: statusColor(loan.status) },
+                    ]}
+                  >
+                    {String(loan.status || "").toUpperCase()}
                   </Text>
                 </View>
 
                 <View style={styles.grid}>
                   <View style={styles.cell}>
                     <Text style={styles.label}>Principal</Text>
-                    <Text style={styles.value}>{formatKes(l.principal)}</Text>
+                    <Text style={styles.value}>{formatKes(loan.principal)}</Text>
                   </View>
                   <View style={styles.cell}>
                     <Text style={styles.label}>Borrower</Text>
-                    <Text style={styles.value}>User #{l.borrower}</Text>
+                    <Text style={styles.value}>{borrowerLabel(loan)}</Text>
                   </View>
                 </View>
+
+                <View style={styles.grid}>
+                  <View style={styles.cell}>
+                    <Text style={styles.label}>Created</Text>
+                    <Text style={styles.value}>{formatDateTime(loan.created_at)}</Text>
+                  </View>
+                  <View style={styles.cell}>
+                    <Text style={styles.label}>Guarantors</Text>
+                    <Text style={styles.value}>
+                      {acceptedGuarantors}/{guarantorCount} accepted
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.grid}>
+                  <View style={styles.cell}>
+                    <Text style={styles.label}>Security target</Text>
+                    <Text style={styles.value}>
+                      {loan.security_target
+                        ? formatKes(loan.security_target)
+                        : "—"}
+                    </Text>
+                  </View>
+                  <View style={styles.cell}>
+                    <Text style={styles.label}>Reserved now</Text>
+                    <Text style={styles.value}>
+                      {loan.security_reserved_total
+                        ? formatKes(loan.security_reserved_total)
+                        : "—"}
+                    </Text>
+                  </View>
+                </View>
+
+                {loan.member_note ? (
+                  <Text style={styles.note}>Member note: {loan.member_note}</Text>
+                ) : null}
 
                 <View style={styles.actions}>
                   <Button
                     title={busy ? "Approving..." : "Approve"}
-                    onPress={() => doApprove(l.id)}
+                    onPress={() => doApprove(loan.id)}
                     loading={busy}
                     disabled={busy}
                     style={{ flex: 1 }}
@@ -185,15 +291,15 @@ export default function AdminApproveLoansScreen() {
                   <Button
                     title="View"
                     variant="secondary"
-                    onPress={() => router.push(`/loans/${l.id}` as any)}
+                    onPress={() => router.push(`/(tabs)/loans/${loan.id}` as any)}
                     disabled={busy}
                     style={{ flex: 1 }}
                   />
                 </View>
 
                 <Text style={styles.note}>
-                  Approval triggers security coverage logic (borrower reserves + guarantors),
-                  creates installment schedule, and sets loan status to APPROVED.
+                  Approval runs backend checks, reserves available security,
+                  creates installments, and sets the loan to APPROVED.
                 </Text>
               </Card>
             );
@@ -212,6 +318,10 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, padding: SPACING.lg, justifyContent: "center" },
 
+  loadingWrap: {
+    paddingVertical: SPACING.lg,
+  },
+
   header: {
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.xl,
@@ -222,24 +332,112 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    ...SHADOW.card,
   },
-  hTitle: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
-  hSub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
 
-  muted: { marginTop: 6, fontFamily: FONT.regular, color: COLORS.gray },
+  hTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    color: COLORS.dark,
+  },
 
-  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  title: { fontFamily: FONT.bold, fontSize: 14, color: COLORS.dark },
-  sub: { marginTop: 6, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+  hSub: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
 
-  status: { fontFamily: FONT.bold, fontSize: 11, color: COLORS.primary },
+  muted: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    color: COLORS.gray,
+  },
 
-  grid: { marginTop: SPACING.md, flexDirection: "row", justifyContent: "space-between" },
-  cell: { width: "48%" },
-  label: { fontFamily: FONT.regular, fontSize: 11, color: COLORS.gray },
-  value: { marginTop: 6, fontFamily: FONT.bold, fontSize: 13, color: COLORS.dark },
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
 
-  actions: { marginTop: SPACING.md, flexDirection: "row", alignItems: "center" },
+  errorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
 
-  note: { marginTop: 10, fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
+  itemCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  rowTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  title: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
+  },
+
+  sub: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  status: {
+    fontFamily: FONT.bold,
+    fontSize: 11,
+  },
+
+  grid: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  cell: {
+    width: "48%",
+  },
+
+  label: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+  },
+
+  value: {
+    marginTop: 6,
+    fontFamily: FONT.bold,
+    fontSize: 13,
+    color: COLORS.dark,
+  },
+
+  actions: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  note: {
+    marginTop: 10,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
 });

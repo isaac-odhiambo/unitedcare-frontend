@@ -32,9 +32,18 @@ import {
   isKycComplete,
   MeResponse,
 } from "@/services/profile";
-import { getSessionUser, SessionUser } from "@/services/session";
+import { getSessionUser, saveSessionUser, SessionUser } from "@/services/session";
 
 type PaymentsUser = Partial<MeResponse> & Partial<SessionUser>;
+
+const SURFACE = "#F4F6F8";
+const SURFACE_2 = "#EEF2F6";
+const SURFACE_3 = "#E8EDF3";
+const BORDER = "#D9E1EA";
+const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
+const TEXT_MAIN = "#0F172A";
+const TEXT_SOFT = "#334155";
+const TEXT_MUTED = "#64748B";
 
 function money(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -43,6 +52,17 @@ function money(v: string | number | null | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatDisplayName(user?: PaymentsUser | null) {
+  if (!user) return "Member";
+  return (
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    user?.username ||
+    (typeof user?.phone === "string" ? user.phone : "") ||
+    "Member"
+  );
 }
 
 function statusBadgeColor(status: string) {
@@ -62,9 +82,9 @@ function statusBadgeColor(status: string) {
 function StatusPill({ label }: { label: string }) {
   const bg = statusBadgeColor(label);
   return (
-    <View style={[styles.pill, { borderColor: bg }]}>
+    <View style={[styles.pill, { borderColor: `${bg}30`, backgroundColor: `${bg}12` }]}>
       <View style={[styles.pillDot, { backgroundColor: bg }]} />
-      <Text style={styles.pillText}>{label}</Text>
+      <Text style={[styles.pillText, { color: bg }]}>{label}</Text>
     </View>
   );
 }
@@ -87,29 +107,42 @@ function isFeeCategory(category?: string) {
   return c === "WITHDRAWAL_FEE" || c === "TRANSACTION_FEE";
 }
 
-function MiniRow({
-  icon,
+function SmallAction({
   title,
-  subtitle,
-  right,
+  icon,
+  onPress,
+  tone,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
   title: string;
-  subtitle: string;
-  right?: React.ReactNode;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  tone: string;
 }) {
   return (
-    <View style={styles.miniRow}>
-      <View style={styles.miniIcon}>
-        <Ionicons name={icon} size={18} color={COLORS.primary} />
+    <Card onPress={onPress} style={styles.smallActionCard} variant="default">
+      <View style={[styles.smallActionIconWrap, { backgroundColor: `${tone}18` }]}>
+        <Ionicons name={icon} size={18} color={tone} />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.miniTitle}>{title}</Text>
-        <Text style={styles.miniSubtitle} numberOfLines={2}>
-          {subtitle}
-        </Text>
-      </View>
-      {right ? <View>{right}</View> : null}
+      <Text style={styles.smallActionText}>{title}</Text>
+    </Card>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -137,36 +170,35 @@ export default function PaymentsIndexScreen() {
 
   const successNotice = useMemo(() => {
     if (params.deposited === "1") {
-      return (
-        params.notice ||
-        `Deposit initiated for ${money(params.amount)} to ${params.phone || "your phone"}. Final STK charge may include transaction fee.`
-      );
+      return params.notice || `Deposit started for ${money(params.amount)}.`;
     }
 
     if (params.requested === "1") {
-      return (
-        params.notice ||
-        "Withdrawal request submitted successfully. Final Mpesa payout may be lower if withdrawal fee applies."
-      );
+      return params.notice || "Withdrawal request submitted.";
     }
 
     return "";
-  }, [params.amount, params.deposited, params.notice, params.phone, params.requested]);
+  }, [params.amount, params.deposited, params.notice, params.requested]);
 
   const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profileKyc);
+    router.push(ROUTES.tabs.profileKyc as any);
   }, []);
 
   const clearPaymentParams = useCallback(() => {
-    if (params.deposited || params.notice || params.amount || params.phone || params.requested) {
-      router.replace(ROUTES.tabs.payments);
+    if (
+      params.deposited ||
+      params.notice ||
+      params.amount ||
+      params.phone ||
+      params.requested
+    ) {
+      router.replace(ROUTES.tabs.payments as any);
     }
   }, [params.amount, params.deposited, params.notice, params.phone, params.requested]);
 
   const load = useCallback(async () => {
     try {
       setError("");
-      setLoading(true);
 
       const [sessionRes, meRes, ledgerRes, wdRes] = await Promise.allSettled([
         getSessionUser(),
@@ -189,6 +221,10 @@ export default function PaymentsIndexScreen() {
 
       setUser(mergedUser);
 
+      if (mergedUser) {
+        await saveSessionUser(mergedUser);
+      }
+
       if (!mergedUser) {
         setLedger([]);
         setWithdrawals([]);
@@ -207,27 +243,31 @@ export default function PaymentsIndexScreen() {
           : []
       );
 
-      if (ledgerRes.status === "rejected" || wdRes.status === "rejected") {
-        const err =
-          ledgerRes.status === "rejected"
-            ? ledgerRes.reason
-            : wdRes.status === "rejected"
-            ? wdRes.reason
-            : null;
-
-        if (err) setError(getApiErrorMessage(err));
+      let nextError = "";
+      if (ledgerRes.status === "rejected") {
+        nextError = getApiErrorMessage(ledgerRes.reason);
+      } else if (wdRes.status === "rejected") {
+        nextError = getApiErrorMessage(wdRes.reason);
       }
+
+      setError(nextError);
     } catch (e: any) {
       setError(getApiErrorMessage(e));
-      console.log("PAYMENTS INDEX LOAD ERROR:", getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      const run = async () => {
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      run();
     }, [load])
   );
 
@@ -251,15 +291,27 @@ export default function PaymentsIndexScreen() {
       ["APPROVED", "PROCESSING"].includes(String(w.status).toUpperCase())
     );
 
+    const credits = (ledger ?? []).filter(
+      (row) => String(row.entry_type).toUpperCase() === "CREDIT"
+    );
+    const debits = (ledger ?? []).filter(
+      (row) => String(row.entry_type).toUpperCase() === "DEBIT"
+    );
+
+    const totalIn = credits.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const totalOut = debits.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+
     const lastAmount = lastTxn?.amount ?? "0";
     const lastLabel = lastTxn
-      ? `${lastTxn.entry_type} • ${categoryLabel(lastTxn.category)} • ${money(lastAmount)}`
-      : "No transactions yet";
+      ? `${categoryLabel(lastTxn.category)} • ${money(lastAmount)}`
+      : "No activity";
 
     return {
       lastLabel,
       pendingCount: pendingWds.length,
       processingCount: processingWds.length,
+      totalIn: money(totalIn),
+      totalOut: money(totalOut),
     };
   }, [ledger, withdrawals]);
 
@@ -278,7 +330,7 @@ export default function PaymentsIndexScreen() {
           title="Not signed in"
           subtitle="Please login to access payments."
           actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
+          onAction={() => router.replace(ROUTES.auth.login as any)}
         />
       </View>
     );
@@ -293,161 +345,142 @@ export default function PaymentsIndexScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Payments</Text>
-          <Text style={styles.subtitle}>
-            Ledger, deposits & withdrawals • {isAdmin ? "Admin" : "Member"}
-          </Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroGlowOne} />
+        <View style={styles.heroGlowTwo} />
+
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: SPACING.md }}>
+            <Text style={styles.heroEyebrow}>PAYMENTS</Text>
+            <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
+            <Text style={styles.heroSubtitle}>
+              {isAdmin ? "Admin payments view" : "Member payments view"}
+            </Text>
+          </View>
+
+          <View style={styles.heroAvatar}>
+            <Ionicons name="card-outline" size={24} color={COLORS.white} />
+          </View>
         </View>
 
-        <Button
-          variant="ghost"
-          title="Refresh"
-          onPress={onRefresh}
-          leftIcon={
-            <Ionicons
-              name="refresh-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
-        />
+        <View style={styles.heroFooter}>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>In {overview.totalIn}</Text>
+          </View>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>Out {overview.totalOut}</Text>
+          </View>
+          <View style={styles.heroPill}>
+            <Text style={styles.heroPillText}>
+              {kycComplete ? "KYC Complete" : "KYC Pending"}
+            </Text>
+          </View>
+        </View>
       </View>
 
       {successNotice ? (
         <Card style={styles.successCard}>
-          <Ionicons
-            name="checkmark-circle-outline"
-            size={18}
-            color={COLORS.success}
-          />
+          <View style={styles.successIcon}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={18}
+              color={COLORS.success}
+            />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.successText}>{successNotice}</Text>
           </View>
-          <Button
-            title="Dismiss"
-            variant="ghost"
-            onPress={clearPaymentParams}
-          />
+          <Button title="Dismiss" variant="ghost" onPress={clearPaymentParams} />
         </Card>
       ) : null}
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+          <View style={styles.errorIcon}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
+          </View>
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      {!kycComplete && (
-        <Section title="KYC Notice">
+      {!kycComplete ? (
+        <Section title="Verification" subtitle="Withdrawals need completed KYC.">
           <Card style={styles.noticeCard} onPress={goToKyc}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              Deposits and ledger access are available, but withdrawal requests
-              require completed KYC.
-            </Text>
+            <View style={styles.noticeIcon}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={COLORS.info}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>Complete account verification</Text>
+              <Text style={styles.noticeText}>
+                Deposits and ledger access are available now.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
           </Card>
         </Section>
-      )}
+      ) : null}
 
-      <Section title="Overview">
+      <Section title="Overview" subtitle="Latest activity and withdrawal status.">
         <Card style={styles.overviewCard}>
-          <MiniRow
-            icon="receipt-outline"
-            title="Latest activity"
-            subtitle={overview.lastLabel}
+          <InfoRow label="Latest" value={overview.lastLabel} />
+          <InfoRow
+            label="Pending withdrawals"
+            value={String(overview.pendingCount)}
+            valueColor={overview.pendingCount > 0 ? COLORS.warning : TEXT_MAIN}
           />
-          <View style={styles.divider} />
-          <MiniRow
-            icon="time-outline"
-            title="Withdrawal requests"
-            subtitle={`${overview.pendingCount} pending • ${overview.processingCount} processing`}
-            right={
-              <Button
-                variant="ghost"
-                title="View"
-                onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals)}
-              />
-            }
+          <InfoRow
+            label="Processing withdrawals"
+            value={String(overview.processingCount)}
+            valueColor={overview.processingCount > 0 ? COLORS.info : TEXT_MAIN}
           />
         </Card>
       </Section>
 
-      <Section title="Quick Actions">
-        <View style={styles.actionsGrid}>
-          <Card
-            onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
-            style={styles.actionCard}
-          >
-            <View style={styles.actionIcon}>
-              <Ionicons
-                name="arrow-down-circle-outline"
-                size={22}
-                color={COLORS.white}
-              />
-            </View>
-            <Text style={styles.actionTitle}>Deposit</Text>
-            <Text style={styles.actionSub}>STK charge may include fee</Text>
-          </Card>
+      <Section title="Actions" subtitle="Main payment tools.">
+        <View style={styles.smallActionsGrid}>
+          <SmallAction
+            title="Deposit"
+            icon="arrow-down-circle-outline"
+            tone={COLORS.primary}
+            onPress={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
+          />
 
-          <Card
+          <SmallAction
+            title={withdrawAllowed ? "Withdraw" : "KYC First"}
+            icon={withdrawAllowed ? "arrow-up-circle-outline" : "shield-outline"}
+            tone={withdrawAllowed ? COLORS.success : COLORS.warning}
             onPress={() =>
               withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
+                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
                 : goToKyc()
             }
-            style={styles.actionCard}
-          >
-            <View style={styles.actionIcon}>
-              <Ionicons
-                name="arrow-up-circle-outline"
-                size={22}
-                color={COLORS.white}
-              />
-            </View>
-            <Text style={styles.actionTitle}>Withdraw</Text>
-            <Text style={styles.actionSub}>
-              {withdrawAllowed ? "Net payout may be lower" : "KYC required"}
-            </Text>
-          </Card>
+          />
 
-          <Card
-            onPress={() => router.push(ROUTES.tabs.paymentsLedger)}
-            style={styles.actionCard}
-          >
-            <View style={styles.actionIcon}>
-              <Ionicons name="list-outline" size={22} color={COLORS.white} />
-            </View>
-            <Text style={styles.actionTitle}>Ledger</Text>
-            <Text style={styles.actionSub}>Transactions & fees</Text>
-          </Card>
+          <SmallAction
+            title="Ledger"
+            icon="list-outline"
+            tone={COLORS.info}
+            onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
+          />
 
-          <Card
+          <SmallAction
+            title="Withdrawals"
+            icon="cash-outline"
+            tone={withdrawAllowed ? COLORS.primary : COLORS.warning}
             onPress={() =>
               withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsWithdrawals)
+                ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
                 : goToKyc()
             }
-            style={styles.actionCard}
-          >
-            <View style={styles.actionIcon}>
-              <Ionicons name="cash-outline" size={22} color={COLORS.white} />
-            </View>
-            <Text style={styles.actionTitle}>Withdrawals</Text>
-            <Text style={styles.actionSub}>
-              {withdrawAllowed ? "My requests" : "KYC required"}
-            </Text>
-          </Card>
+          />
         </View>
       </Section>
 
@@ -457,7 +490,7 @@ export default function PaymentsIndexScreen() {
           <Button
             variant="ghost"
             title="See all"
-            onPress={() => router.push(ROUTES.tabs.paymentsLedger)}
+            onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
           />
         }
       >
@@ -492,9 +525,7 @@ export default function PaymentsIndexScreen() {
                   </View>
 
                   {feeRow ? (
-                    <Text style={styles.feeHint}>
-                      This entry is a system fee.
-                    </Text>
+                    <Text style={styles.feeHint}>System fee</Text>
                   ) : null}
                 </Card>
               );
@@ -503,9 +534,9 @@ export default function PaymentsIndexScreen() {
         ) : (
           <EmptyState
             title="No transactions yet"
-            subtitle="Your deposits, withdrawals, and fees will appear here."
+            subtitle="Your payment activity will appear here."
             actionLabel="Deposit"
-            onAction={() => router.push(ROUTES.tabs.paymentsDeposit)}
+            onAction={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
           />
         )}
       </Section>
@@ -518,7 +549,7 @@ export default function PaymentsIndexScreen() {
             title="See all"
             onPress={() =>
               withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsWithdrawals)
+                ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
                 : goToKyc()
             }
           />
@@ -549,11 +580,11 @@ export default function PaymentsIndexScreen() {
         ) : (
           <EmptyState
             title="No withdrawals"
-            subtitle="When you request a withdrawal, it will show here. Final payout may be lower if fee applies."
+            subtitle="Your withdrawal requests will appear here."
             actionLabel={withdrawAllowed ? "Request withdrawal" : "Complete KYC"}
             onAction={() =>
               withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
+                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
                 : goToKyc()
             }
           />
@@ -566,8 +597,15 @@ export default function PaymentsIndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 30 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.md,
+    paddingBottom: 30,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -576,35 +614,114 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    overflow: "hidden",
+    ...SHADOW.strong,
   },
 
-  title: {
-    fontSize: 20,
+  heroGlowOne: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    top: -60,
+    right: -40,
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    bottom: -30,
+    left: -20,
+  },
+
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.bold,
-    color: COLORS.text,
+    fontSize: 11,
+    letterSpacing: 1,
   },
 
-  subtitle: {
-    marginTop: 2,
-    fontSize: 12,
+  heroTitle: {
+    marginTop: 6,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 24,
+    lineHeight: 30,
+  },
+
+  heroSubtitle: {
+    marginTop: 8,
+    color: "rgba(255,255,255,0.86)",
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  heroAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.round,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.20)",
+  },
+
+  heroFooter: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  heroPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  heroPillText: {
+    color: COLORS.white,
+    fontFamily: FONT.bold,
+    fontSize: 11,
   },
 
   successCard: {
+    backgroundColor: "#F1FAF2",
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(34,197,94,0.18)",
+    borderRadius: RADIUS.xl,
+  },
+
+  successIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(34,197,94,0.12)",
   },
 
   successText: {
@@ -615,13 +732,24 @@ const styles = StyleSheet.create({
   },
 
   errorCard: {
+    backgroundColor: "#FFF4F4",
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(239,68,68,0.18)",
+    borderRadius: RADIUS.xl,
+  },
+
+  errorIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239,68,68,0.10)",
   },
 
   errorText: {
@@ -633,107 +761,114 @@ const styles = StyleSheet.create({
   },
 
   noticeCard: {
+    backgroundColor: SURFACE,
     padding: SPACING.md,
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    alignItems: "center",
+    gap: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  noticeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: `${COLORS.info}18`,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  noticeTitle: {
+    fontSize: 14,
+    fontFamily: FONT.bold,
+    color: TEXT_MAIN,
   },
 
   noticeText: {
-    flex: 1,
+    marginTop: 4,
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    color: TEXT_MUTED,
   },
 
   overviewCard: {
+    backgroundColor: SURFACE,
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
 
-  miniRow: {
+  infoRow: {
+    marginTop: 10,
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  miniIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: COLORS.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  miniTitle: {
-    fontSize: 13,
-    fontFamily: FONT.semiBold,
-    color: COLORS.text,
-  },
-
-  miniSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
+  infoLabel: {
+    color: TEXT_MUTED,
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    fontSize: 12,
   },
 
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: SPACING.md,
+  infoValue: {
+    flexShrink: 1,
+    textAlign: "right",
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 12,
   },
 
-  actionsGrid: {
+  smallActionsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: SPACING.md,
+    gap: SPACING.sm as any,
   },
 
-  actionCard: {
-    width: "48%",
+  smallActionCard: {
+    width: "48.5%",
+    backgroundColor: SURFACE,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    minHeight: 72,
   },
 
-  actionIcon: {
+  smallActionIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SPACING.sm,
   },
 
-  actionTitle: {
-    fontSize: 14,
-    fontFamily: FONT.semiBold,
-    color: COLORS.text,
-  },
-
-  actionSub: {
-    marginTop: 2,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+  smallActionText: {
+    flex: 1,
+    color: TEXT_SOFT,
+    fontFamily: FONT.bold,
+    fontSize: 13,
   },
 
   txCard: {
+    backgroundColor: SURFACE,
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
 
   feeTxCard: {
-    borderColor: COLORS.warning,
-    borderWidth: 1,
+    borderColor: `${COLORS.warning}40`,
+    backgroundColor: SURFACE_2,
   },
 
   txTop: {
@@ -746,14 +881,14 @@ const styles = StyleSheet.create({
   txTitle: {
     fontSize: 13,
     fontFamily: FONT.semiBold,
-    color: COLORS.text,
+    color: TEXT_MAIN,
   },
 
   txMeta: {
     marginTop: 6,
     fontSize: 12,
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    color: TEXT_MUTED,
   },
 
   txAmount: {
@@ -769,9 +904,11 @@ const styles = StyleSheet.create({
   },
 
   wdCard: {
+    backgroundColor: SURFACE_3,
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
 
   wdTop: {
@@ -784,20 +921,20 @@ const styles = StyleSheet.create({
   wdTitle: {
     fontSize: 13,
     fontFamily: FONT.semiBold,
-    color: COLORS.text,
+    color: TEXT_MAIN,
   },
 
   wdMeta: {
     marginTop: 6,
     fontSize: 12,
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    color: TEXT_MUTED,
   },
 
   wdAmount: {
     fontSize: 13,
     fontFamily: FONT.semiBold,
-    color: COLORS.text,
+    color: TEXT_MAIN,
   },
 
   pill: {
@@ -808,7 +945,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: RADIUS.round,
     borderWidth: 1,
-    backgroundColor: COLORS.surface,
   },
 
   pillDot: {
@@ -820,6 +956,5 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 11,
     fontFamily: FONT.medium,
-    color: COLORS.text,
   },
 });

@@ -46,6 +46,10 @@ export default function CreateMerryScreen() {
   const [payoutsPerPeriod, setPayoutsPerPeriod] = useState("1");
   const [nextPayoutDate, setNextPayoutDate] = useState(""); // optional YYYY-MM-DD
 
+  // ✅ added
+  const [isOpen, setIsOpen] = useState(true);
+  const [maxSeats, setMaxSeats] = useState("0"); // 0 = unlimited
+
   const [submitting, setSubmitting] = useState(false);
 
   useFocusEffect(
@@ -74,6 +78,9 @@ export default function CreateMerryScreen() {
     const pp = toInt(payoutsPerPeriod, 1);
     if (pp < 1 || pp > 14) return "Payouts per period must be between 1 and 14.";
 
+    const ms = toInt(maxSeats, 0);
+    if (ms < 0) return "Max seats cannot be negative.";
+
     if (nextPayoutDate.trim()) {
       // very light validation (backend will validate too)
       const v = nextPayoutDate.trim();
@@ -81,7 +88,7 @@ export default function CreateMerryScreen() {
     }
 
     return null;
-  }, [name, contributionAmount, cycleWeeks, payoutsPerPeriod, nextPayoutDate]);
+  }, [name, contributionAmount, cycleWeeks, payoutsPerPeriod, maxSeats, nextPayoutDate]);
 
   const handleSubmit = useCallback(async () => {
     const err = validate();
@@ -101,6 +108,10 @@ export default function CreateMerryScreen() {
         payout_frequency: payoutFrequency,
         payouts_per_period: toInt(payoutsPerPeriod, 1),
         next_payout_date: nextPayoutDate.trim() ? nextPayoutDate.trim() : null,
+
+        // ✅ added
+        is_open: isOpen,
+        max_seats: toInt(maxSeats, 0),
       };
 
       const res = await api.post("/api/merry/create/", payload);
@@ -127,6 +138,8 @@ export default function CreateMerryScreen() {
     payoutFrequency,
     payoutsPerPeriod,
     nextPayoutDate,
+    isOpen,
+    maxSeats,
   ]);
 
   if (me && !isAdmin) {
@@ -242,6 +255,45 @@ export default function CreateMerryScreen() {
             <Text style={styles.helperText}>
               Example: WEEKLY + payouts per period = 2 means Slot 1 (e.g. Monday) and Slot 2 (e.g. Friday).
               After creating, set the weekdays under Slot Config in the Merry detail screen.
+            </Text>
+          </View>
+        </Card>
+      </Section>
+
+      {/* ✅ added */}
+      <Section title="Joining settings">
+        <Card>
+          <Text style={styles.label}>Open for joining</Text>
+          <View style={styles.pillsRow}>
+            <Button
+              title="Open"
+              variant={isOpen ? "primary" : "secondary"}
+              onPress={() => setIsOpen(true)}
+              style={{ flex: 1 }}
+            />
+            <View style={{ width: SPACING.sm }} />
+            <Button
+              title="Closed"
+              variant={!isOpen ? "primary" : "secondary"}
+              onPress={() => setIsOpen(false)}
+              style={{ flex: 1 }}
+            />
+          </View>
+
+          <View style={{ height: SPACING.md }} />
+
+          <Input
+            label="Max seats (0 = unlimited)"
+            value={maxSeats}
+            onChangeText={setMaxSeats}
+            placeholder="0"
+            keyboardType="number-pad"
+          />
+
+          <View style={styles.helperBox}>
+            <Ionicons name="people-outline" size={18} color={COLORS.gray} />
+            <Text style={styles.helperText}>
+              Set max seats to control total participation capacity. Use 0 if the merry should allow unlimited seats.
             </Text>
           </View>
         </Card>

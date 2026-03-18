@@ -1,5 +1,5 @@
 // components/ui/Button.tsx
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import { COLORS, P, RADIUS, SHADOW, SPACING, TYPE } from "@/constants/theme";
 import React from "react";
 import {
   ActivityIndicator,
@@ -27,19 +27,25 @@ type Props = {
 export default function Button({
   title,
   onPress,
-  loading,
-  disabled,
+  loading = false,
+  disabled = false,
   variant = "primary",
   style,
   leftIcon,
   rightIcon,
 }: Props) {
-  const isDisabled = !!disabled || !!loading;
+  const isDisabled = disabled || loading;
 
   const textColor =
-    variant === "secondary" || variant === "ghost" || variant === "outline"
-      ? COLORS.dark
-      : COLORS.white;
+    variant === "primary"
+      ? COLORS.textInverse
+      : variant === "danger"
+      ? COLORS.textInverse
+      : variant === "outline"
+      ? COLORS.primary
+      : variant === "ghost"
+      ? COLORS.primary
+      : COLORS.text;
 
   return (
     <Pressable
@@ -51,30 +57,26 @@ export default function Button({
         variant === "secondary" && styles.secondary,
         variant === "danger" && styles.danger,
         variant === "ghost" && styles.ghost,
-        variant === "outline" && styles.outline, // added
+        variant === "outline" && styles.outline,
+        pressed && !isDisabled && styles.pressed,
         isDisabled && styles.disabled,
-        pressed && !isDisabled ? styles.pressed : null,
         style,
       ]}
     >
       <View style={styles.row}>
         {loading ? (
-          <ActivityIndicator color={textColor} />
+          <ActivityIndicator color={textColor} size="small" />
         ) : leftIcon ? (
           <View style={styles.iconLeft}>{leftIcon}</View>
         ) : null}
 
-        <Text
-          style={[
-            styles.text,
-            { color: textColor },
-          ]}
-          numberOfLines={1}
-        >
+        <Text style={[styles.text, { color: textColor }]} numberOfLines={1}>
           {title}
         </Text>
 
-        {rightIcon ? <View style={styles.iconRight}>{rightIcon}</View> : null}
+        {!loading && rightIcon ? (
+          <View style={styles.iconRight}>{rightIcon}</View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -82,8 +84,9 @@ export default function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.md,
+    minHeight: 50,
+    borderRadius: RADIUS.md,
+    paddingVertical: 14,
     paddingHorizontal: SPACING.md,
     alignItems: "center",
     justifyContent: "center",
@@ -95,34 +98,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  iconLeft: { marginRight: SPACING.sm },
-  iconRight: { marginLeft: SPACING.sm },
-
-  primary: { backgroundColor: COLORS.primary },
-
-  secondary: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  iconLeft: {
+    marginRight: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  danger: { backgroundColor: COLORS.danger },
+  iconRight: {
+    marginLeft: SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  primary: {
+    ...P.buttonPrimary,
+    ...SHADOW.soft,
+  },
+
+  secondary: {
+    ...P.buttonSecondary,
+    backgroundColor: COLORS.white,
+  },
+
+  danger: {
+    backgroundColor: COLORS.danger,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    ...SHADOW.soft,
+  },
 
   ghost: {
     backgroundColor: "transparent",
+    paddingHorizontal: 6,
+    minHeight: 42,
   },
 
   outline: {
-    backgroundColor: "transparent",
+    backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
 
-  disabled: { opacity: 0.6 },
-  pressed: { opacity: 0.9 },
+  disabled: {
+    opacity: 0.55,
+  },
+
+  pressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.96,
+  },
 
   text: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
+    ...TYPE.button,
+    textAlign: "center",
   },
 });

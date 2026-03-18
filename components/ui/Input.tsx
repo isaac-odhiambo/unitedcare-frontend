@@ -1,6 +1,42 @@
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import { COLORS, RADIUS, SPACING, TYPE } from "@/constants/theme";
 import React from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+  View,
+  ViewStyle,
+} from "react-native";
+
+type Props = {
+  label?: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  error?: string;
+
+  style?: StyleProp<TextStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
+} & Pick<
+  TextInputProps,
+  | "placeholder"
+  | "keyboardType"
+  | "secureTextEntry"
+  | "multiline"
+  | "numberOfLines"
+  | "autoCapitalize"
+  | "editable"
+  | "autoCorrect"
+  | "autoComplete"
+  | "textContentType"
+  | "returnKeyType"
+  | "maxLength"
+  | "onBlur"
+  | "onFocus"
+  | "placeholderTextColor"
+>;
 
 export default function Input({
   label,
@@ -10,27 +46,50 @@ export default function Input({
   keyboardType,
   secureTextEntry,
   error,
-}: {
-  label?: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: any;
-  secureTextEntry?: boolean;
-  error?: string;
-}) {
+  multiline = false,
+  numberOfLines = 1,
+  autoCapitalize = "none",
+  editable = true,
+  autoCorrect = false,
+  autoComplete,
+  textContentType,
+  returnKeyType,
+  maxLength,
+  onBlur,
+  onFocus,
+  placeholderTextColor,
+  style,
+  containerStyle,
+}: Props) {
   return (
-    <View style={{ marginBottom: SPACING.md }}>
+    <View style={[styles.container, containerStyle]}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
 
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={COLORS.gray}
+        placeholderTextColor={placeholderTextColor || COLORS.placeholder}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
-        style={[styles.input, !!error && styles.inputError]}
+        multiline={multiline}
+        numberOfLines={numberOfLines}
+        autoCapitalize={autoCapitalize}
+        editable={editable}
+        autoCorrect={autoCorrect}
+        autoComplete={autoComplete}
+        textContentType={textContentType}
+        returnKeyType={returnKeyType}
+        maxLength={maxLength}
+        onBlur={onBlur}
+        onFocus={onFocus}
+        style={[
+          styles.input,
+          multiline && styles.multilineInput,
+          !editable && styles.inputDisabled,
+          !!error && styles.inputError,
+          style,
+        ]}
       />
 
       {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -39,28 +98,43 @@ export default function Input({
 }
 
 const styles = StyleSheet.create({
-  label: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.dark,
-    marginBottom: 8,
+  container: {
+    marginBottom: SPACING.md,
   },
+
+  label: {
+    ...TYPE.label,
+    marginBottom: 8,
+    color: COLORS.text,
+  },
+
   input: {
     backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    padding: 12,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     borderWidth: 1,
     borderColor: COLORS.border,
-    color: COLORS.dark,
-    fontFamily: FONT.regular,
+    ...TYPE.body,
   },
+
+  multilineInput: {
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
+
+  inputDisabled: {
+    backgroundColor: COLORS.gray50,
+    color: COLORS.textMuted,
+  },
+
   inputError: {
     borderColor: COLORS.danger,
   },
+
   errorText: {
     marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
+    ...TYPE.caption,
     color: COLORS.danger,
   },
 });

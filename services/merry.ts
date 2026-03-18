@@ -64,6 +64,8 @@ export type AvailableMerryRow = {
   is_open: boolean;
   max_seats: number;
   available_seats: number | null;
+  available_seat_numbers?: number[] | null;
+  can_request_join?: boolean;
   members_count: number;
   seats_count: number;
   my_join_request?: {
@@ -74,6 +76,21 @@ export type AvailableMerryRow = {
     reviewed_at?: string | null;
   } | null;
   created_at: string;
+};
+
+export type MerryCreateResponse = {
+  id: number;
+  name: string;
+  contribution_amount: string;
+  cycle_duration_weeks: number;
+  payout_order_type: PayoutOrderType;
+  next_payout_date: string | null;
+  payout_frequency: PayoutFrequency;
+  payouts_per_period: number;
+  is_open?: boolean;
+  max_seats?: number;
+  available_seats?: number | null;
+  created_at?: string;
 };
 
 export type MerryDetail = {
@@ -88,8 +105,8 @@ export type MerryDetail = {
   is_open?: boolean;
   max_seats?: number;
   available_seats?: number | null;
-  members_count: number;
-  seats_count: number;
+  members_count?: number;
+  seats_count?: number;
   total_pool_per_slot?: string;
   total_pool_per_period?: string;
   created_by?: number;
@@ -155,6 +172,10 @@ export type RequestJoinResponse = {
   requested_seats: number;
 };
 
+export type AdminApproveJoinPayload = {
+  assigned_seat_numbers?: number[];
+};
+
 export type AdminApproveJoinResponse = {
   message: string;
   member_id: number;
@@ -209,7 +230,7 @@ export type AdminDuesRow = {
 export type AdminDuesResponse = {
   merry_id: number;
   period_key: string;
-  slot_no: number | string | null;
+  slot_no: number | null;
   total_due: string;
   total_paid_allocated: string;
   rows: AdminDuesRow[];
@@ -378,7 +399,7 @@ export async function createMerry(payload: {
   payouts_per_period?: number;
   is_open?: boolean;
   max_seats?: number;
-}): Promise<MerryDetail> {
+}): Promise<MerryCreateResponse> {
   const res = await api.post(ENDPOINTS.merry.create, payload);
   return res.data;
 }
@@ -448,9 +469,13 @@ export async function adminListJoinRequests(
 }
 
 export async function adminApproveJoinRequest(
-  requestId: number
+  requestId: number,
+  payload: AdminApproveJoinPayload = {}
 ): Promise<AdminApproveJoinResponse> {
-  const res = await api.post(ENDPOINTS.merry.approveJoinRequest(requestId));
+  const res = await api.post(
+    ENDPOINTS.merry.approveJoinRequest(requestId),
+    payload
+  );
   return res.data;
 }
 
@@ -458,7 +483,10 @@ export async function adminRejectJoinRequest(
   requestId: number,
   payload: { note?: string } = {}
 ): Promise<{ message: string }> {
-  const res = await api.post(ENDPOINTS.merry.rejectJoinRequest(requestId), payload);
+  const res = await api.post(
+    ENDPOINTS.merry.rejectJoinRequest(requestId),
+    payload
+  );
   return res.data;
 }
 

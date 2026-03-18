@@ -1,20 +1,20 @@
 // app/(tabs)/loans/pay.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
-
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
-import { stkRepayLoan } from "@/services/loans";
-import { getSessionUser } from "@/services/session";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Section from "@/components/ui/Section";
 
-function formatKes(value?: string | number) {
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
+import { getApiErrorMessage, stkRepayLoan } from "@/services/loans";
+import { getSessionUser } from "@/services/session";
+
+function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
   return `KES ${n.toLocaleString("en-KE", {
@@ -24,15 +24,17 @@ function formatKes(value?: string | number) {
 }
 
 function normalizePhone(phone: string) {
-  // Backend validator: ^(07|01)\d{8}$
-  const p = (phone || "").trim();
+  const p = (phone || "").trim().replace(/\s+/g, "");
   if (!p) return "";
 
-  // allow +2547... / 2547... / 07...
   if (p.startsWith("+254")) return "0" + p.slice(4);
   if (p.startsWith("254")) return "0" + p.slice(3);
 
   return p;
+}
+
+function normalizeAmount(value: string) {
+  return String(value || "").replace(/,/g, "").trim();
 }
 
 export default function PayLoanScreen() {
@@ -42,10 +44,9 @@ export default function PayLoanScreen() {
   const dueFromParams = String(params.due ?? "0.00");
 
   const [phone, setPhone] = useState("");
-  const [amount, setAmount] = useState(dueFromParams);
+  const [amount, setAmount] = useState(normalizeAmount(dueFromParams));
   const [loading, setLoading] = useState(false);
 
-  // ✅ load session user phone (getSessionUser is async)
   useEffect(() => {
     let mounted = true;
 
@@ -55,7 +56,7 @@ export default function PayLoanScreen() {
         const p = normalizePhone(String(user?.phone || ""));
         if (mounted && p) setPhone(p);
       } catch {
-        // ignore: phone can be entered manually
+        // ignore; user can type manually
       }
     })();
 
@@ -64,13 +65,16 @@ export default function PayLoanScreen() {
     };
   }, []);
 
+  const cleanPhone = useMemo(() => normalizePhone(phone), [phone]);
+  const cleanAmount = useMemo(() => normalizeAmount(amount), [amount]);
+
   const canSubmit = useMemo(() => {
-    const okPhone = /^(07|01)\d{8}$/.test(phone);
-    const amt = Number(amount);
+    const okPhone = /^(07|01)\d{8}$/.test(cleanPhone);
+    const amt = Number(cleanAmount);
     const okAmount = Number.isFinite(amt) && amt > 0;
     const okLoan = Number.isFinite(loanId) && loanId > 0;
     return okPhone && okAmount && okLoan;
-  }, [phone, amount, loanId]);
+  }, [cleanPhone, cleanAmount, loanId]);
 
   const submit = async () => {
     try {
@@ -79,13 +83,15 @@ export default function PayLoanScreen() {
         return;
       }
 
-      const cleanPhone = normalizePhone(phone);
       if (!/^(07|01)\d{8}$/.test(cleanPhone)) {
-        Alert.alert("Invalid Phone", "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX");
+        Alert.alert(
+          "Invalid Phone",
+          "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX."
+        );
         return;
       }
 
-      const amt = Number(amount);
+      const amt = Number(cleanAmount);
       if (!Number.isFinite(amt) || amt <= 0) {
         Alert.alert("Pay Loan", "Enter a valid amount.");
         return;
@@ -93,21 +99,21 @@ export default function PayLoanScreen() {
 
       setLoading(true);
 
-      // ✅ Centralized Payments App — STK Push (via loans service helper)
       await stkRepayLoan({
         phone: cleanPhone,
-        amount: String(amount),
+        amount: cleanAmount,
         loan_id: loanId,
+        reference: `LOAN-${loanId}`,
       });
 
       Alert.alert(
         "STK Sent",
-        "Check your phone and enter M-Pesa PIN to complete payment."
+        "Check your phone and enter your M-Pesa PIN to complete payment."
       );
 
-      router.replace(`/loans/${loanId}` as any);
+      router.replace(`/(tabs)/loans/${loanId}` as any);
     } catch (e: any) {
-      Alert.alert("Pay Loan", getErrorMessage(e));
+      Alert.alert("Pay Loan", getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -122,9 +128,9 @@ export default function PayLoanScreen() {
     >
       <View style={styles.header}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>Pay Loan</Text>
+          <Text style={styles.title}>Repay Loan</Text>
           <Text style={styles.sub}>
-            Repay via MPESA STK Push (Payments app). Loan #{loanId}
+            Pay via MPESA STK Push. Loan #{Number.isFinite(loanId) ? loanId : "—"}
           </Text>
         </View>
         <Ionicons
@@ -135,15 +141,15 @@ export default function PayLoanScreen() {
       </View>
 
       <Section title="Payment Details">
-        <Card>
+        <Card style={styles.card}>
           <Input
-            label="Phone (payer)"
+            label="Phone number"
             value={phone}
             onChangeText={(v) => setPhone(normalizePhone(v))}
             placeholder="07XXXXXXXX"
             keyboardType="phone-pad"
             error={
-              phone && !/^(07|01)\d{8}$/.test(normalizePhone(phone))
+              phone && !/^(07|01)\d{8}$/.test(cleanPhone)
                 ? "Phone must be 07XXXXXXXX or 01XXXXXXXX"
                 : undefined
             }
@@ -152,7 +158,7 @@ export default function PayLoanScreen() {
           <Input
             label="Amount (KES)"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(v) => setAmount(normalizeAmount(v))}
             placeholder="e.g. 500"
             keyboardType="decimal-pad"
           />
@@ -163,9 +169,8 @@ export default function PayLoanScreen() {
           </View>
 
           <Text style={styles.note}>
-            After you enter your M-Pesa PIN, the backend callback updates the
-            transaction, posts ledger entries, and applies the repayment to your
-            loan.
+            After you approve the STK Push on your phone, the backend callback
+            updates the repayment and applies it to your loan.
           </Text>
         </Card>
       </Section>
@@ -175,7 +180,7 @@ export default function PayLoanScreen() {
           title={loading ? "Sending STK..." : "Pay with MPESA"}
           onPress={submit}
           loading={loading}
-          disabled={!canSubmit}
+          disabled={!canSubmit || loading}
         />
         <View style={{ height: SPACING.sm }} />
         <Button
@@ -205,13 +210,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    ...SHADOW.card,
   },
-  title: { fontFamily: FONT.bold, fontSize: 18, color: COLORS.dark },
+
+  card: {
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  title: {
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    color: COLORS.dark,
+  },
+
   sub: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
+    lineHeight: 18,
   },
 
   note: {
@@ -219,6 +237,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
+    lineHeight: 18,
   },
 
   inline: {
@@ -227,8 +246,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  inlineLabel: { fontFamily: FONT.regular, fontSize: 12, color: COLORS.gray },
-  inlineValue: { fontFamily: FONT.bold, fontSize: 12, color: COLORS.dark },
 
-  actions: { marginTop: SPACING.lg },
+  inlineLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+
+  inlineValue: {
+    fontFamily: FONT.bold,
+    fontSize: 12,
+    color: COLORS.dark,
+  },
+
+  actions: {
+    marginTop: SPACING.lg,
+  },
 });
