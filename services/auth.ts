@@ -37,33 +37,43 @@ export type ResendOtpPayload = {
 export type AuthResponse = {
   access?: string;
   refresh?: string;
-
   user?: SessionUser;
-
   detail?: string;
   message?: string;
-
   [key: string]: any;
 };
+
+function normalizeAuthPhone(phone: string): string {
+  return String(phone || "").replace(/\s+/g, "").trim();
+}
 
 export async function registerUser(
   payload: RegisterPayload
 ): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.register, payload);
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.register, {
+    ...payload,
+    phone: normalizeAuthPhone(payload.phone),
+  });
   return res.data;
 }
 
 export async function verifyOtp(
   payload: VerifyOtpPayload
 ): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.verifyOtp, payload);
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.verifyOtp, {
+    ...payload,
+    phone: normalizeAuthPhone(payload.phone),
+  });
   return res.data;
 }
 
 export async function loginUser(
   payload: LoginPayload
 ): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.login, payload);
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.login, {
+    ...payload,
+    phone: normalizeAuthPhone(payload.phone),
+  });
 
   const access = res.data?.access;
   const refresh = res.data?.refresh;
@@ -80,7 +90,10 @@ export async function forgotPassword(
 ): Promise<AuthResponse> {
   const res = await api.post<AuthResponse>(
     ENDPOINTS.accounts.forgotPassword,
-    payload
+    {
+      ...payload,
+      phone: normalizeAuthPhone(payload.phone),
+    }
   );
   return res.data;
 }
@@ -90,7 +103,10 @@ export async function resetPassword(
 ): Promise<AuthResponse> {
   const res = await api.post<AuthResponse>(
     ENDPOINTS.accounts.resetPassword,
-    payload
+    {
+      ...payload,
+      phone: normalizeAuthPhone(payload.phone),
+    }
   );
 
   const access = res.data?.access;
@@ -106,6 +122,9 @@ export async function resetPassword(
 export async function resendOtp(
   payload: ResendOtpPayload
 ): Promise<AuthResponse> {
-  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.resendOtp, payload);
+  const res = await api.post<AuthResponse>(ENDPOINTS.accounts.resendOtp, {
+    ...payload,
+    phone: normalizeAuthPhone(payload.phone),
+  });
   return res.data;
 }

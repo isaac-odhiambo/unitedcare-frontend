@@ -117,16 +117,19 @@ function DetailRow({
 
 function productLabel(loan?: Loan | null) {
   if (!loan) return "—";
-  return (
-    loan.product_detail?.name ||
-    loan.product_name ||
-    `Product #${loan.product}`
-  );
+  return loan.product_detail?.name || loan.product_name || "Loan Product";
 }
 
 export default function LoanDetailScreen() {
   const params = useLocalSearchParams();
-  const loanId = Number(params.id);
+
+  const rawId =
+    (Array.isArray(params.id) ? params.id[0] : params.id) ||
+    (Array.isArray(params.loan) ? params.loan[0] : params.loan) ||
+    (Array.isArray(params.loanId) ? params.loanId[0] : params.loanId) ||
+    (Array.isArray(params.Id) ? params.Id[0] : params.Id);
+
+  const loanId = rawId ? Number(rawId) : NaN;
 
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,7 +137,11 @@ export default function LoanDetailScreen() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    if (!Number.isFinite(loanId) || loanId <= 0) return;
+    if (!Number.isFinite(loanId) || loanId <= 0) {
+      setLoan(null);
+      setError("This loan could not be opened.");
+      return;
+    }
 
     try {
       setError("");
@@ -157,9 +164,8 @@ export default function LoanDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!Number.isFinite(loanId) || loanId <= 0) return;
       initialLoad();
-    }, [initialLoad, loanId])
+    }, [initialLoad])
   );
 
   const onRefresh = useCallback(async () => {
@@ -182,36 +188,65 @@ export default function LoanDetailScreen() {
     return (s === "APPROVED" || s === "DEFAULTED") && outstanding > 0;
   }, [loan?.status, loan?.outstanding_balance]);
 
-  const securityAllocations = useMemo(() => {
-    return Array.isArray(loan?.security_allocations)
-      ? loan!.security_allocations.filter((x) => x.is_active)
-      : [];
-  }, [loan]);
-
   const guarantors = useMemo(() => {
-    return Array.isArray(loan?.guarantors) ? loan!.guarantors : [];
+    return Array.isArray(loan?.guarantors) ? loan.guarantors : [];
   }, [loan]);
 
   const installments = useMemo(() => {
-    return Array.isArray(loan?.installments) ? loan!.installments : [];
+    return Array.isArray(loan?.installments) ? loan.installments : [];
   }, [loan]);
 
   const payments = useMemo(() => {
-    return Array.isArray(loan?.payments) ? loan!.payments : [];
+    return Array.isArray(loan?.payments) ? loan.payments : [];
   }, [loan]);
 
-  if (!Number.isFinite(loanId) || loanId <= 0) {
-    return (
-      <View style={[styles.center, { backgroundColor: COLORS.background }]}>
-        <EmptyState title="Invalid loan" subtitle="This loan ID is not valid." />
-      </View>
-    );
-  }
+  const summaryCards = useMemo(() => {
+    return [
+      {
+        label: "Principal",
+        value: formatKes(loan?.principal),
+        highlight: false,
+      },
+      {
+        label: "Outstanding",
+        value: formatKes(loan?.outstanding_balance ?? "0.00"),
+        highlight: true,
+      },
+      {
+        label: "Paid",
+        value: formatKes(loan?.total_paid ?? "0.00"),
+        highlight: false,
+      },
+      {
+        label: "Repayment Period",
+        value: loan?.term_weeks ? `${loan.term_weeks} week(s)` : "—",
+        highlight: false,
+      },
+    ];
+  }, [loan]);
 
   if (loading && !loan) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!Number.isFinite(loanId) || loanId <= 0) {
+    return (
+      <View style={[styles.center, { backgroundColor: COLORS.background }]}>
+        <EmptyState
+          title="Loan not available"
+          subtitle="This loan could not be opened."
+        />
+        <View style={{ marginTop: SPACING.md }}>
+          <Button
+            title="Back to Loans"
+            variant="secondary"
+            onPress={() => router.replace("/(tabs)/loans" as any)}
+          />
+        </View>
       </View>
     );
   }
@@ -225,16 +260,22 @@ export default function LoanDetailScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text style={styles.title}>Loan #{loanId}</Text>
-          <Text style={styles.sub}>
-            {productLabel(loan)}
-            {loan?.term_weeks ? ` • ${loan.term_weeks} week(s)` : ""}
-          </Text>
+      <View style={styles.hero}>
+        <View style={styles.heroGlow} />
+
+        <View style={styles.heroTop}>
+          <View style={styles.heroIcon}>
+            <Ionicons name="document-text-outline" size={20} color={COLORS.white} />
+          </View>
+
+          {loan?.status ? <StatusPill status={loan.status} /> : null}
         </View>
 
-        {loan?.status ? <StatusPill status={loan.status} /> : null}
+        <Text style={styles.heroTitle}>Loan Details</Text>
+        <Text style={styles.heroSub}>
+          {productLabel(loan)}
+          {loan?.term_weeks ? ` • ${loan.term_weeks} week(s)` : ""}
+        </Text>
       </View>
 
       {error ? (
@@ -248,7 +289,38 @@ export default function LoanDetailScreen() {
         </Card>
       ) : null}
 
-      <Section title="Summary">
+      <Section title="Overview">
+        <View style={styles.summaryGrid}>
+          {summaryCards.map((item, index) => (
+            <Card
+              key={`${item.label}-${index}`}
+              style={[
+                styles.summaryCard,
+                item.highlight && styles.summaryCardHighlight,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.summaryLabel,
+                  item.highlight && styles.summaryLabelHighlight,
+                ]}
+              >
+                {item.label}
+              </Text>
+              <Text
+                style={[
+                  styles.summaryValue,
+                  item.highlight && styles.summaryValueHighlight,
+                ]}
+              >
+                {item.value}
+              </Text>
+            </Card>
+          ))}
+        </View>
+      </Section>
+
+      <Section title="Loan Information">
         <Card style={styles.card}>
           {!loan ? (
             <EmptyState
@@ -257,7 +329,6 @@ export default function LoanDetailScreen() {
             />
           ) : (
             <View style={styles.group}>
-              <DetailRow label="Principal" value={formatKes(loan.principal)} />
               <DetailRow
                 label="Total payable"
                 value={
@@ -266,77 +337,12 @@ export default function LoanDetailScreen() {
                     : "Pending approval"
                 }
               />
-              <DetailRow
-                label="Paid so far"
-                value={formatKes(loan.total_paid ?? "0.00")}
-              />
-
-              <View style={styles.divider} />
-
-              <DetailRow
-                label="Outstanding"
-                value={formatKes(loan.outstanding_balance ?? "0.00")}
-                strong
-              />
               <DetailRow label="Status" value={statusText(loan.status)} />
               <DetailRow label="Product" value={productLabel(loan)} />
-              <DetailRow
-                label="Created"
-                value={formatDateTime(loan.created_at)}
-              />
-              <DetailRow
-                label="Approved"
-                value={formatDateTime(loan.approved_at)}
-              />
-              <DetailRow
-                label="Rejected"
-                value={formatDateTime(loan.rejected_at)}
-              />
-              <DetailRow
-                label="Completed"
-                value={formatDateTime(loan.completed_at)}
-              />
-            </View>
-          )}
-        </Card>
-      </Section>
-
-      <Section title="Security">
-        <Card style={styles.card}>
-          {!loan ? (
-            <Text style={styles.muted}>—</Text>
-          ) : (
-            <View style={styles.group}>
-              <DetailRow
-                label="Security target"
-                value={formatKes(loan.security_target ?? "0.00")}
-              />
-              <DetailRow
-                label="Reserved total"
-                value={formatKes(loan.security_reserved_total ?? "0.00")}
-              />
-
-              {securityAllocations.length === 0 ? (
-                <Text style={styles.muted}>
-                  No active security allocations are available yet for this loan.
-                </Text>
-              ) : (
-                securityAllocations.map((item) => (
-                  <View key={item.id} style={styles.allocationRow}>
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={styles.allocationTitle}>
-                        {String(item.source_type).replaceAll("_", " ")}
-                      </Text>
-                      <Text style={styles.allocationSub}>
-                        {item.owner_detail?.full_name || `User #${item.owner_user}`}
-                      </Text>
-                    </View>
-                    <Text style={styles.allocationAmount}>
-                      {formatKes(item.amount)}
-                    </Text>
-                  </View>
-                ))
-              )}
+              <DetailRow label="Created" value={formatDateTime(loan.created_at)} />
+              <DetailRow label="Approved" value={formatDateTime(loan.approved_at)} />
+              <DetailRow label="Rejected" value={formatDateTime(loan.rejected_at)} />
+              <DetailRow label="Completed" value={formatDateTime(loan.completed_at)} />
             </View>
           )}
         </Card>
@@ -351,16 +357,24 @@ export default function LoanDetailScreen() {
           ) : (
             <View style={styles.group}>
               {guarantors.map((g) => (
-                <View key={g.id} style={styles.allocationRow}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={styles.allocationTitle}>
-                      {g.guarantor_detail?.full_name || `Guarantor #${g.guarantor}`}
+                <View key={g.id} style={styles.listRow}>
+                  <View style={styles.listIconWrap}>
+                    <Ionicons
+                      name={g.accepted ? "checkmark-circle" : "time-outline"}
+                      size={18}
+                      color={g.accepted ? COLORS.success : COLORS.warning}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.listTitle}>
+                      {g.guarantor_detail?.full_name || "Guarantor Member"}
                     </Text>
-                    <Text style={styles.allocationSub}>
-                      {g.accepted ? "Accepted" : "Pending"} • Reserved{" "}
-                      {formatKes(g.reserved_amount ?? "0.00")}
+                    <Text style={styles.listSub}>
+                      {g.accepted ? "Accepted" : "Pending response"}
                     </Text>
                   </View>
+
                   <Text
                     style={[
                       styles.smallBadge,
@@ -387,21 +401,27 @@ export default function LoanDetailScreen() {
           ) : (
             <View style={styles.group}>
               {installments.map((inst) => (
-                <View key={inst.id} style={styles.installmentRow}>
+                <View key={inst.id} style={styles.listRow}>
+                  <View style={styles.listIconWrap}>
+                    <Ionicons
+                      name={inst.is_paid ? "checkmark-done-circle" : "calendar-outline"}
+                      size={18}
+                      color={inst.is_paid ? COLORS.success : COLORS.primary}
+                    />
+                  </View>
+
                   <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={styles.allocationTitle}>
+                    <Text style={styles.listTitle}>
                       Installment {inst.installment_no}
                     </Text>
-                    <Text style={styles.allocationSub}>
+                    <Text style={styles.listSub}>
                       Due {formatDateTime(inst.due_date)}
                     </Text>
                   </View>
+
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.allocationAmount}>
-                      {formatKes(inst.total_due)}
-                    </Text>
-                    <Text style={styles.installmentMeta}>
-                      Paid {formatKes(inst.paid_amount)} •{" "}
+                    <Text style={styles.listAmount}>{formatKes(inst.total_due)}</Text>
+                    <Text style={styles.listMeta}>
                       {inst.is_paid ? "Paid" : "Pending"}
                     </Text>
                   </View>
@@ -421,19 +441,20 @@ export default function LoanDetailScreen() {
           ) : (
             <View style={styles.group}>
               {payments.map((p) => (
-                <View key={p.id} style={styles.installmentRow}>
+                <View key={p.id} style={styles.listRow}>
+                  <View style={styles.listIconWrap}>
+                    <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
+                  </View>
+
                   <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={styles.allocationTitle}>
-                      {formatKes(p.amount)}
-                    </Text>
-                    <Text style={styles.allocationSub}>
+                    <Text style={styles.listTitle}>{formatKes(p.amount)}</Text>
+                    <Text style={styles.listSub}>
                       {p.method}
                       {p.reference ? ` • ${p.reference}` : ""}
                     </Text>
                   </View>
-                  <Text style={styles.installmentMeta}>
-                    {formatDateTime(p.paid_at)}
-                  </Text>
+
+                  <Text style={styles.listMeta}>{formatDateTime(p.paid_at)}</Text>
                 </View>
               ))}
             </View>
@@ -446,14 +467,14 @@ export default function LoanDetailScreen() {
           <Card style={styles.card}>
             <View style={styles.group}>
               {loan.member_note ? (
-                <View>
-                  <Text style={styles.noteTitle}>Member note</Text>
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteTitle}>Your note</Text>
                   <Text style={styles.noteText}>{loan.member_note}</Text>
                 </View>
               ) : null}
 
               {loan.admin_note ? (
-                <View>
+                <View style={styles.noteBox}>
                   <Text style={styles.noteTitle}>Admin note</Text>
                   <Text style={styles.noteText}>{loan.admin_note}</Text>
                 </View>
@@ -505,8 +526,7 @@ export default function LoanDetailScreen() {
             color={COLORS.gray}
           />
           <Text style={styles.hintText}>
-            Repayments made through MPESA STK Push may take a short moment to
-            reflect after callback confirmation.
+            Loan payment updates may take a short moment to reflect after confirmation.
           </Text>
         </View>
       </Section>
@@ -533,34 +553,97 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  header: {
-    backgroundColor: COLORS.white,
+  hero: {
+    position: "relative",
+    overflow: "hidden",
     borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    backgroundColor: COLORS.primary,
+    padding: SPACING.lg,
     ...SHADOW.card,
+  },
+
+  heroGlow: {
+    position: "absolute",
+    right: -20,
+    top: -20,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: SPACING.md,
+  },
+
+  heroIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
+  heroTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 20,
+    color: COLORS.white,
+  },
+
+  heroSub: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.88)",
+    lineHeight: 18,
   },
 
   card: {
     padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
   },
 
-  title: {
+  summaryGrid: {
+    gap: SPACING.sm,
+  },
+
+  summaryCard: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  summaryCardHighlight: {
+    backgroundColor: `${COLORS.primary}10`,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}20`,
+  },
+
+  summaryLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 6,
+  },
+
+  summaryLabelHighlight: {
+    color: COLORS.primary,
+  },
+
+  summaryValue: {
     fontFamily: FONT.bold,
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.dark,
   },
 
-  sub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+  summaryValueHighlight: {
+    color: COLORS.primary,
   },
 
   errorCard: {
@@ -571,6 +654,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -613,49 +697,43 @@ const styles = StyleSheet.create({
     color: COLORS.dark,
   },
 
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 4,
-  },
-
-  allocationRow: {
+  listRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
     gap: 12,
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
 
-  allocationTitle: {
+  listIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
+  },
+
+  listTitle: {
     fontFamily: FONT.bold,
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.dark,
   },
 
-  allocationSub: {
+  listSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.gray,
   },
 
-  allocationAmount: {
+  listAmount: {
     fontFamily: FONT.bold,
     fontSize: 12,
     color: COLORS.dark,
     textAlign: "right",
   },
 
-  installmentRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 4,
-  },
-
-  installmentMeta: {
+  listMeta: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 11,
@@ -666,6 +744,14 @@ const styles = StyleSheet.create({
   smallBadge: {
     fontFamily: FONT.bold,
     fontSize: 11,
+  },
+
+  noteBox: {
+    padding: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 
   noteTitle: {

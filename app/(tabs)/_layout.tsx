@@ -94,6 +94,9 @@ export default function TabsLayout() {
         }}
       />
 
+      {/* Hidden notifications screen */}
+      <Tabs.Screen name="notifications/index" options={{ href: null }} />
+
       {/* Hidden savings screens */}
       <Tabs.Screen name="savings/create" options={{ href: null }} />
       <Tabs.Screen name="savings/[id]" options={{ href: null }} />

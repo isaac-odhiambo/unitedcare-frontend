@@ -20,6 +20,7 @@ export const ROUTES = {
        Savings
     ----------------------------- */
     savings: "/(tabs)/savings",
+    savingsSave: "/(tabs)/savings/save", // ✅ ADDED
     savingsCreate: "/(tabs)/savings/create",
     savingsHistory: "/(tabs)/savings/history",
 

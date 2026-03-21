@@ -173,20 +173,58 @@ export type PayLoanResponse = {
   outstanding_balance: string;
 };
 
-export type StkPushResponse = {
-  message?: string;
-  detail?: string;
-  checkout_request_id?: string;
-  merchant_request_id?: string;
-  mpesa_tx_id?: number;
+/* =========================================================
+   STK Repayment Types
+========================================================= */
+
+export type LoanRepaymentTx = {
+  id: number;
+  user_id?: number;
+  phone: string;
+  matched_user_phone?: string;
+
+  amount: string;
+  base_amount?: string | null;
+  transaction_fee?: string | null;
+
+  direction?: "IN" | "OUT" | string;
+  channel?: "STK" | "C2B" | "B2C" | string;
+  payment_method?: string;
+  origin?: string;
+
+  purpose?: string;
   status?: string;
+
+  reference?: string;
+  merchant_request_id?: string | null;
+  checkout_request_id?: string | null;
+
+  result_code?: string | number | null;
+  result_desc?: string | null;
+
+  mpesa_receipt_number?: string | null;
+  transaction_date?: string | null;
+  callback_received_at?: string | null;
+
+  request_payload?: Record<string, any> | null;
+  callback_payload?: Record<string, any> | null;
+
+  allocation_status?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type StkPushResponse = {
+  message: string;
+  tx: LoanRepaymentTx;
 };
 
 export type StkLoanRepaymentPayload = {
   phone: string;
-  amount: string;
+  amount: string | number;
   loan_id: number;
   reference?: string;
+  narration?: string;
 };
 
 /* =========================================================
@@ -203,6 +241,19 @@ function normalizeMoneyInput(value: string | number): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
   return raw.replace(/,/g, "");
+}
+
+function normalizeKenyaPhone(phone: string): string {
+  const clean = String(phone || "").replace(/\D/g, "");
+
+  if (clean.startsWith("254") && clean.length === 12) return clean;
+  if (clean.startsWith("0") && clean.length === 10) return `254${clean.slice(1)}`;
+
+  return clean;
+}
+
+function cleanText(value?: string | null): string {
+  return String(value || "").trim();
 }
 
 /* =========================================================
@@ -258,7 +309,6 @@ export async function getMyLoans(): Promise<Loan[]> {
 }
 
 export async function getLoanEligibilityPreview(): Promise<LoanEligibilityPreview> {
-  console.log("LOANS SERVICE DEBUG -> eligibility endpoint:", ENDPOINTS.loans?.eligibility);
   const res = await api.get(ENDPOINTS.loans.eligibility);
   return res.data;
 }
@@ -360,14 +410,15 @@ export async function stkRepayLoan(
   payload: StkLoanRepaymentPayload
 ): Promise<StkPushResponse> {
   const body = {
-    phone: payload.phone,
+    phone: normalizeKenyaPhone(payload.phone),
     amount: normalizeMoneyInput(payload.amount),
     purpose: "LOAN_REPAYMENT",
-    reference: payload.reference ?? `LOAN-${payload.loan_id}`,
-    loan_id: payload.loan_id,
+    reference: cleanText(payload.reference) || `loan${payload.loan_id}`,
+    narration:
+      cleanText(payload.narration) || `Loan repayment (Loan#${payload.loan_id})`,
   };
 
-  const res = await api.post(ENDPOINTS.payments.stkPush, body);
+  const res = await api.post<StkPushResponse>(ENDPOINTS.payments.stkPush, body);
   return res.data;
 }
 

@@ -18,6 +18,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
+      "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/united-care-icon.png"
     },
@@ -60,7 +61,6 @@
 //     "icon": "./assets/images/united-care-icon.png",
 //     "scheme": "united-care",
 //     "userInterfaceStyle": "automatic",
-//     "newArchEnabled": true,
 //     "ios": {
 //       "supportsTablet": true
 //     },
@@ -69,9 +69,9 @@
 //         "foregroundImage": "./assets/images/united-care-icon.png",
 //         "backgroundColor": "#0A6E8A"
 //       },
-//       "edgeToEdgeEnabled": true,
 //       "predictiveBackGestureEnabled": false
 //     },
+    
 //     "web": {
 //       "output": "static",
 //       "favicon": "./assets/images/united-care-icon.png"
@@ -90,6 +90,13 @@
 //           }
 //         }
 //       ],
+//       [
+//         "expo-image-picker",
+//         {
+//           "photosPermission": "Allow UNITED CARE to access your photos for KYC upload.",
+//           "cameraPermission": "Allow UNITED CARE to use your camera to capture KYC documents."
+//         }
+//       ],
 //       "expo-secure-store"
 //     ],
 //     "experiments": {
@@ -98,3 +105,4 @@
 //     }
 //   }
 // }
+

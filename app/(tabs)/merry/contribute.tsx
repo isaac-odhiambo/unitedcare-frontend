@@ -1,5 +1,4 @@
-// app/(tabs)/payments/merry-contribute.tsx
-import { Ionicons } from "@expo/vector-icons";
+// app/(tabs)/merry/contribute.tsx
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -9,32 +8,29 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import {
-  COLORS,
-  FONT,
-  P,
-  RADIUS,
-  SPACING,
-  TYPE,
-} from "@/constants/theme";
+import { COLORS, FONT, P, RADIUS, SPACING, TYPE } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
-  getApiErrorMessage,
   getMerryDetail,
   getMerrySeats,
   MerryDetail,
   MerrySeatRow,
-  stkPayMerryContribution,
 } from "@/services/merry";
+import {
+  getActiveMpesaConfig,
+  getApiErrorMessage,
+  isPaybillEnabled,
+  MpesaConfig,
+} from "@/services/payments";
 import {
   canJoinMerry,
   getMe,
@@ -42,9 +38,21 @@ import {
   isKycComplete,
   MeResponse,
 } from "@/services/profile";
-import { getSessionUser, saveSessionUser, SessionUser } from "@/services/session";
+import {
+  getSessionUser,
+  saveSessionUser,
+  SessionUser,
+} from "@/services/session";
 
 type MerryContributionUser = Partial<MeResponse> & Partial<SessionUser>;
+type PaymentMethod = "STK" | "PAYBILL";
+
+function sanitizeAmount(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const parts = cleaned.split(".");
+  if (parts.length <= 2) return cleaned;
+  return `${parts[0]}.${parts.slice(1).join("")}`;
+}
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -55,15 +63,20 @@ function formatKes(value?: string | number | null) {
   })}`;
 }
 
-function normalizePhone(value: string) {
-  const v = value.trim().replace(/\s+/g, "");
-  if (v.startsWith("+254")) return `0${v.slice(4)}`;
-  if (v.startsWith("254")) return `0${v.slice(3)}`;
-  return v;
+function getUserId(user?: MerryContributionUser | null) {
+  const raw =
+    (user as any)?.id ??
+    (user as any)?.user_id ??
+    (user as any)?.pk ??
+    null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function isValidKenyanPhone(phone: string) {
-  return /^(07|01)\d{8}$/.test(phone);
+function getMerryReference(user?: MerryContributionUser | null) {
+  const userId = getUserId(user);
+  if (userId) return `mus${userId}`;
+  return "mus";
 }
 
 function isPositiveAmount(value: string) {
@@ -71,46 +84,17 @@ function isPositiveAmount(value: string) {
   return Number.isFinite(n) && n > 0;
 }
 
-function formatDisplayName(user?: MerryContributionUser | null) {
-  if (!user) return "Member";
-  return (
-    (user as any)?.full_name ||
-    (user as any)?.name ||
-    user?.username ||
-    (typeof user?.phone === "string" ? user.phone : "") ||
-    "Member"
-  );
-}
-
-function InfoRow({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 export default function MerryContributeScreen() {
-  const params = useLocalSearchParams<{ merryId?: string }>();
-  const merryId = Number(params.merryId ?? 0);
+  const params = useLocalSearchParams<{ id?: string; merryId?: string }>();
+  const merryId = Number(params.id ?? params.merryId ?? 0);
 
   const [user, setUser] = useState<MerryContributionUser | null>(null);
   const [merry, setMerry] = useState<MerryDetail | null>(null);
   const [mySeats, setMySeats] = useState<MerrySeatRow[]>([]);
+  const [mpesaConfig, setMpesaConfig] = useState<MpesaConfig | null>(null);
 
-  const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("STK");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,46 +105,62 @@ export default function MerryContributeScreen() {
   const kycComplete = isKycComplete(user);
   const merryAllowed = canJoinMerry(user);
 
-  const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
-  const phoneOk = useMemo(() => isValidKenyanPhone(normalizedPhone), [normalizedPhone]);
-  const amountOk = useMemo(() => isPositiveAmount(amount), [amount]);
-  const baseAmount = useMemo(() => Number(amount || 0), [amount]);
-
   const isMemberOfThisMerry = mySeats.length > 0;
-  const canSubmit =
+  const paybillEnabled = useMemo(
+    () => isPaybillEnabled(mpesaConfig),
+    [mpesaConfig]
+  );
+
+  const expectedAmount = useMemo(() => {
+    const perSeat = Number(merry?.contribution_amount || 0);
+    return perSeat * mySeats.length;
+  }, [merry?.contribution_amount, mySeats.length]);
+
+  const cleanAmount = useMemo(() => {
+    const n = Number(amount);
+    return Number.isFinite(n) && n > 0 ? String(n) : "";
+  }, [amount]);
+
+  const accountReference = useMemo(() => getMerryReference(user), [user]);
+
+  const canContinue =
     merryAllowed &&
     isMemberOfThisMerry &&
     !isAdmin &&
-    phoneOk &&
-    amountOk &&
+    kycComplete &&
+    !!merry &&
+    isPositiveAmount(amount) &&
     !submitting &&
-    !!merry;
+    (method === "STK" || paybillEnabled);
 
   const load = useCallback(async () => {
     if (!merryId || !Number.isFinite(merryId)) {
       setError("Missing or invalid merry ID.");
-      setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
       setError("");
 
-      const [sessionRes, meRes, merryRes, seatsRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-        getMerryDetail(merryId),
-        getMerrySeats(merryId),
-      ]);
+      const [sessionRes, meRes, merryRes, seatsRes, mpesaConfigRes] =
+        await Promise.allSettled([
+          getSessionUser(),
+          getMe(),
+          getMerryDetail(merryId),
+          getMerrySeats(merryId),
+          getActiveMpesaConfig(),
+        ]);
 
       const sessionUser =
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
       const meUser = meRes.status === "fulfilled" ? meRes.value : null;
 
-      const mergedUser =
+      const mergedUser: MerryContributionUser | null =
         sessionUser || meUser
-          ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
+          ? {
+              ...(sessionUser ?? {}),
+              ...(meUser ?? {}),
+            }
           : null;
 
       setUser(mergedUser);
@@ -169,18 +169,20 @@ export default function MerryContributeScreen() {
         await saveSessionUser(mergedUser);
       }
 
-      setPhone(String(meUser?.phone || sessionUser?.phone || ""));
-
       if (merryRes.status === "fulfilled") {
         setMerry(merryRes.value);
-        setAmount((prev) =>
-          prev && prev.trim().length > 0
-            ? prev
-            : String(merryRes.value?.contribution_amount || "")
-        );
       } else {
         setMerry(null);
-        setError(getApiErrorMessage(merryRes.reason));
+        setError(
+          getApiErrorMessage(merryRes.reason) ||
+            getErrorMessage(merryRes.reason)
+        );
+      }
+
+      if (mpesaConfigRes.status === "fulfilled") {
+        setMpesaConfig(mpesaConfigRes.value);
+      } else {
+        setMpesaConfig(null);
       }
 
       const allSeats =
@@ -196,22 +198,43 @@ export default function MerryContributeScreen() {
 
       setMySeats(mine);
 
+      if (!amount.trim()) {
+        const perSeat =
+          merryRes.status === "fulfilled"
+            ? Number(merryRes.value?.contribution_amount || 0)
+            : 0;
+
+        const suggested = perSeat * mine.length;
+        if (suggested > 0) {
+          setAmount(String(suggested));
+        } else if (perSeat > 0) {
+          setAmount(String(perSeat));
+        }
+      }
+
       if (meRes.status === "rejected" && merryRes.status !== "rejected") {
-        setError(getErrorMessage(meRes.reason));
+        setError((prev) => prev || getErrorMessage(meRes.reason));
       }
     } catch (e: any) {
-      setError(getErrorMessage(e));
       setMerry(null);
       setMySeats([]);
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
+    }
+  }, [amount, merryId]);
+
+  const initialLoad = useCallback(async () => {
+    try {
+      setLoading(true);
+      await load();
     } finally {
       setLoading(false);
     }
-  }, [merryId]);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      initialLoad();
+    }, [initialLoad])
   );
 
   const onRefresh = useCallback(async () => {
@@ -223,47 +246,35 @@ export default function MerryContributeScreen() {
     }
   }, [load]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!merryAllowed || !merry || !isMemberOfThisMerry || isAdmin) return;
+  const openCentralDeposit = useCallback(() => {
+    if (!merry || !canContinue) return;
 
     try {
       setSubmitting(true);
       setError("");
 
-      const cleanAmount = String(Number(amount));
-
-      const res = await stkPayMerryContribution({
-        merry_id: merry.id,
-        amount: cleanAmount,
-        phone: normalizedPhone,
-        narration: `Merry contribution for ${merry.name}`,
-      });
-
-      const chargedAmount =
-        res?.stk?.tx?.amount ?? res?.payment_intent?.amount ?? cleanAmount;
-
-      const feeAmount = (res?.stk?.tx as any)?.transaction_fee ?? "0";
-
-      const notice =
-        res?.stk?.message ||
-        "STK push initiated. Complete the payment prompt on your phone.";
-
-      router.replace({
-        pathname: ROUTES.dynamic.merryDetail(merry.id) as any,
+      router.push({
+        pathname: "/(tabs)/payments/deposit" as any,
         params: {
-          contributed: "1",
-          baseAmount: cleanAmount,
-          chargedAmount: String(chargedAmount),
-          feeAmount: String(feeAmount),
-          notice,
+          purpose: "MERRY_CONTRIBUTION",
+          amount: cleanAmount,
+          reference: accountReference,
+          merry_id: String(merry.id),
+          merryId: String(merry.id),
+          method,
+          initialMethod: method,
+          initial_method: method,
+          title: "Merry Contribution",
+          subtitle: merry.name,
+          returnTo: ROUTES.dynamic.merryDetail(merry.id),
         },
       });
     } catch (e: any) {
-      setError(getApiErrorMessage(e));
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
-  }, [amount, isAdmin, isMemberOfThisMerry, merry, merryAllowed, normalizedPhone]);
+  }, [accountReference, canContinue, cleanAmount, merry, method]);
 
   if (loading) {
     return (
@@ -273,40 +284,40 @@ export default function MerryContributeScreen() {
     );
   }
 
-  if (!merryId || !Number.isFinite(merryId)) {
-    return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Invalid merry"
-          subtitle="No merry was selected for contribution."
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry as any)}
-        />
-      </View>
-    );
-  }
-
-  if (!user) {
-    return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to contribute to merry-go-round."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
-    );
-  }
-
   if (!merry) {
     return (
       <View style={styles.page}>
         <EmptyState
-          title="Unable to load merry"
-          subtitle={error || "This merry could not be loaded."}
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry as any)}
+          title="Merry not found"
+          subtitle="We could not load this merry."
+          actionLabel="Go Back"
+          onAction={() => router.back()}
+        />
+      </View>
+    );
+  }
+
+  if (!merryAllowed) {
+    return (
+      <View style={styles.page}>
+        <EmptyState
+          title="Access restricted"
+          subtitle="Complete the required account setup steps before contributing."
+          actionLabel="Go Back"
+          onAction={() => router.back()}
+        />
+      </View>
+    );
+  }
+
+  if (!isMemberOfThisMerry) {
+    return (
+      <View style={styles.page}>
+        <EmptyState
+          title="Not a member"
+          subtitle="You are not assigned to this merry yet."
+          actionLabel="Go Back"
+          onAction={() => router.back()}
         />
       </View>
     );
@@ -319,212 +330,101 @@ export default function MerryContributeScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
-      showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1, paddingRight: SPACING.md }}>
-            <Text style={styles.heroEyebrow}>MERRY CONTRIBUTION</Text>
-            <Text style={styles.heroTitle}>{merry.name}</Text>
-            <Text style={styles.heroSubtitle}>
-              {isAdmin ? "Admin view" : formatDisplayName(user)}
-            </Text>
-          </View>
-
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="repeat-outline" size={24} color={COLORS.white} />
-          </View>
-        </View>
-
-        <View style={styles.heroPills}>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>{String(mySeats.length)} seat(s)</Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>
-              {kycComplete ? "KYC Complete" : "KYC Pending"}
-            </Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>STK Push</Text>
-          </View>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.title}>Merry Contribution</Text>
+        <Text style={styles.subtitle}>{merry.name}</Text>
       </View>
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      {!merryAllowed ? (
-        <Section title="Account Status">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeIcon}>
-              <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color={COLORS.info}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Approval required</Text>
-              <Text style={styles.noticeText}>
-                Your account must be approved before contributing to a merry.
-              </Text>
-            </View>
-          </Card>
-        </Section>
-      ) : isAdmin ? (
-        <Section title="Admin Notice">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeIcon}>
-              <Ionicons name="shield-outline" size={18} color={COLORS.info} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Admin account</Text>
-              <Text style={styles.noticeText}>
-                Contribute here only if this admin account is an actual member of
-                the merry.
-              </Text>
-            </View>
-          </Card>
-        </Section>
-      ) : !isMemberOfThisMerry ? (
-        <Section title="Membership Required">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeIcon}>
-              <Ionicons name="people-outline" size={18} color={COLORS.info} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Join first</Text>
-              <Text style={styles.noticeText}>
-                You need at least one assigned seat before contributing.
-              </Text>
-            </View>
-          </Card>
-        </Section>
-      ) : !kycComplete ? (
-        <Section title="Verification">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeIcon}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color={COLORS.info}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>KYC not complete</Text>
-              <Text style={styles.noticeText}>
-                You can contribute now, but some withdrawal actions stay limited
-                until KYC is complete.
-              </Text>
-            </View>
-            <Button
-              title="Complete KYC"
-              variant="ghost"
-              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-            />
-          </Card>
-        </Section>
+      {!kycComplete ? (
+        <Card style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            Complete KYC approval first before contributing.
+          </Text>
+        </Card>
       ) : null}
 
-      <Section title="Merry">
-        <Card style={styles.summaryCard}>
-          <InfoRow label="Name" value={merry.name} />
-          <InfoRow
-            label="Per seat"
-            value={formatKes(merry.contribution_amount)}
-          />
-          <InfoRow label="My seats" value={String(mySeats.length)} />
-          <InfoRow
-            label="Frequency"
-            value={String(merry.payout_frequency || "—")}
-          />
-          <InfoRow
-            label="Slots / period"
-            value={String(merry.payouts_per_period || "1")}
-          />
-          <InfoRow
-            label="Next payout"
-            value={merry.next_payout_date || "—"}
-          />
+      {isAdmin ? (
+        <Card style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            Admin accounts cannot make member merry contributions here.
+          </Text>
         </Card>
-      </Section>
+      ) : null}
 
-      <Section title="Contribution">
-        <Card style={styles.formCard}>
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="07XXXXXXXX"
-            placeholderTextColor={COLORS.placeholder}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            style={styles.input}
-          />
+      <Card style={styles.formCard}>
+        <Text style={styles.helper}>
+          Seats: {mySeats.length}
+        </Text>
+        <Text style={styles.helper}>
+          Expected amount: {formatKes(expectedAmount)}
+        </Text>
 
-          <Text style={styles.label}>Amount</Text>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="e.g. 500"
-            placeholderTextColor={COLORS.placeholder}
-            keyboardType="numeric"
-            style={styles.input}
-          />
+        <Text style={styles.label}>Amount</Text>
+        <TextInput
+          value={amount}
+          onChangeText={(v) => setAmount(sanitizeAmount(v))}
+          placeholder={expectedAmount > 0 ? String(expectedAmount) : "1000"}
+          placeholderTextColor={COLORS.placeholder}
+          keyboardType="numeric"
+          style={styles.input}
+        />
 
-          <View style={styles.previewCard}>
-            <InfoRow label="Phone" value={normalizedPhone || "—"} />
-            <InfoRow label="Amount" value={formatKes(baseAmount || 0)} />
-            <InfoRow label="Merry" value={merry.name} />
-            <InfoRow label="Method" value="STK Push" />
-          </View>
-
-          <Card style={styles.infoCard}>
-            <Ionicons
-              name="information-circle-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.infoText}>
-              Enter the base contribution amount. Any transaction fee is applied
-              automatically by the backend settings.
+        <View style={styles.switchRow}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => setMethod("STK")}
+            style={[
+              styles.switchBtn,
+              method === "STK" ? styles.switchBtnActive : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.switchBtnText,
+                method === "STK" ? styles.switchBtnTextActive : null,
+              ]}
+            >
+              STK Push
             </Text>
-          </Card>
+          </TouchableOpacity>
 
-          <View style={{ height: SPACING.md }} />
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              if (paybillEnabled) setMethod("PAYBILL");
+            }}
+            style={[
+              styles.switchBtn,
+              method === "PAYBILL" ? styles.switchBtnActive : null,
+              !paybillEnabled ? styles.switchBtnDisabled : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.switchBtnText,
+                method === "PAYBILL" ? styles.switchBtnTextActive : null,
+              ]}
+            >
+              Paybill
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-          <Button
-            title={
-              !merryAllowed
-                ? "Account Not Eligible"
-                : isAdmin
-                ? "Admin Cannot Contribute Here"
-                : !isMemberOfThisMerry
-                ? "Join Merry First"
-                : submitting
-                ? "Sending STK..."
-                : "Contribute via STK"
-            }
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            leftIcon={
-              <Ionicons
-                name="paper-plane-outline"
-                size={18}
-                color={COLORS.white}
-              />
-            }
-          />
-        </Card>
-      </Section>
-
-      <View style={{ height: 24 }} />
+        <Button
+          title={submitting ? "Opening..." : "Pay Now"}
+          onPress={openCentralDeposit}
+          disabled={!canContinue}
+        />
+      </Card>
     </ScrollView>
   );
 }
@@ -546,120 +446,63 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  heroCard: {
-    ...P.paymentHero,
+  header: {
     marginBottom: SPACING.lg,
   },
 
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-
-  heroEyebrow: {
-    ...TYPE.caption,
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FONT.bold,
-    letterSpacing: 1,
-  },
-
-  heroTitle: {
-    marginTop: 6,
-    color: COLORS.white,
+  title: {
     fontFamily: FONT.bold,
     fontSize: 24,
-    lineHeight: 30,
-  },
-
-  heroSubtitle: {
-    ...TYPE.subtext,
-    marginTop: 8,
-    color: "rgba(255,255,255,0.90)",
-  },
-
-  heroIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: RADIUS.round,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.20)",
-  },
-
-  heroPills: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-  },
-
-  heroPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-
-  heroPillText: {
-    color: COLORS.white,
-    fontFamily: FONT.bold,
-    fontSize: 11,
-  },
-
-  errorCard: {
-    ...P.paymentError,
-    marginBottom: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-
-  errorText: {
-    flex: 1,
-    ...TYPE.subtext,
-    color: COLORS.danger,
-  },
-
-  noticeCard: {
-    ...P.paymentCard,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  noticeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.infoSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  noticeTitle: {
-    ...TYPE.bodyStrong,
     color: COLORS.text,
   },
 
-  noticeText: {
+  subtitle: {
     marginTop: 4,
     ...TYPE.subtext,
     color: COLORS.textMuted,
   },
 
-  summaryCard: {
-    ...P.paymentCard,
+  errorCard: {
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.18)",
+    backgroundColor: "rgba(220,38,38,0.06)",
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  errorText: {
+    ...TYPE.subtext,
+    color: COLORS.danger,
+  },
+
+  infoCard: {
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  infoText: {
+    ...TYPE.subtext,
+    color: COLORS.textMuted,
   },
 
   formCard: {
     ...P.paymentCard,
   },
 
+  helper: {
+    ...TYPE.subtext,
+    color: COLORS.textMuted,
+    marginBottom: 6,
+  },
+
   label: {
     ...TYPE.label,
+    marginTop: SPACING.sm,
     marginBottom: 8,
     color: COLORS.text,
   },
@@ -670,50 +513,39 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
 
-  previewCard: {
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    backgroundColor: COLORS.surfaceAlt,
-  },
-
-  infoRow: {
-    paddingVertical: 7,
+  switchRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-
-  infoLabel: {
-    ...TYPE.body,
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-
-  infoValue: {
-    flexShrink: 1,
-    textAlign: "right",
-    ...TYPE.bodyStrong,
-    fontSize: 12,
-    color: COLORS.text,
-  },
-
-  infoCard: {
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
     gap: SPACING.sm,
-    backgroundColor: COLORS.surfaceAlt,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    marginBottom: SPACING.md,
   },
 
-  infoText: {
+  switchBtn: {
     flex: 1,
-    ...TYPE.subtext,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+  },
+
+  switchBtnActive: {
+    borderColor: COLORS.mpesa,
+    backgroundColor: "rgba(22,163,74,0.08)",
+  },
+
+  switchBtnDisabled: {
+    opacity: 0.5,
+  },
+
+  switchBtnText: {
+    fontFamily: FONT.medium,
+    fontSize: 14,
     color: COLORS.textMuted,
+  },
+
+  switchBtnTextActive: {
+    color: COLORS.mpesa,
+    fontFamily: FONT.bold,
   },
 });

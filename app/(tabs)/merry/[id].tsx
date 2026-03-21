@@ -1,12 +1,13 @@
-// app/(tabs)/loans/index.tsx
+// app/(tabs)/merry/[id].tsx
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
@@ -17,334 +18,237 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-import { getAccessToken, getErrorMessage } from "@/services/api";
+import { COLORS, RADIUS, SPACING, TYPE } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
 import {
-  acceptGuarantee,
+  fmtKES,
   getApiErrorMessage,
-  getLoanEligibilityPreview,
-  getMyGuaranteeRequests,
-  getMyLoans,
-  Loan,
-  LoanEligibilityPreview,
-  LoanGuarantor,
-  rejectGuarantee,
-} from "@/services/loans";
-import {
-  canWithdraw,
-  getMe,
-  isAdminUser,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
-import {
-  getSessionUser,
-  saveSessionUser,
-  SessionUser,
-} from "@/services/session";
+  getMerryDetail,
+  getMerryPaymentBreakdown,
+  MerryDetail,
+  MerryPaymentBreakdownResponse,
+} from "@/services/merry";
+import { getMe, MeResponse } from "@/services/profile";
+import { getSessionUser, SessionUser } from "@/services/session";
 
-type LoanUser = Partial<MeResponse> & Partial<SessionUser>;
+type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
-function normalizeToken(token?: string | null) {
-  const clean = String(token || "").trim();
-  return clean || null;
+function toBool(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(v)) return true;
+    if (["0", "false", "no", "off"].includes(v)) return false;
+  }
+  return fallback;
 }
 
-function hasJwtShape(token?: string | null) {
-  const clean = normalizeToken(token);
-  return !!clean && clean.split(".").length === 3;
+function hasAmount(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0;
 }
 
-function toNum(x?: string | number | null) {
-  const n = Number(x ?? 0);
-  return Number.isFinite(n) ? n : 0;
+function statusTone(bucket?: string) {
+  switch ((bucket || "").toLowerCase()) {
+    case "overdue":
+      return {
+        bg: COLORS.dangerSoft,
+        text: COLORS.danger,
+        label: "Overdue",
+      };
+    case "current":
+      return {
+        bg: COLORS.warningSoft,
+        text: COLORS.warning,
+        label: "Due now",
+      };
+    case "future":
+      return {
+        bg: COLORS.successSoft,
+        text: COLORS.success,
+        label: "Next due",
+      };
+    default:
+      return {
+        bg: COLORS.primarySoft,
+        text: COLORS.primary,
+        label: "Open",
+      };
+  }
 }
 
-function fmtKES(amount?: string | number | null) {
-  const n = toNum(amount);
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function fmtDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
-
-function NoticeCard({
+function SummaryBox({
+  label,
+  value,
   icon,
-  text,
-  buttonLabel,
-  onPress,
+  tone = "primary",
 }: {
+  label: string;
+  value: string;
   icon: keyof typeof Ionicons.glyphMap;
-  text: string;
-  buttonLabel?: string;
-  onPress?: () => void;
+  tone?: "primary" | "warning" | "danger" | "success";
 }) {
-  return (
-    <Card style={styles.noticeCard}>
-      <View style={styles.noticeTop}>
-        <Ionicons name={icon} size={18} color={COLORS.info} />
-        <Text style={styles.noticeText}>{text}</Text>
-      </View>
+  const tones = {
+    primary: {
+      bg: COLORS.primarySoft,
+      icon: COLORS.primary,
+      border: "rgba(14, 94, 111, 0.10)",
+    },
+    warning: {
+      bg: COLORS.warningSoft,
+      icon: COLORS.warning,
+      border: "rgba(245, 158, 11, 0.10)",
+    },
+    danger: {
+      bg: COLORS.dangerSoft,
+      icon: COLORS.danger,
+      border: "rgba(239, 68, 68, 0.10)",
+    },
+    success: {
+      bg: COLORS.successSoft,
+      icon: COLORS.success,
+      border: "rgba(34, 197, 94, 0.10)",
+    },
+  };
 
-      {buttonLabel && onPress ? (
-        <View style={{ marginTop: SPACING.sm }}>
-          <Button title={buttonLabel} variant="secondary" onPress={onPress} />
-        </View>
-      ) : null}
+  const t = tones[tone];
+
+  return (
+    <Card style={[styles.summaryBox, { borderColor: t.border }]} variant="default">
+      <View style={[styles.summaryIconWrap, { backgroundColor: t.bg }]}>
+        <Ionicons name={icon} size={18} color={t.icon} />
+      </View>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue} numberOfLines={1}>
+        {value}
+      </Text>
     </Card>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
+function DueLine({
+  item,
 }: {
-  label: string;
-  value: string | number;
+  item: MerryPaymentBreakdownResponse["items"][number];
 }) {
+  const tone = statusTone(item.bucket);
+
   return (
-    <View style={styles.summaryCard}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{String(value)}</Text>
+    <View style={styles.dueLine}>
+      <View style={{ flex: 1, paddingRight: SPACING.sm }}>
+        <View style={styles.dueLineTop}>
+          <Text style={styles.dueLineTitle}>
+            Seat {item.seat_no} • Slot {item.slot_no}
+          </Text>
+          <View style={[styles.dueBadge, { backgroundColor: tone.bg }]}>
+            <Text style={[styles.dueBadgeText, { color: tone.text }]}>
+              {tone.label}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.dueLineSub}>
+          {item.period_key}
+          {item.due_date ? ` • ${item.due_date}` : ""}
+        </Text>
+      </View>
+
+      <Text style={styles.dueLineAmount}>{fmtKES(item.outstanding)}</Text>
     </View>
   );
 }
 
-function statusColor(status?: string) {
-  switch ((status || "").toUpperCase()) {
-    case "APPROVED":
-      return COLORS.success;
-    case "COMPLETED":
-      return COLORS.primary;
-    case "PENDING":
-    case "UNDER_REVIEW":
-      return COLORS.warning;
-    case "DEFAULTED":
-    case "REJECTED":
-    case "CANCELLED":
-      return COLORS.danger;
-    default:
-      return COLORS.gray;
-  }
-}
+export default function MerryDetailScreen() {
+  const params = useLocalSearchParams<{ id?: string; includeNext?: string }>();
+  const merryId = Number(params.id);
+  const initialIncludeNext = toBool(params.includeNext, false);
 
-function statusText(status?: string | null) {
-  if (!status) return "—";
-  return String(status).replaceAll("_", " ");
-}
+  const [user, setUser] = useState<MerryUser | null>(null);
+  const [detail, setDetail] = useState<MerryDetail | null>(null);
+  const [breakdown, setBreakdown] =
+    useState<MerryPaymentBreakdownResponse | null>(null);
 
-function getLoanSubtitle(loan: Loan) {
-  const productName =
-    loan.product_detail?.name || loan.product_name || `Product #${loan.product}`;
-  return `${productName} • ${fmtKES(loan.principal)} • ${loan.term_weeks} week(s)`;
-}
-
-function canPay(loan: Loan) {
-  return (
-    (loan.status === "APPROVED" || loan.status === "DEFAULTED") &&
-    toNum(loan.outstanding_balance) > 0
-  );
-}
-
-export default function LoansIndexScreen() {
-  const [user, setUser] = useState<LoanUser | null>(null);
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
-  const [eligibility, setEligibility] = useState<LoanEligibilityPreview | null>(null);
+  const [includeNext, setIncludeNext] = useState(initialIncludeNext);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [error, setError] = useState("");
-  const [processingGuaranteeId, setProcessingGuaranteeId] = useState<number | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
-  const safeUser = user ?? {};
-  const isAdmin = isAdminUser(safeUser);
-  const kycComplete = isKycComplete(safeUser);
-  const withdrawAllowed = canWithdraw(safeUser);
-
-  const load = useCallback(async () => {
-    try {
-      setError("");
-
-      const token = await getAccessToken();
-      const hasToken = hasJwtShape(token);
-
-      console.log("LOANS SCREEN DEBUG -> token exists:", hasToken);
-      console.log(
-        "LOANS SCREEN DEBUG -> token preview:",
-        typeof token === "string" ? token.slice(0, 20) : null
-      );
-
-      setAuthChecked(hasToken);
-
-      if (!hasToken) {
-        console.log("LOANS SCREEN DEBUG -> no valid token, clearing local state");
-        setUser(null);
-        setLoans([]);
-        setGuaranteeRequests([]);
-        setEligibility(null);
+  const load = useCallback(
+    async (includeNextValue = includeNext) => {
+      if (!merryId || Number.isNaN(merryId)) {
+        setError("Invalid merry selected.");
+        setDetail(null);
+        setBreakdown(null);
         return;
       }
 
-      const sessionUser = await getSessionUser();
-      console.log("LOANS SCREEN DEBUG -> session user:", sessionUser);
+      try {
+        setError("");
 
-      if (sessionUser) {
-        setUser(sessionUser);
-      } else {
-        setUser({});
-      }
+        const [sessionRes, meRes, detailRes, breakdownRes] =
+          await Promise.allSettled([
+            getSessionUser(),
+            getMe(),
+            getMerryDetail(merryId),
+            getMerryPaymentBreakdown(merryId, includeNextValue),
+          ]);
 
-      const [meRes, loansRes, guaranteeRes, eligibilityRes] =
-        await Promise.allSettled([
-          Promise.resolve().then(() => getMe()),
-          Promise.resolve().then(() => getMyLoans()),
-          Promise.resolve().then(() => getMyGuaranteeRequests()),
-          Promise.resolve().then(() => getLoanEligibilityPreview()),
-        ]);
+        const sessionUser =
+          sessionRes.status === "fulfilled" ? sessionRes.value : null;
+        const meUser = meRes.status === "fulfilled" ? meRes.value : null;
 
-      let nextError = "";
-
-      if (meRes.status === "fulfilled" && meRes.value) {
-        console.log("LOANS SCREEN DEBUG -> /me success:", meRes.value);
-
-        const mergedUser: LoanUser = {
-          ...(sessionUser ?? {}),
-          ...(meRes.value ?? {}),
-        };
+        const mergedUser: MerryUser | null =
+          sessionUser || meUser
+            ? {
+                ...(sessionUser ?? {}),
+                ...(meUser ?? {}),
+              }
+            : null;
 
         setUser(mergedUser);
-        await saveSessionUser(mergedUser);
-      } else {
-        console.log("LOANS SCREEN DEBUG -> /me failed:", {
-          raw: meRes.status === "rejected" ? meRes.reason : null,
-          name: meRes.status === "rejected" ? meRes.reason?.name : undefined,
-          message: meRes.status === "rejected" ? meRes.reason?.message : undefined,
-          stack: meRes.status === "rejected" ? meRes.reason?.stack : undefined,
-          status:
-            meRes.status === "rejected" ? meRes.reason?.response?.status : undefined,
-          data:
-            meRes.status === "rejected" ? meRes.reason?.response?.data : undefined,
-          url: meRes.status === "rejected" ? meRes.reason?.config?.url : undefined,
-          baseURL:
-            meRes.status === "rejected" ? meRes.reason?.config?.baseURL : undefined,
-        });
 
-        if (!nextError && meRes.status === "rejected") {
+        let nextError = "";
+
+        if (detailRes.status === "fulfilled") {
+          setDetail(detailRes.value);
+        } else {
+          setDetail(null);
           nextError =
-            getApiErrorMessage(meRes.reason) || getErrorMessage(meRes.reason);
+            getApiErrorMessage(detailRes.reason) ||
+            getErrorMessage(detailRes.reason);
         }
-      }
 
-      if (loansRes.status === "fulfilled") {
-        console.log("LOANS SCREEN DEBUG -> loans success:", loansRes.value);
-        setLoans(Array.isArray(loansRes.value) ? loansRes.value : []);
-      } else {
-        console.log("LOANS SCREEN DEBUG -> loans failed:", {
-          raw: loansRes.reason,
-          name: loansRes.reason?.name,
-          message: loansRes.reason?.message,
-          stack: loansRes.reason?.stack,
-          status: loansRes.reason?.response?.status,
-          data: loansRes.reason?.response?.data,
-          url: loansRes.reason?.config?.url,
-          baseURL: loansRes.reason?.config?.baseURL,
-        });
-
-        setLoans([]);
-        if (!nextError) {
-          nextError =
-            getApiErrorMessage(loansRes.reason) ||
-            getErrorMessage(loansRes.reason);
+        if (breakdownRes.status === "fulfilled") {
+          setBreakdown(breakdownRes.value);
+        } else {
+          setBreakdown(null);
+          if (!nextError) {
+            nextError =
+              getApiErrorMessage(breakdownRes.reason) ||
+              getErrorMessage(breakdownRes.reason);
+          }
         }
+
+        if (nextError) setError(nextError);
+      } catch (e: any) {
+        setDetail(null);
+        setBreakdown(null);
+        setError(getApiErrorMessage(e) || getErrorMessage(e));
       }
-
-      if (guaranteeRes.status === "fulfilled") {
-        console.log("LOANS SCREEN DEBUG -> guarantees success:", guaranteeRes.value);
-        setGuaranteeRequests(
-          Array.isArray(guaranteeRes.value) ? guaranteeRes.value : []
-        );
-      } else {
-        console.log("LOANS SCREEN DEBUG -> guarantees failed:", {
-          raw: guaranteeRes.reason,
-          name: guaranteeRes.reason?.name,
-          message: guaranteeRes.reason?.message,
-          stack: guaranteeRes.reason?.stack,
-          status: guaranteeRes.reason?.response?.status,
-          data: guaranteeRes.reason?.response?.data,
-          url: guaranteeRes.reason?.config?.url,
-          baseURL: guaranteeRes.reason?.config?.baseURL,
-        });
-
-        setGuaranteeRequests([]);
-        if (!nextError) {
-          nextError =
-            getApiErrorMessage(guaranteeRes.reason) ||
-            getErrorMessage(guaranteeRes.reason);
-        }
-      }
-
-      if (eligibilityRes.status === "fulfilled") {
-        console.log(
-          "LOANS SCREEN DEBUG -> eligibility success:",
-          eligibilityRes.value
-        );
-        setEligibility(eligibilityRes.value ?? null);
-      } else {
-        console.log("LOANS SCREEN DEBUG -> eligibility failed:", {
-          raw: eligibilityRes.reason,
-          name: eligibilityRes.reason?.name,
-          message: eligibilityRes.reason?.message,
-          stack: eligibilityRes.reason?.stack,
-          status: eligibilityRes.reason?.response?.status,
-          data: eligibilityRes.reason?.response?.data,
-          url: eligibilityRes.reason?.config?.url,
-          baseURL: eligibilityRes.reason?.config?.baseURL,
-        });
-
-        setEligibility(null);
-        if (!nextError) {
-          nextError =
-            getApiErrorMessage(eligibilityRes.reason) ||
-            getErrorMessage(eligibilityRes.reason);
-        }
-      }
-
-      if (nextError) {
-        console.log("LOANS SCREEN DEBUG -> final error:", nextError);
-        setError(nextError);
-      }
-    } catch (e: any) {
-      console.log("LOANS SCREEN DEBUG -> fatal catch raw:", e);
-      console.log("LOANS SCREEN DEBUG -> fatal catch parsed:", {
-        name: e?.name,
-        message: e?.message,
-        stack: e?.stack,
-        status: e?.response?.status,
-        data: e?.response?.data,
-        url: e?.config?.url,
-        baseURL: e?.config?.baseURL,
-      });
-
-      setError(getApiErrorMessage(e) || getErrorMessage(e));
-    }
-  }, []);
+    },
+    [includeNext, merryId]
+  );
 
   const initialLoad = useCallback(async () => {
     try {
       setLoading(true);
-      await load();
+      await load(initialIncludeNext);
+      setIncludeNext(initialIncludeNext);
     } finally {
       setLoading(false);
     }
-  }, [load]);
+  }, [initialIncludeNext, load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -355,95 +259,57 @@ export default function LoansIndexScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await load();
+      await load(includeNext);
     } finally {
       setRefreshing(false);
     }
-  }, [load]);
+  }, [includeNext, load]);
 
-  const handleAcceptGuarantee = useCallback(
-    async (guarantorId: number) => {
+  const onToggleIncludeNext = useCallback(
+    async (value: boolean) => {
       try {
-        setProcessingGuaranteeId(guarantorId);
-        setError("");
-        await acceptGuarantee(guarantorId);
-        await load();
-      } catch (e: any) {
-        console.log("LOANS SCREEN DEBUG -> accept guarantee failed:", {
-          raw: e,
-          guarantorId,
-          name: e?.name,
-          message: e?.message,
-          stack: e?.stack,
-          status: e?.response?.status,
-          data: e?.response?.data,
-          url: e?.config?.url,
-          baseURL: e?.config?.baseURL,
-        });
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
+        setToggling(true);
+        setIncludeNext(value);
+        await load(value);
       } finally {
-        setProcessingGuaranteeId(null);
+        setToggling(false);
       }
     },
     [load]
   );
 
-  const handleRejectGuarantee = useCallback(
-    async (guarantorId: number) => {
-      try {
-        setProcessingGuaranteeId(guarantorId);
-        setError("");
-        await rejectGuarantee(guarantorId);
-        await load();
-      } catch (e: any) {
-        console.log("LOANS SCREEN DEBUG -> reject guarantee failed:", {
-          raw: e,
-          guarantorId,
-          name: e?.name,
-          message: e?.message,
-          stack: e?.stack,
-          status: e?.response?.status,
-          data: e?.response?.data,
-          url: e?.config?.url,
-          baseURL: e?.config?.baseURL,
-        });
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
-      } finally {
-        setProcessingGuaranteeId(null);
-      }
-    },
-    [load]
-  );
+  const rawSelectedAmount = useMemo(() => {
+    if (!breakdown) return "0.00";
+    return includeNext ? breakdown.pay_with_next : breakdown.required_now;
+  }, [breakdown, includeNext]);
 
-  const totals = useMemo(() => {
-    const active = loans.filter((l) =>
-      ["PENDING", "UNDER_REVIEW", "APPROVED", "DEFAULTED"].includes(
-        String(l.status).toUpperCase()
-      )
-    ).length;
+  const walletBalance = useMemo(() => {
+    return Number(breakdown?.wallet_balance || 0) || 0;
+  }, [breakdown]);
 
-    const approved = loans.filter(
-      (l) => String(l.status).toUpperCase() === "APPROVED"
-    ).length;
+  const payableAfterWallet = useMemo(() => {
+    if (!breakdown) return 0;
 
-    const completed = loans.filter(
-      (l) => String(l.status).toUpperCase() === "COMPLETED"
-    ).length;
+    if (!includeNext && breakdown.net_required_now_after_wallet != null) {
+      const n = Number(breakdown.net_required_now_after_wallet || 0);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    }
 
-    const outstanding = loans.reduce(
-      (sum, l) => sum + toNum(l.outstanding_balance),
-      0
-    );
+    const gross = Number(rawSelectedAmount || 0);
+    if (!Number.isFinite(gross)) return 0;
+    return Math.max(0, gross - walletBalance);
+  }, [breakdown, includeNext, rawSelectedAmount, walletBalance]);
 
-    return {
-      total: loans.length,
-      active,
-      approved,
-      completed,
-      outstanding,
-      guarantees: guaranteeRequests.length,
-    };
-  }, [loans, guaranteeRequests]);
+  const canPaySelected = hasAmount(payableAfterWallet);
+
+  const groupedPreview = useMemo(() => {
+    return breakdown?.items?.length ? breakdown.items : [];
+  }, [breakdown]);
+
+  const title = breakdown?.merry_name || detail?.name || "Merry";
+  const seatCount = breakdown?.seat_count ?? 0;
+  const seatNumbers = breakdown?.seat_numbers ?? [];
+  const contributionPerSeat = breakdown?.amount_per_seat || detail?.contribution_amount;
 
   if (loading) {
     return (
@@ -453,14 +319,40 @@ export default function LoansIndexScreen() {
     );
   }
 
-  if (!authChecked) {
+  if (!merryId || Number.isNaN(merryId)) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          title="Invalid merry"
+          subtitle="The selected merry could not be opened."
+          actionLabel="Go Back"
+          onAction={() => router.back()}
+        />
+      </View>
+    );
+  }
+
+  if (!user) {
     return (
       <View style={styles.container}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to access loans."
+          subtitle="Please login to continue."
           actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
+          onAction={() => router.replace(ROUTES.auth.login as any)}
+        />
+      </View>
+    );
+  }
+
+  if (!detail && !breakdown) {
+    return (
+      <View style={styles.container}>
+        <EmptyState
+          title="Unable to load merry"
+          subtitle={error || "This merry could not be loaded."}
+          actionLabel="Back to Merry"
+          onAction={() => router.replace(ROUTES.tabs.merry as any)}
         />
       </View>
     );
@@ -475,19 +367,69 @@ export default function LoansIndexScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.hTitle}>Loans</Text>
-          <Text style={styles.hSub}>
-            Request a loan, track repayments, and manage guarantee requests.
-          </Text>
+      <Card style={styles.heroCard} variant="elevated">
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: SPACING.md }}>
+            <Text style={styles.heroEyebrow}>MERRY</Text>
+            <Text style={styles.heroTitle}>{title}</Text>
+            <Text style={styles.heroSubtitle}>
+              {seatCount} seat{seatCount === 1 ? "" : "s"}
+              {seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""}
+            </Text>
+          </View>
+
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="repeat-outline" size={22} color={COLORS.white} />
+          </View>
         </View>
 
-        <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
-      </View>
+        <View style={styles.heroAmountBox}>
+          <Text style={styles.heroAmountLabel}>
+            {includeNext ? "Selected total" : "Required now"}
+          </Text>
+          <Text style={styles.heroAmountValue}>{fmtKES(rawSelectedAmount)}</Text>
+
+          <View style={styles.heroMiniDivider} />
+
+          <View style={styles.heroMiniRow}>
+            <Text style={styles.heroMiniLabel}>Wallet balance</Text>
+            <Text style={styles.heroMiniValue}>{fmtKES(walletBalance)}</Text>
+          </View>
+
+          <View style={styles.heroMiniRow}>
+            <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
+              You pay now
+            </Text>
+            <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
+              {fmtKES(payableAfterWallet)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.heroActions}>
+          <Button
+            title={canPaySelected ? "Contribute" : "Covered by Wallet"}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/merry/contribute" as any,
+                params: { merryId: String(merryId) },
+              })
+            }
+            disabled={!canPaySelected}
+            style={{ flex: 1 }}
+          />
+          <View style={{ width: SPACING.sm }} />
+          <Button
+            title="History"
+            variant="secondary"
+            onPress={() => router.push(ROUTES.tabs.merryPayments as any)}
+            style={{ flex: 1 }}
+          />
+        </View>
+      </Card>
 
       {error ? (
-        <Card style={styles.errorCard}>
+        <Card style={styles.errorCard} variant="default">
           <Ionicons
             name="alert-circle-outline"
             size={18}
@@ -497,318 +439,172 @@ export default function LoansIndexScreen() {
         </Card>
       ) : null}
 
-      {!kycComplete ? (
-        <Section title="KYC Notice">
-          <NoticeCard
-            icon="shield-checkmark-outline"
-            text="Complete KYC to improve access to withdrawal and loan-related services."
-            buttonLabel="Complete KYC"
-            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
+      <Section title="Summary">
+        <View style={styles.summaryGrid}>
+          <SummaryBox
+            label="Overdue"
+            value={fmtKES(breakdown?.overdue)}
+            icon="warning-outline"
+            tone="danger"
           />
-        </Section>
-      ) : null}
+          <View style={{ width: SPACING.sm }} />
+          <SummaryBox
+            label="Due now"
+            value={fmtKES(breakdown?.current_due)}
+            icon="calendar-outline"
+            tone="warning"
+          />
+        </View>
 
-      {eligibility ? (
-        <Section title="Eligibility">
-          <Card style={styles.eligibilityCard}>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Eligible now</Text>
-              <Text
-                style={[
-                  styles.kvValue,
-                  { color: eligibility.eligible ? COLORS.success : COLORS.warning },
-                ]}
-              >
-                {eligibility.eligible ? "Yes" : "Not yet"}
+        <View style={{ height: SPACING.sm }} />
+
+        <View style={styles.summaryGrid}>
+          <SummaryBox
+            label="Next due"
+            value={fmtKES(breakdown?.next_due)}
+            icon="arrow-forward-circle-outline"
+            tone="success"
+          />
+          <View style={{ width: SPACING.sm }} />
+          <SummaryBox
+            label="Per seat"
+            value={fmtKES(contributionPerSeat)}
+            icon="grid-outline"
+            tone="primary"
+          />
+        </View>
+
+        <View style={{ height: SPACING.sm }} />
+
+        <View style={styles.summaryGrid}>
+          <SummaryBox
+            label="Wallet"
+            value={fmtKES(walletBalance)}
+            icon="wallet-outline"
+            tone="success"
+          />
+          <View style={{ width: SPACING.sm }} />
+          <SummaryBox
+            label="You pay now"
+            value={fmtKES(payableAfterWallet)}
+            icon="cash-outline"
+            tone={canPaySelected ? "primary" : "success"}
+          />
+        </View>
+      </Section>
+
+      <Section title="Option">
+        <Card style={styles.optionCard} variant="default">
+          <View style={styles.optionTop}>
+            <View style={{ flex: 1, paddingRight: SPACING.md }}>
+              <Text style={styles.optionTitle}>Include next due</Text>
+              <Text style={styles.optionText}>
+                Add the next contribution to this summary.
               </Text>
             </View>
 
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Available savings</Text>
-              <Text style={styles.kvValue}>
-                {fmtKES(eligibility.available_savings)}
-              </Text>
-            </View>
-
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Maximum request</Text>
-              <Text style={styles.kvValue}>
-                {fmtKES(eligibility.max_allowed)}
-              </Text>
-            </View>
-
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Active loan</Text>
-              <Text style={styles.kvValue}>
-                {eligibility.has_active_loan ? "Yes" : "No"}
-              </Text>
-            </View>
-
-            {eligibility.reason ? (
-              <Text style={styles.eligibilityNote}>{eligibility.reason}</Text>
-            ) : null}
-          </Card>
-        </Section>
-      ) : null}
-
-      <View style={styles.summaryGrid}>
-        <SummaryCard label="My Loans" value={totals.total} />
-        <SummaryCard label="Active" value={totals.active} />
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <SummaryCard label="Approved" value={totals.approved} />
-        <SummaryCard label="Completed" value={totals.completed} />
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <SummaryCard label="Outstanding" value={fmtKES(totals.outstanding)} />
-        <SummaryCard label="Guarantee Requests" value={totals.guarantees} />
-      </View>
-
-      <Card style={styles.quickActionsCard}>
-        <Section title="Quick Actions">
-          <View style={styles.actionsRow}>
-            <Button
-              title="Request Loan"
-              onPress={() => router.push(ROUTES.tabs.loansRequest as any)}
-              style={{ flex: 1 }}
-              leftIcon={
-                <Ionicons
-                  name="add-circle-outline"
-                  size={18}
-                  color={COLORS.white}
-                />
-              }
-            />
-            <View style={{ width: SPACING.sm }} />
-            <Button
-              title="Guarantee Requests"
-              variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.loansGuarantees as any)}
-              style={{ flex: 1 }}
-              leftIcon={
-                <Ionicons name="people-outline" size={18} color={COLORS.dark} />
-              }
+            <Switch
+              value={includeNext}
+              onValueChange={onToggleIncludeNext}
+              disabled={toggling}
+              thumbColor={COLORS.white}
+              trackColor={{
+                false: COLORS.gray300,
+                true: COLORS.primary,
+              }}
             />
           </View>
 
-          {!withdrawAllowed ? (
-            <View style={{ marginTop: SPACING.sm }}>
-              <NoticeCard
-                icon="information-circle-outline"
-                text="Some loan disbursement or withdrawal-related actions may remain limited until account checks are complete."
-              />
-            </View>
+          {breakdown?.next_due_date ? (
+            <Text style={styles.nextDueHint}>
+              Next due date: {breakdown.next_due_date}
+            </Text>
           ) : null}
-        </Section>
-      </Card>
 
-      <Section title="My Guarantee Requests">
-        {guaranteeRequests.length === 0 ? (
+          <View style={styles.optionInfoBox}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={COLORS.primary}
+            />
+            <Text style={styles.optionInfoText}>
+              Your merry wallet is deducted first before new payment is needed.
+            </Text>
+          </View>
+        </Card>
+      </Section>
+
+      <Section title="Included items">
+        {!groupedPreview.length ? (
           <EmptyState
-            icon="people-outline"
-            title="No guarantee requests"
-            subtitle="Any pending requests to guarantee another member’s loan will appear here."
+            icon="receipt-outline"
+            title="Nothing open now"
+            subtitle="This merry has no payable items at the moment."
           />
         ) : (
-          guaranteeRequests.map((g) => {
-            const busy = processingGuaranteeId === g.id;
-            const guarantorName = g.guarantor_detail?.full_name;
-
-            return (
-              <Card key={`gr-${g.id}`} style={styles.itemCard}>
-                <View style={styles.rowTop}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.title}>Loan Guarantee Request</Text>
-                    <Text style={styles.sub}>
-                      Loan #{g.loan}
-                      {guarantorName ? ` • ${guarantorName}` : ""}
-                    </Text>
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.badge,
-                      { color: g.accepted ? COLORS.success : COLORS.warning },
-                    ]}
-                  >
-                    {g.accepted ? "ACCEPTED" : "PENDING"}
-                  </Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Loan ID</Text>
-                  <Text style={styles.kvValue}>{String(g.loan)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Accepted at</Text>
-                  <Text style={styles.kvValue}>{fmtDate(g.accepted_at)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Reserved amount</Text>
-                  <Text style={styles.kvValue}>
-                    {g.reserved_amount ? fmtKES(g.reserved_amount) : "—"}
-                  </Text>
-                </View>
-
-                {!g.accepted ? (
-                  <View style={styles.actionsRow}>
-                    <Button
-                      title={busy ? "Please wait..." : "Accept"}
-                      onPress={() => handleAcceptGuarantee(g.id)}
-                      style={{ flex: 1 }}
-                      disabled={busy}
-                      leftIcon={
-                        <Ionicons
-                          name="checkmark-outline"
-                          size={18}
-                          color={COLORS.white}
-                        />
-                      }
-                    />
-                    <View style={{ width: SPACING.sm }} />
-                    <Button
-                      title="Reject"
-                      variant="secondary"
-                      onPress={() => handleRejectGuarantee(g.id)}
-                      style={{ flex: 1 }}
-                      disabled={busy}
-                      leftIcon={
-                        <Ionicons
-                          name="close-outline"
-                          size={18}
-                          color={COLORS.dark}
-                        />
-                      }
-                    />
-                  </View>
+          <Card style={styles.listCard} variant="default">
+            {groupedPreview.map((item, index) => (
+              <View key={`due-${item.due_id}`}>
+                <DueLine item={item} />
+                {index < groupedPreview.length - 1 ? (
+                  <View style={styles.lineDivider} />
                 ) : null}
-              </Card>
-            );
-          })
+              </View>
+            ))}
+          </Card>
         )}
       </Section>
 
-      <Section title="My Loans">
-        {loans.length === 0 ? (
-          <EmptyState
-            icon="document-text-outline"
-            title="No loans yet"
-            subtitle="Your submitted and approved loans will appear here."
-            actionLabel="Request Loan"
-            onAction={() => router.push(ROUTES.tabs.loansRequest as any)}
-          />
-        ) : (
-          loans.map((loan) => {
-            const outstanding = toNum(loan.outstanding_balance);
-            const paid = toNum(loan.total_paid);
-            const total = toNum(loan.total_payable);
+      <Section title="Details">
+        <Card style={styles.detailsCard} variant="default">
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Contribution per seat</Text>
+            <Text style={styles.kvValue}>
+              {fmtKES(detail?.contribution_amount)}
+            </Text>
+          </View>
 
-            return (
-              <Card key={`loan-${loan.id}`} style={styles.itemCard}>
-                <View style={styles.rowTop}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.title}>Loan #{loan.id}</Text>
-                    <Text style={styles.sub}>{getLoanSubtitle(loan)}</Text>
-                  </View>
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Frequency</Text>
+            <Text style={styles.kvValue}>
+              {detail?.payout_frequency || "—"}
+            </Text>
+          </View>
 
-                  <Text
-                    style={[styles.badge, { color: statusColor(loan.status) }]}
-                  >
-                    {statusText(loan.status).toUpperCase()}
-                  </Text>
-                </View>
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Slots per period</Text>
+            <Text style={styles.kvValue}>
+              {detail?.payouts_per_period ?? "—"}
+            </Text>
+          </View>
 
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Principal</Text>
-                  <Text style={styles.kvValue}>{fmtKES(loan.principal)}</Text>
-                </View>
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Next payout</Text>
+            <Text style={styles.kvValue}>
+              {detail?.next_payout_date || "—"}
+            </Text>
+          </View>
 
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Total payable</Text>
-                  <Text style={styles.kvValue}>
-                    {total > 0 ? fmtKES(total) : "Pending approval"}
-                  </Text>
-                </View>
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Wallet balance</Text>
+            <Text style={styles.kvValue}>{fmtKES(walletBalance)}</Text>
+          </View>
 
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Paid so far</Text>
-                  <Text style={styles.kvValue}>{fmtKES(paid)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Outstanding</Text>
-                  <Text style={styles.kvValue}>{fmtKES(outstanding)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Created</Text>
-                  <Text style={styles.kvValue}>{fmtDate(loan.created_at)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Approved</Text>
-                  <Text style={styles.kvValue}>{fmtDate(loan.approved_at)}</Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Security target</Text>
-                  <Text style={styles.kvValue}>
-                    {loan.security_target ? fmtKES(loan.security_target) : "—"}
-                  </Text>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Reserved security</Text>
-                  <Text style={styles.kvValue}>
-                    {loan.security_reserved_total
-                      ? fmtKES(loan.security_reserved_total)
-                      : "—"}
-                  </Text>
-                </View>
-
-                <View style={styles.actionsRow}>
-                  <Button
-                    title="Open"
-                    variant="secondary"
-                    onPress={() =>
-                      router.push(ROUTES.dynamic.loanDetail(loan.id) as any)
-                    }
-                    style={{ flex: 1 }}
-                  />
-                  <View style={{ width: SPACING.sm }} />
-                  <Button
-                    title={canPay(loan) ? "Repay Loan" : "View"}
-                    onPress={() =>
-                      router.push(ROUTES.dynamic.loanDetail(loan.id) as any)
-                    }
-                    style={{ flex: 1 }}
-                    leftIcon={
-                      <Ionicons
-                        name={canPay(loan) ? "cash-outline" : "eye-outline"}
-                        size={18}
-                        color={COLORS.white}
-                      />
-                    }
-                  />
-                </View>
-              </Card>
-            );
-          })
-        )}
+          <View style={styles.kvRow}>
+            <Text style={styles.kvLabel}>Payable after wallet</Text>
+            <Text style={styles.kvValue}>{fmtKES(payableAfterWallet)}</Text>
+          </View>
+        </Card>
       </Section>
 
-      {isAdmin ? (
-        <Section title="Admin Note">
-          <NoticeCard
-            icon="shield-checkmark-outline"
-            text="Loan approvals and review actions should be handled from the admin loan review screens or Django admin tools."
-          />
-        </Section>
-      ) : null}
+      <View style={styles.bottomActions}>
+        <Button
+          title="Back to Merry"
+          variant="secondary"
+          onPress={() => router.push(ROUTES.tabs.merry as any)}
+          style={{ flex: 1 }}
+        />
+      </View>
 
       <View style={{ height: 24 }} />
     </ScrollView>
@@ -816,30 +612,123 @@ export default function LoansIndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.md,
+    paddingBottom: 24,
+  },
+
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.background,
   },
-  header: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
+
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderWidth: 0,
     marginBottom: SPACING.lg,
+    overflow: "hidden",
+    borderRadius: 28,
+  },
+
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  heroEyebrow: {
+    ...TYPE.caption,
+    color: "rgba(255,255,255,0.76)",
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+
+  heroTitle: {
+    ...TYPE.h2,
+    color: COLORS.white,
+    marginTop: 6,
+    fontWeight: "900",
+  },
+
+  heroSubtitle: {
+    ...TYPE.subtext,
+    color: "rgba(255,255,255,0.84)",
+    marginTop: 8,
+    lineHeight: 19,
+  },
+
+  heroIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  heroAmountBox: {
+    marginTop: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroAmountLabel: {
+    ...TYPE.caption,
+    color: "rgba(255,255,255,0.76)",
+    fontWeight: "700",
+  },
+
+  heroAmountValue: {
+    ...(TYPE as any).h1 ? (TYPE as any).h1 : TYPE.h2,
+    color: COLORS.white,
+    marginTop: 6,
+    fontWeight: "900",
+  },
+
+  heroMiniDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    marginVertical: SPACING.sm,
+  },
+
+  heroMiniRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 6,
+    gap: SPACING.md,
+  },
+
+  heroMiniLabel: {
+    ...TYPE.caption,
+    color: "rgba(255,255,255,0.82)",
+  },
+
+  heroMiniValue: {
+    ...TYPE.bodyStrong,
+    color: COLORS.white,
+    textAlign: "right",
+    flexShrink: 1,
+  },
+
+  heroMiniStrong: {
+    fontWeight: "900",
+  },
+
+  heroActions: {
+    marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    ...SHADOW.card,
   },
-  quickActionsCard: {
-    marginBottom: SPACING.lg,
-    marginTop: SPACING.md,
-  },
+
   errorCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
@@ -848,121 +737,185 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
   },
+
   errorText: {
     flex: 1,
+    ...TYPE.subtext,
     color: COLORS.danger,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
   },
-  noticeCard: {
-    padding: SPACING.md,
-  },
-  noticeTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-  noticeText: {
-    flex: 1,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-    lineHeight: 18,
-  },
-  eligibilityCard: {
-    padding: SPACING.md,
-    ...SHADOW.card,
-  },
-  eligibilityNote: {
-    marginTop: SPACING.sm,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
-  },
+
   summaryGrid: {
     flexDirection: "row",
-    gap: SPACING.sm as any,
+    alignItems: "stretch",
   },
-  summaryCard: {
+
+  summaryBox: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    ...SHADOW.card,
+    borderRadius: 22,
   },
+
+  summaryIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.sm,
+  },
+
   summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+    fontWeight: "700",
   },
+
   summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
+    ...TYPE.title,
+    marginTop: 4,
+    fontWeight: "900",
+    color: COLORS.text,
   },
-  hTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
-  },
-  hSub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-  itemCard: {
-    marginBottom: SPACING.md,
+
+  optionCard: {
+    backgroundColor: COLORS.white,
     padding: SPACING.md,
-    ...SHADOW.card,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
   },
-  rowTop: {
+
+  optionTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  optionTitle: {
+    ...TYPE.title,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  optionText: {
+    ...TYPE.subtext,
+    color: COLORS.textSoft,
+    marginTop: 4,
+  },
+
+  nextDueHint: {
+    ...TYPE.caption,
+    color: COLORS.primary,
+    marginTop: SPACING.sm,
+    fontWeight: "800",
+  },
+
+  optionInfoBox: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: COLORS.primarySoft,
+    flexDirection: "row",
     alignItems: "flex-start",
+    gap: 8,
+  },
+
+  optionInfoText: {
+    flex: 1,
+    ...TYPE.subtext,
+    color: COLORS.text,
+  },
+
+  listCard: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.md,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+
+  dueLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: SPACING.md,
+    paddingVertical: SPACING.xs,
   },
-  title: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
+
+  dueLineTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    flexWrap: "wrap",
   },
-  sub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+
+  dueLineTitle: {
+    ...TYPE.bodyStrong,
+    fontWeight: "800",
+    color: COLORS.text,
   },
-  badge: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
+
+  dueLineSub: {
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+    marginTop: 4,
   },
+
+  dueLineAmount: {
+    ...TYPE.bodyStrong,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  dueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.round,
+  },
+
+  dueBadgeText: {
+    ...TYPE.caption,
+    fontWeight: "800",
+  },
+
+  lineDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.sm,
+  },
+
+  detailsCard: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.md,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+
   kvRow: {
-    marginTop: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
+    marginTop: 10,
   },
+
   kvLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
+    ...TYPE.caption,
+    color: COLORS.textMuted,
   },
+
   kvValue: {
-    flexShrink: 1,
+    ...TYPE.bodyStrong,
+    color: COLORS.text,
     textAlign: "right",
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: COLORS.dark,
+    flexShrink: 1,
   },
-  actionsRow: {
+
+  bottomActions: {
     marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",

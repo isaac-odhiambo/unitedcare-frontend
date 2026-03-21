@@ -1,7 +1,8 @@
 // services/merry.ts
 // ------------------------------------------------------
 // Matches merry endpoints, seats, slots, dues, payments,
-// join requests, payouts, and STK merry contribution flow
+// join requests, payouts, dashboard summary,
+// payment breakdown, wallet, and STK merry contribution flow
 // ------------------------------------------------------
 
 import { api } from "@/services/api";
@@ -188,7 +189,13 @@ export type AdminApproveJoinResponse = {
   }>;
 };
 
-export type DueStatus = "PENDING" | "PARTIAL" | "PAID" | "CANCELLED" | string;
+export type DueStatus =
+  | "PENDING"
+  | "PARTIAL"
+  | "OVERDUE"
+  | "PAID"
+  | "CANCELLED"
+  | string;
 
 export type MyDuesRow = {
   due_id: number;
@@ -200,6 +207,8 @@ export type MyDuesRow = {
   paid_amount: string;
   status: DueStatus;
   outstanding: string;
+  due_date?: string | null;
+  is_advance_payable?: boolean;
   updated_at: string;
 };
 
@@ -224,6 +233,8 @@ export type AdminDuesRow = {
   paid_amount: string;
   status: DueStatus;
   outstanding: string;
+  due_date?: string | null;
+  is_advance_payable?: boolean;
   updated_at: string;
 };
 
@@ -363,6 +374,100 @@ export type CreatePayoutResponse = {
   amount: string;
   period_key: string;
   slot_no: number;
+};
+
+/* =========================================================
+   Dashboard / payment breakdown / wallet types
+========================================================= */
+
+export type MerryDueSummaryItem = {
+  merry_id: number;
+  merry_name: string;
+  seat_count: number;
+  seat_numbers: number[];
+  amount_per_seat: string;
+  overdue: string;
+  current_due: string;
+  next_due: string;
+  next_due_date?: string | null;
+  required_now: string;
+  pay_with_next: string;
+};
+
+export type MyAllMerryDueSummaryResponse = {
+  active_merries: number;
+  total_seats: number;
+  total_overdue: string;
+  total_current_due: string;
+  total_next_due: string;
+  total_required_now: string;
+  total_pay_with_next: string;
+  total_wallet_balance: string;
+  items: MerryDueSummaryItem[];
+};
+
+export type MerryPaymentBreakdownItem = {
+  due_id: number;
+  seat_id: number;
+  seat_no: number;
+  period_key: string;
+  slot_no: number;
+  due_date?: string | null;
+  status: DueStatus;
+  due_amount: string;
+  paid_amount: string;
+  outstanding: string;
+  bucket: "overdue" | "current" | "future" | "closed" | string;
+};
+
+export type MerryPaymentBreakdownResponse = {
+  merry_id: number;
+  merry_name: string;
+  seat_count: number;
+  seat_numbers: number[];
+  amount_per_seat: string;
+  include_next: boolean;
+  overdue: string;
+  current_due: string;
+  next_due: string;
+  next_due_date?: string | null;
+  required_now: string;
+  pay_with_next: string;
+  wallet_balance: string;
+  net_required_now_after_wallet: string;
+  selected_total: string;
+  items: MerryPaymentBreakdownItem[];
+};
+
+export type MerryWalletResponse = {
+  user_id: number;
+  wallet_balance: string;
+  updated_at?: string | null;
+};
+
+export type MerryWalletTransactionRow = {
+  id: number;
+  tx_type: "CREDIT" | "DEBIT" | string;
+  amount: string;
+  balance_before: string;
+  balance_after: string;
+  reference?: string;
+  narration?: string;
+  mpesa_receipt_number?: string | null;
+  created_at: string;
+};
+
+export type MerryWalletTransactionsResponse = {
+  user_id: number;
+  count: number;
+  results: MerryWalletTransactionRow[];
+};
+
+export type AdminUserMerryWalletResponse = {
+  user_id: number;
+  wallet_balance: string;
+  updated_at?: string | null;
+  transactions: MerryWalletTransactionRow[];
 };
 
 export function fmtKES(value?: string | number | null) {
@@ -518,6 +623,42 @@ export async function adminGetDues(
   return res.data;
 }
 
+/* =========================================================
+   Summary / breakdown / wallet calls
+========================================================= */
+
+export async function getMyAllMerryDueSummary(): Promise<MyAllMerryDueSummaryResponse> {
+  const res = await api.get(ENDPOINTS.merry.duesSummary);
+  return res.data;
+}
+
+export async function getMerryPaymentBreakdown(
+  merryId: number,
+  includeNext = false
+): Promise<MerryPaymentBreakdownResponse> {
+  const res = await api.get(ENDPOINTS.merry.paymentBreakdown(merryId), {
+    params: { include_next: includeNext },
+  });
+  return res.data;
+}
+
+export async function getMyMerryWallet(): Promise<MerryWalletResponse> {
+  const res = await api.get(ENDPOINTS.merry.myWallet);
+  return res.data;
+}
+
+export async function getMyMerryWalletTransactions(): Promise<MerryWalletTransactionsResponse> {
+  const res = await api.get(ENDPOINTS.merry.myWalletTransactions);
+  return res.data;
+}
+
+export async function adminGetUserMerryWallet(
+  userId: number
+): Promise<AdminUserMerryWalletResponse> {
+  const res = await api.get(ENDPOINTS.merry.adminUserWallet(userId));
+  return res.data;
+}
+
 export async function createMerryPaymentIntent(
   merryId: number,
   payload: PaymentIntentPayload
@@ -596,6 +737,26 @@ export async function stkPayMerryContribution(params: {
     stk: stkRes.data,
     reference,
   };
+}
+
+/* =========================================================
+   Friendly helpers
+========================================================= */
+
+export function sumMoney(
+  values: Array<string | number | null | undefined>
+): string {
+  const total = values.reduce<number>((acc, value) => {
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? acc + n : acc;
+  }, 0);
+
+  return total.toFixed(2);
+}
+
+export function hasAmount(value?: string | number | null): boolean {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0;
 }
 
 /* =========================================================

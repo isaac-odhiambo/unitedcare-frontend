@@ -34,6 +34,14 @@ export const ENDPOINTS = {
      PAYMENTS (Centralized payment engine)
   ========================================================= */
   payments: {
+    // NEW: active mpesa config for frontend paybill/till display
+    mpesaConfig: "/payments/mpesa-config/",
+
+    // Optional admin config endpoints
+    adminMpesaConfig: "/payments/mpesa-config/admin/",
+    adminMpesaConfigDetail: (configId: number | string) =>
+      `/payments/mpesa-config/admin/${configId}/`,
+
     myLedger: "/payments/ledger/my/",
     adminLedger: "/payments/ledger/admin/",
 
@@ -49,6 +57,11 @@ export const ENDPOINTS = {
 
     stkPush: "/payments/mpesa/stk-push/",
     adminMpesa: "/payments/mpesa/admin/",
+
+    // ✅ ADDED (ONLY THESE TWO — as requested)
+    myMpesaTransactions: "/payments/mpesa/me/transactions/",
+    myMpesaTransactionDetail: (id: number | string) =>
+      `/payments/mpesa/me/transactions/${id}/`,
   },
 
   /* =========================================================
@@ -57,23 +70,15 @@ export const ENDPOINTS = {
   groups: {
     root: "/api/groups/",
 
-    // Group CRUD
     groups: "/api/groups/groups/",
     detail: (groupId: number | string) => `/api/groups/groups/${groupId}/`,
 
-    // Available groups (from @action in GroupViewSet)
     available: "/api/groups/groups/available/",
 
-    /* -----------------------------
-       Memberships
-    ----------------------------- */
     memberships: "/api/groups/memberships/",
     membershipDetail: (membershipId: number | string) =>
       `/api/groups/memberships/${membershipId}/`,
 
-    /* -----------------------------
-       Join Requests
-    ----------------------------- */
     joinRequests: "/api/groups/join-requests/",
     joinRequestDetail: (requestId: number | string) =>
       `/api/groups/join-requests/${requestId}/`,
@@ -87,15 +92,9 @@ export const ENDPOINTS = {
     cancelJoinRequest: (requestId: number | string) =>
       `/api/groups/join-requests/${requestId}/cancel/`,
 
-    /* -----------------------------
-       Group Savings
-    ----------------------------- */
     mySavings: "/api/groups/my-savings/",
     contribute: "/api/groups/contribute/",
 
-    /* -----------------------------
-       Contribution History
-    ----------------------------- */
     myContributions: (groupId: number | string) =>
       `/api/groups/${groupId}/contributions/my/`,
 
@@ -143,6 +142,8 @@ export const ENDPOINTS = {
     detail: (merryId: number | string) =>
       `/api/merry/${merryId}/`,
 
+    duesSummary: "/api/merry/dues/summary/",
+
     duesAdmin: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/`,
 
@@ -167,6 +168,9 @@ export const ENDPOINTS = {
     slots: (merryId: number | string) =>
       `/api/merry/${merryId}/slots/`,
 
+    paymentBreakdown: (merryId: number | string) =>
+      `/api/merry/${merryId}/payments/breakdown/`,
+
     paymentIntent: (merryId: number | string) =>
       `/api/merry/${merryId}/payments/intent/`,
 
@@ -174,6 +178,11 @@ export const ENDPOINTS = {
 
     confirmPayment: (paymentId: number | string) =>
       `/api/merry/payments/${paymentId}/confirm/`,
+
+    myWallet: "/api/merry/wallet/my/",
+    myWalletTransactions: "/api/merry/wallet/my/transactions/",
+    adminUserWallet: (userId: number | string) =>
+      `/api/merry/admin/users/${userId}/wallet/`,
 
     createPayout: (merryId: number | string) =>
       `/api/merry/${merryId}/payouts/create/`,

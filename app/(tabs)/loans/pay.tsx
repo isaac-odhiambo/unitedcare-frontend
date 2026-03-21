@@ -23,25 +23,44 @@ function formatKes(value?: string | number | null) {
   })}`;
 }
 
-function normalizePhone(phone: string) {
-  const p = (phone || "").trim().replace(/\s+/g, "");
+function normalizeDisplayPhone(phone: string) {
+  const p = String(phone || "").trim().replace(/\s+/g, "");
   if (!p) return "";
 
-  if (p.startsWith("+254")) return "0" + p.slice(4);
-  if (p.startsWith("254")) return "0" + p.slice(3);
+  if (p.startsWith("+254")) return `0${p.slice(4)}`;
+  if (p.startsWith("254")) return `0${p.slice(3)}`;
 
   return p;
 }
 
+function isValidKenyanPhone(phone: string) {
+  return /^(07|01)\d{8}$/.test(phone);
+}
+
+function sanitizeAmount(value: string) {
+  const cleaned = String(value || "").replace(/[^\d.]/g, "");
+  const parts = cleaned.split(".");
+  if (parts.length <= 2) return cleaned;
+  return `${parts[0]}.${parts.slice(1).join("")}`;
+}
+
 function normalizeAmount(value: string) {
-  return String(value || "").replace(/,/g, "").trim();
+  return sanitizeAmount(value).trim();
 }
 
 export default function PayLoanScreen() {
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    loan?: string;
+    id?: string;
+    due?: string;
+    balance?: string;
+    amount?: string;
+  }>();
 
-  const loanId = Number(params.loan);
-  const dueFromParams = String(params.due ?? "0.00");
+  const loanId = Number(params.loan ?? params.id ?? 0);
+  const dueFromParams = String(
+    params.due ?? params.balance ?? params.amount ?? "0.00"
+  );
 
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState(normalizeAmount(dueFromParams));
@@ -53,10 +72,10 @@ export default function PayLoanScreen() {
     (async () => {
       try {
         const user = await getSessionUser();
-        const p = normalizePhone(String(user?.phone || ""));
+        const p = normalizeDisplayPhone(String(user?.phone || ""));
         if (mounted && p) setPhone(p);
       } catch {
-        // ignore; user can type manually
+        // allow manual entry
       }
     })();
 
@@ -65,11 +84,11 @@ export default function PayLoanScreen() {
     };
   }, []);
 
-  const cleanPhone = useMemo(() => normalizePhone(phone), [phone]);
+  const cleanPhone = useMemo(() => normalizeDisplayPhone(phone), [phone]);
   const cleanAmount = useMemo(() => normalizeAmount(amount), [amount]);
 
   const canSubmit = useMemo(() => {
-    const okPhone = /^(07|01)\d{8}$/.test(cleanPhone);
+    const okPhone = isValidKenyanPhone(cleanPhone);
     const amt = Number(cleanAmount);
     const okAmount = Number.isFinite(amt) && amt > 0;
     const okLoan = Number.isFinite(loanId) && loanId > 0;
@@ -83,7 +102,7 @@ export default function PayLoanScreen() {
         return;
       }
 
-      if (!/^(07|01)\d{8}$/.test(cleanPhone)) {
+      if (!isValidKenyanPhone(cleanPhone)) {
         Alert.alert(
           "Invalid Phone",
           "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX."
@@ -99,19 +118,38 @@ export default function PayLoanScreen() {
 
       setLoading(true);
 
-      await stkRepayLoan({
+      const res = await stkRepayLoan({
         phone: cleanPhone,
         amount: cleanAmount,
         loan_id: loanId,
-        reference: `LOAN-${loanId}`,
+        reference: `loan${loanId}`,
+        narration: `Loan repayment (Loan#${loanId})`,
       });
 
-      Alert.alert(
-        "STK Sent",
-        "Check your phone and enter your M-Pesa PIN to complete payment."
-      );
+      const notice =
+        res?.message ||
+        "STK push sent. Check your phone and enter your M-Pesa PIN.";
 
-      router.replace(`/(tabs)/loans/${loanId}` as any);
+      const status = res?.tx?.status || "PENDING";
+      const checkoutRequestId = res?.tx?.checkout_request_id || "";
+      const chargedAmount = res?.tx?.amount ?? cleanAmount;
+      const feeAmount = (res?.tx as any)?.transaction_fee ?? "0";
+
+      Alert.alert("STK Sent", notice);
+
+      router.replace({
+        pathname: `/(tabs)/loans/${loanId}` as any,
+        params: {
+          paid: "1",
+          notice,
+          status,
+          checkout_request_id: checkoutRequestId,
+          baseAmount: cleanAmount,
+          chargedAmount: String(chargedAmount),
+          feeAmount: String(feeAmount),
+          tx_id: String(res?.tx?.id || ""),
+        },
+      });
     } catch (e: any) {
       Alert.alert("Pay Loan", getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
@@ -130,7 +168,8 @@ export default function PayLoanScreen() {
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.title}>Repay Loan</Text>
           <Text style={styles.sub}>
-            Pay via MPESA STK Push. Loan #{Number.isFinite(loanId) ? loanId : "—"}
+            Pay via M-Pesa STK Push. Loan #
+            {Number.isFinite(loanId) && loanId > 0 ? loanId : "—"}
           </Text>
         </View>
         <Ionicons
@@ -145,11 +184,11 @@ export default function PayLoanScreen() {
           <Input
             label="Phone number"
             value={phone}
-            onChangeText={(v) => setPhone(normalizePhone(v))}
+            onChangeText={(v) => setPhone(normalizeDisplayPhone(v))}
             placeholder="07XXXXXXXX"
             keyboardType="phone-pad"
             error={
-              phone && !/^(07|01)\d{8}$/.test(cleanPhone)
+              phone && !isValidKenyanPhone(cleanPhone)
                 ? "Phone must be 07XXXXXXXX or 01XXXXXXXX"
                 : undefined
             }
@@ -168,6 +207,32 @@ export default function PayLoanScreen() {
             <Text style={styles.inlineValue}>{formatKes(dueFromParams)}</Text>
           </View>
 
+          <View style={styles.summaryBox}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Phone</Text>
+              <Text style={styles.summaryValue}>{cleanPhone || "—"}</Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Amount</Text>
+              <Text style={styles.summaryValue}>
+                {formatKes(cleanAmount || 0)}
+              </Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Purpose</Text>
+              <Text style={styles.summaryValue}>LOAN_REPAYMENT</Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Reference</Text>
+              <Text style={styles.summaryValue}>
+                {Number.isFinite(loanId) && loanId > 0 ? `loan${loanId}` : "—"}
+              </Text>
+            </View>
+          </View>
+
           <Text style={styles.note}>
             After you approve the STK Push on your phone, the backend callback
             updates the repayment and applies it to your loan.
@@ -177,7 +242,7 @@ export default function PayLoanScreen() {
 
       <View style={styles.actions}>
         <Button
-          title={loading ? "Sending STK..." : "Pay with MPESA"}
+          title={loading ? "Sending STK..." : "Pay with M-Pesa"}
           onPress={submit}
           loading={loading}
           disabled={!canSubmit || loading}
@@ -197,8 +262,15 @@ export default function PayLoanScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 24,
+  },
 
   header: {
     backgroundColor: COLORS.white,
@@ -254,6 +326,36 @@ const styles = StyleSheet.create({
   },
 
   inlineValue: {
+    fontFamily: FONT.bold,
+    fontSize: 12,
+    color: COLORS.dark,
+  },
+
+  summaryBox: {
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    backgroundColor: COLORS.white,
+  },
+
+  summaryRow: {
+    paddingVertical: 6,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: SPACING.md,
+  },
+
+  summaryLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+
+  summaryValue: {
+    flexShrink: 1,
+    textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
     color: COLORS.dark,

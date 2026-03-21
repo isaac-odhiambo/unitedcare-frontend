@@ -67,12 +67,44 @@ export type ManualDepositResponse = {
    Helpers
 ========================================================= */
 
+function normalizeMoneyInput(value: string | number): string {
+  const raw = String(value ?? "").trim().replace(/,/g, "");
+  const n = Number(raw);
+
+  if (!raw || !Number.isFinite(n) || n <= 0) {
+    throw new Error("Enter a valid amount.");
+  }
+
+  return n.toFixed(2);
+}
+
+function cleanText(value?: string | null): string {
+  return String(value || "").trim();
+}
+
 export function getApiErrorMessage(error: any): string {
   const data = error?.response?.data;
+  const status = error?.response?.status;
+
+  if (!error?.response) {
+    if (error?.code === "ECONNABORTED") {
+      return "Request timed out. Please try again.";
+    }
+    return error?.message || "Network error. Check your internet and API URL.";
+  }
 
   if (!data) return "Something went wrong.";
   if (typeof data === "string") return data;
   if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.message === "string") return data.message;
+
+  if (Array.isArray(data?.non_field_errors) && data.non_field_errors.length) {
+    return String(data.non_field_errors[0]);
+  }
+
+  if (Array.isArray(data) && data.length) {
+    return String(data[0]);
+  }
 
   if (typeof data === "object") {
     const firstKey = Object.keys(data)[0];
@@ -86,6 +118,13 @@ export function getApiErrorMessage(error: any): string {
       return `${firstKey}: ${firstValue}`;
     }
   }
+
+  if (status === 400) return "Invalid request. Please check your input.";
+  if (status === 401) return "Unauthorized. Please login again.";
+  if (status === 403) return "Access denied.";
+  if (status === 404) return "Endpoint not found.";
+  if (status === 405) return "Method not allowed.";
+  if (status >= 500) return "Server error. Please try again later.";
 
   return "Request failed.";
 }
@@ -102,7 +141,20 @@ export async function listMySavingsAccounts(): Promise<SavingsAccount[]> {
 export async function createSavingsAccount(
   payload: CreateSavingsAccountPayload
 ): Promise<SavingsAccount> {
-  const res = await api.post(ENDPOINTS.savings.createAccount, payload);
+  const body = {
+    name: cleanText(payload.name),
+    account_type: payload.account_type,
+    locked_until: cleanText(payload.locked_until),
+    target_amount:
+      payload.target_amount !== undefined &&
+      payload.target_amount !== null &&
+      String(payload.target_amount).trim() !== ""
+        ? normalizeMoneyInput(payload.target_amount)
+        : undefined,
+    target_deadline: cleanText(payload.target_deadline),
+  };
+
+  const res = await api.post(ENDPOINTS.savings.createAccount, body);
   return res.data;
 }
 
@@ -134,6 +186,13 @@ export async function getSavingsHistoryRows(
 export async function manualDepositToSavings(
   payload: ManualDepositPayload
 ): Promise<ManualDepositResponse> {
-  const res = await api.post(ENDPOINTS.savings.deposit, payload);
+  const body = {
+    account_id: Number(payload.account_id),
+    amount: normalizeMoneyInput(payload.amount),
+    reference: cleanText(payload.reference),
+    note: cleanText(payload.note),
+  };
+
+  const res = await api.post(ENDPOINTS.savings.deposit, body);
   return res.data;
 }

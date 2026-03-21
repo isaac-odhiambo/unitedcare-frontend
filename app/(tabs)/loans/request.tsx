@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -93,7 +94,7 @@ export default function RequestLoanScreen() {
         setLoadingCandidates(true);
         const rows = await getGuarantorCandidates(search.trim());
         if (!mounted) return;
-        setCandidates(Array.isArray(rows) ? rows : []);
+        setCandidates(Array.isArray(rows) ? rows.slice(0, 10) : []);
       } catch (e: any) {
         if (!mounted) return;
         setCandidates([]);
@@ -101,7 +102,7 @@ export default function RequestLoanScreen() {
       } finally {
         if (mounted) setLoadingCandidates(false);
       }
-    }, 300);
+    }, 250);
 
     return () => {
       mounted = false;
@@ -115,17 +116,28 @@ export default function RequestLoanScreen() {
     );
   };
 
-  const selectedNames = useMemo(() => {
-    const map = new Map(candidates.map((c) => [c.id, c.full_name]));
-    return selectedGuarantorIds.map((id) => map.get(id) || "Selected member");
+  const selectedGuarantors = useMemo(() => {
+    const map = new Map(candidates.map((c) => [c.id, c]));
+    return selectedGuarantorIds.map((id) => map.get(id)).filter(Boolean) as GuarantorCandidate[];
   }, [candidates, selectedGuarantorIds]);
+
+  const amountPreview = useMemo(() => formatKes(principal || 0), [principal]);
+
+  const hasActiveLoan = Boolean(eligibility?.has_active_loan);
+  const showEligibilitySection = !loadingEligibility && !!eligibility && !hasActiveLoan;
+  const canSubmit = Boolean(formState.canSubmit && eligibility?.eligible && !submitting && !hasActiveLoan);
 
   const submit = async () => {
     try {
+      if (hasActiveLoan) {
+        Alert.alert("Loan Request", "You already have an active loan.");
+        return;
+      }
+
       if (!eligibility?.eligible) {
         Alert.alert(
           "Loan Request",
-          eligibility?.reason || "You are not eligible to request a loan right now."
+          "You are not eligible to request a loan right now."
         );
         return;
       }
@@ -140,8 +152,8 @@ export default function RequestLoanScreen() {
 
       const res = await requestLoan(formState.payload);
 
-      Alert.alert("Success", res?.message || "Loan request submitted.");
-      router.replace(`/(tabs)/loans/${res.loan.id}` as any);
+      Alert.alert("Success", res?.message || "Loan request submitted successfully.");
+      router.replace("/(tabs)/loans" as any);
     } catch (e: any) {
       const msg = getApiErrorMessage(e) || getErrorMessage(e);
       setError(msg);
@@ -158,234 +170,344 @@ export default function RequestLoanScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Request Loan</Text>
-        <Text style={styles.sub}>
-          Enter the amount you need, choose repayment weeks, and select guarantor(s).
-        </Text>
+      <View style={styles.hero}>
+        <View style={styles.heroGlow} />
+        <View style={styles.heroRow}>
+          <View style={styles.heroIcon}>
+            <Ionicons name="wallet-outline" size={22} color={COLORS.white} />
+          </View>
+
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle}>Loan Request</Text>
+            <Text style={styles.heroSub}>
+              Apply for a loan in a simple and clear process.
+            </Text>
+          </View>
+        </View>
       </View>
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <Section title="Eligibility">
-        <Card style={styles.card}>
-          {loadingEligibility ? (
+      {loadingEligibility ? (
+        <Card style={styles.loadingCard}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.loadingText}>Checking your loan status...</Text>
+        </Card>
+      ) : null}
+
+      {hasActiveLoan ? (
+        <Card style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconWrap}>
+              <Ionicons name="time-outline" size={18} color={COLORS.warning} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.infoTitle}>Loan request unavailable</Text>
+              <Text style={styles.infoText}>
+                You already have an active loan or a pending loan request. Clear the current loan process before making a new request.
+              </Text>
+            </View>
+          </View>
+        </Card>
+      ) : null}
+
+      {showEligibilitySection ? (
+        <Section title="Overview">
+          <Card style={styles.overviewCard}>
+            <View style={styles.gridRow}>
+              <View style={[styles.infoTile, styles.infoTilePrimary]}>
+                <Text style={styles.infoLabelLight}>Status</Text>
+                <Text style={styles.infoValueLight}>
+                  {eligibility?.eligible ? "Ready to Apply" : "Not Ready"}
+                </Text>
+              </View>
+
+              <View style={styles.infoTile}>
+                <Text style={styles.infoLabel}>Maximum Loan</Text>
+                <Text style={styles.infoValue}>{formatKes(eligibility?.max_allowed)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.gridRow}>
+              <View style={styles.infoTile}>
+                <Text style={styles.infoLabel}>Available Savings</Text>
+                <Text style={styles.infoValue}>
+                  {formatKes(eligibility?.available_savings)}
+                </Text>
+              </View>
+
+              <View style={styles.infoTile}>
+                <Text style={styles.infoLabel}>Application Status</Text>
+                <Text style={styles.infoValue}>No Active Request</Text>
+              </View>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
+      {!hasActiveLoan ? (
+        <Section title="Loan Information">
+          <Card style={styles.card}>
+            <Input
+              label="Amount (KES)"
+              value={principal}
+              onChangeText={setPrincipal}
+              placeholder="e.g. 10000"
+              keyboardType="decimal-pad"
+            />
+
+            <Input
+              label="Repayment Period (Weeks)"
+              value={termWeeks}
+              onChangeText={setTermWeeks}
+              placeholder="e.g. 12"
+              keyboardType="number-pad"
+            />
+
+            <Input
+              label="Reason (Optional)"
+              value={memberNote}
+              onChangeText={setMemberNote}
+              placeholder="Why do you need this loan?"
+            />
+
+            <View style={styles.amountPreviewBox}>
+              <Text style={styles.amountPreviewLabel}>Requested Amount</Text>
+              <Text style={styles.amountPreviewValue}>{amountPreview}</Text>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
+      {!hasActiveLoan ? (
+        <Section title="Selected Guarantors">
+          <Card style={styles.card}>
+            <View style={styles.selectedHeader}>
+              <Text style={styles.selectedTitle}>
+                {selectedGuarantorIds.length} selected
+              </Text>
+
+              {selectedGuarantorIds.length > 0 ? (
+                <TouchableOpacity onPress={() => setSelectedGuarantorIds([])}>
+                  <Text style={styles.clearText}>Clear all</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {selectedGuarantors.length === 0 ? (
+              <Text style={styles.helperText}>No guarantor selected yet.</Text>
+            ) : (
+              <View style={styles.chipsWrap}>
+                {selectedGuarantors.map((item) => (
+                  <View key={item.id} style={styles.chip}>
+                    <Text style={styles.chipText}>{item.full_name}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Card>
+        </Section>
+      ) : null}
+
+      {!hasActiveLoan ? (
+        <Section title="Find Guarantor">
+          <Card style={styles.card}>
+            <Input
+              label="Search Member"
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Type member name"
+            />
+            <Text style={styles.helperText}>
+              Select one or more members to support your application.
+            </Text>
+          </Card>
+        </Section>
+      ) : null}
+
+      {!hasActiveLoan ? (
+        <Section title="Available Members">
+          {loadingCandidates ? (
             <View style={styles.loadingWrap}>
               <ActivityIndicator color={COLORS.primary} />
             </View>
-          ) : !eligibility ? (
+          ) : candidates.length === 0 ? (
             <EmptyState
-              title="Eligibility unavailable"
-              subtitle="Please try again in a moment."
+              icon="people-outline"
+              title="No members found"
+              subtitle="Try another search name."
             />
           ) : (
-            <View style={styles.group}>
-              <View style={styles.kvRow}>
-                <Text style={styles.kvLabel}>Eligible now</Text>
-                <Text
-                  style={[
-                    styles.kvValue,
-                    { color: eligibility.eligible ? COLORS.success : COLORS.warning },
-                  ]}
+            candidates.map((candidate) => {
+              const selected = selectedGuarantorIds.includes(candidate.id);
+
+              return (
+                <TouchableOpacity
+                  key={candidate.id}
+                  activeOpacity={0.9}
+                  onPress={() => toggleGuarantor(candidate.id)}
                 >
-                  {eligibility.eligible ? "Yes" : "Not yet"}
-                </Text>
-              </View>
+                  <Card style={[styles.memberCard, selected && styles.memberCardSelected]}>
+                    <View style={styles.memberCardTop}>
+                      <View style={styles.memberLeft}>
+                        <View style={[styles.avatar, selected && styles.avatarSelected]}>
+                          <Ionicons
+                            name={selected ? "checkmark" : "person-outline"}
+                            size={16}
+                            color={selected ? COLORS.white : COLORS.primary}
+                          />
+                        </View>
 
-              <View style={styles.kvRow}>
-                <Text style={styles.kvLabel}>Available savings</Text>
-                <Text style={styles.kvValue}>
-                  {formatKes(eligibility.available_savings)}
-                </Text>
-              </View>
+                        <View style={styles.memberTextWrap}>
+                          <Text style={styles.memberName}>{candidate.full_name}</Text>
+                          <Text style={styles.memberMeta}>
+                            {selected ? "Selected" : "Tap to select"}
+                          </Text>
+                        </View>
+                      </View>
 
-              <View style={styles.kvRow}>
-                <Text style={styles.kvLabel}>Maximum request</Text>
-                <Text style={styles.kvValue}>
-                  {formatKes(eligibility.max_allowed)}
-                </Text>
-              </View>
-
-              <View style={styles.kvRow}>
-                <Text style={styles.kvLabel}>Active loan</Text>
-                <Text style={styles.kvValue}>
-                  {eligibility.has_active_loan ? "Yes" : "No"}
-                </Text>
-              </View>
-
-              {eligibility.reason ? (
-                <Text style={styles.note}>{eligibility.reason}</Text>
-              ) : null}
-            </View>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          selected ? styles.statusPillSelected : styles.statusPillDefault,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            { color: selected ? COLORS.success : COLORS.gray },
+                          ]}
+                        >
+                          {selected ? "Selected" : "Available"}
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
           )}
-        </Card>
-      </Section>
+        </Section>
+      ) : null}
 
-      <Section title="Loan Details">
-        <Card style={styles.card}>
-          <Input
-            label="Amount (KES)"
-            value={principal}
-            onChangeText={setPrincipal}
-            placeholder="e.g. 10000"
-            keyboardType="decimal-pad"
-          />
+      {!hasActiveLoan ? (
+        <Card style={styles.submitCard}>
+          <View style={styles.submitSummary}>
+            <View style={styles.submitSummaryBox}>
+              <Text style={styles.submitSummaryLabel}>Amount</Text>
+              <Text style={styles.submitSummaryValue}>{amountPreview}</Text>
+            </View>
 
-          <Input
-            label="Repayment period (weeks)"
-            value={termWeeks}
-            onChangeText={setTermWeeks}
-            placeholder="e.g. 12"
-            keyboardType="number-pad"
-          />
-
-          <Input
-            label="Optional note"
-            value={memberNote}
-            onChangeText={setMemberNote}
-            placeholder="Reason for the loan"
-          />
-        </Card>
-      </Section>
-
-      <Section title="Search Guarantors">
-        <Card style={styles.card}>
-          <Input
-            label="Search member"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search by name"
-          />
-
-          <Text style={styles.note}>
-            Select one or more guarantors. The system will validate them before approval.
-          </Text>
-        </Card>
-      </Section>
-
-      <Section title="Available Guarantors">
-        {loadingCandidates ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={COLORS.primary} />
+            <View style={styles.submitSummaryBox}>
+              <Text style={styles.submitSummaryLabel}>Guarantors</Text>
+              <Text style={styles.submitSummaryValue}>{selectedGuarantorIds.length}</Text>
+            </View>
           </View>
-        ) : candidates.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No guarantors found"
-            subtitle="Try a different search term."
+
+          <View style={{ height: SPACING.md }} />
+
+          <Button
+            title={submitting ? "Submitting..." : "Submit Loan Request"}
+            onPress={submit}
+            loading={submitting}
+            disabled={!canSubmit}
           />
-        ) : (
-          candidates.map((candidate) => {
-            const selected = selectedGuarantorIds.includes(candidate.id);
 
-            return (
-              <Card key={candidate.id} style={styles.itemCard}>
-                <View style={styles.rowTop}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.itemTitle}>{candidate.full_name}</Text>
-                    <Text style={styles.itemSub}>Available member</Text>
-                  </View>
+          <View style={{ height: SPACING.sm }} />
 
-                  <Text
-                    style={[
-                      styles.badge,
-                      { color: selected ? COLORS.success : COLORS.gray },
-                    ]}
-                  >
-                    {selected ? "SELECTED" : "AVAILABLE"}
-                  </Text>
-                </View>
-
-                <View style={styles.actionsRow}>
-                  <Button
-                    title={selected ? "Remove" : "Select"}
-                    variant={selected ? "secondary" : "primary"}
-                    onPress={() => toggleGuarantor(candidate.id)}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </Card>
-            );
-          })
-        )}
-      </Section>
-
-      <Section title="Selected Guarantors">
-        <Card style={styles.card}>
-          {selectedNames.length === 0 ? (
-            <Text style={styles.note}>No guarantor selected yet.</Text>
-          ) : (
-            <View style={styles.group}>
-              {selectedNames.map((name, index) => (
-                <Text key={`${name}-${index}`} style={styles.selectedItem}>
-                  • {name}
-                </Text>
-              ))}
-            </View>
-          )}
+          <Button
+            title="Cancel"
+            variant="secondary"
+            onPress={() => router.back()}
+            disabled={submitting}
+          />
         </Card>
-      </Section>
+      ) : null}
 
-      <View style={styles.actions}>
-        <Button
-          title={submitting ? "Submitting..." : "Submit Request"}
-          onPress={submit}
-          loading={submitting}
-          disabled={!formState.canSubmit || !eligibility?.eligible || submitting}
-        />
-        <View style={{ height: SPACING.sm }} />
-        <Button
-          title="Cancel"
-          variant="secondary"
-          onPress={() => router.back()}
-          disabled={submitting}
-        />
-      </View>
-
-      <View style={{ height: 24 }} />
+      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
 
-  header: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  content: {
     padding: SPACING.lg,
+    paddingBottom: 28,
+  },
+
+  hero: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: RADIUS.xl,
     marginBottom: SPACING.lg,
+    backgroundColor: COLORS.primary,
     ...SHADOW.card,
   },
 
-  title: {
-    fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+  heroGlow: {
+    position: "absolute",
+    right: -30,
+    top: -20,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
-  sub: {
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SPACING.lg,
+  },
+
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    marginRight: SPACING.md,
+  },
+
+  heroTextWrap: {
+    flex: 1,
+  },
+
+  heroTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 20,
+    color: COLORS.white,
+  },
+
+  heroSub: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.88)",
     lineHeight: 18,
   },
 
   card: {
     padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  overviewCard: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
     ...SHADOW.card,
   },
 
@@ -397,6 +519,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -407,38 +530,153 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
-  loadingWrap: {
-    paddingVertical: SPACING.lg,
+  loadingCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
     alignItems: "center",
     justifyContent: "center",
+    ...SHADOW.card,
   },
 
-  group: {
-    gap: 12,
-  },
-
-  kvRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  kvLabel: {
-    flex: 1,
+  loadingText: {
+    marginTop: 10,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
   },
 
-  kvValue: {
-    flex: 1,
-    textAlign: "right",
+  infoCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  infoIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF8E8",
+  },
+
+  infoTitle: {
     fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
+    marginBottom: 4,
+  },
+
+  infoText: {
+    fontFamily: FONT.regular,
     fontSize: 12,
+    lineHeight: 18,
+    color: COLORS.gray,
+  },
+
+  loadingWrap: {
+    paddingVertical: SPACING.xl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  gridRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+
+  infoTile: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 88,
+    justifyContent: "center",
+  },
+
+  infoTilePrimary: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+
+  infoLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 6,
+  },
+
+  infoValue: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
     color: COLORS.dark,
   },
 
-  note: {
+  infoLabelLight: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 6,
+  },
+
+  infoValueLight: {
+    fontFamily: FONT.bold,
+    fontSize: 15,
+    color: COLORS.white,
+  },
+
+  amountPreviewBox: {
+    marginTop: SPACING.sm,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: `${COLORS.primary}10`,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}18`,
+  },
+
+  amountPreviewLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 4,
+  },
+
+  amountPreviewValue: {
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    color: COLORS.primary,
+  },
+
+  selectedHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  selectedTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
+  },
+
+  clearText: {
+    fontFamily: FONT.bold,
+    fontSize: 12,
+    color: COLORS.primary,
+  },
+
+  helperText: {
     marginTop: 8,
     fontFamily: FONT.regular,
     fontSize: 12,
@@ -446,51 +684,139 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  itemCard: {
-    marginBottom: SPACING.md,
+  chipsWrap: {
+    marginTop: SPACING.sm,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+
+  chip: {
+    backgroundColor: `${COLORS.primary}12`,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}20`,
+  },
+
+  chipText: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.primary,
+  },
+
+  memberCard: {
+    marginBottom: SPACING.sm,
     padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.xl,
     ...SHADOW.card,
   },
 
-  rowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
+  memberCardSelected: {
+    borderColor: COLORS.success,
+    backgroundColor: `${COLORS.success}08`,
   },
 
-  itemTitle: {
+  memberCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+
+  memberLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}14`,
+    marginRight: SPACING.sm,
+  },
+
+  avatarSelected: {
+    backgroundColor: COLORS.success,
+  },
+
+  memberTextWrap: {
+    flex: 1,
+  },
+
+  memberName: {
     fontFamily: FONT.bold,
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.dark,
   },
 
-  itemSub: {
-    marginTop: 6,
+  memberMeta: {
+    marginTop: 4,
     fontFamily: FONT.regular,
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.gray,
   },
 
-  badge: {
+  statusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+
+  statusPillDefault: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
+  },
+
+  statusPillSelected: {
+    backgroundColor: `${COLORS.success}12`,
+    borderColor: `${COLORS.success}30`,
+  },
+
+  statusPillText: {
     fontFamily: FONT.bold,
     fontSize: 11,
   },
 
-  actionsRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  selectedItem: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.dark,
-    lineHeight: 18,
-  },
-
-  actions: {
+  submitCard: {
     marginTop: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  submitSummary: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+  },
+
+  submitSummaryBox: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  submitSummaryLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 6,
+  },
+
+  submitSummaryValue: {
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: COLORS.dark,
   },
 });

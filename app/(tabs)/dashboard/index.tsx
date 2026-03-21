@@ -1,4 +1,3 @@
-// app/(tabs)/dashboard/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -19,13 +18,24 @@ import Section from "@/components/ui/Section";
 import { ROUTES } from "@/constants/routes";
 import {
   COLORS,
+  P,
+  RADIUS,
   SHADOW,
   SPACING,
-  TYPE
+  TYPE,
 } from "@/constants/theme";
-import { getMyLoans } from "@/services/loans";
-import { getMyMerries } from "@/services/merry";
-import { getMyLedger } from "@/services/payments";
+import {
+  getMyGuaranteeRequests,
+  getMyLoans,
+  Loan,
+  LoanGuarantor,
+} from "@/services/loans";
+import {
+  fmtKES,
+  getMyAllMerryDueSummary,
+  MerryDueSummaryItem,
+  MyAllMerryDueSummaryResponse,
+} from "@/services/merry";
 import {
   canJoinGroup,
   canJoinMerry,
@@ -40,21 +50,14 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type DashboardUser = Partial<MeResponse> & Partial<SessionUser>;
 
-type ActionItem = {
+type NotificationItem = {
+  id: string;
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  go: () => void;
-  tone?: "primary" | "success" | "warning" | "info";
-  featured?: boolean;
-};
-
-type ShortcutItem = {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  tone?: "primary" | "success" | "warning" | "info";
+  tone: "primary" | "success" | "warning" | "info";
+  actionLabel?: string;
+  onPress?: () => void;
 };
 
 function getGreetingByTime() {
@@ -69,52 +72,40 @@ function getToneColors(
 ) {
   const map = {
     primary: {
-      soft: "#EAF6FF",
-      softAlt: "#DFF1FF",
+      soft: COLORS.primarySoft,
+      softAlt: COLORS.dashboardHeroSoft,
       iconBg: "rgba(14, 94, 111, 0.10)",
       icon: COLORS.primary,
       border: "rgba(14, 94, 111, 0.10)",
-      title: COLORS.text,
-      subtitle: COLORS.textMuted,
       accent: COLORS.primary,
-      badgeBg: "rgba(14, 94, 111, 0.10)",
-      badgeText: COLORS.primary,
+      statBg: COLORS.statCardBlue,
     },
     success: {
-      soft: "#EEF9F3",
-      softAlt: "#E4F6EC",
-      iconBg: "rgba(46, 125, 50, 0.10)",
-      icon: COLORS.success,
-      border: "rgba(46, 125, 50, 0.10)",
-      title: COLORS.text,
-      subtitle: COLORS.textMuted,
-      accent: COLORS.success,
-      badgeBg: "rgba(46, 125, 50, 0.10)",
-      badgeText: COLORS.success,
+      soft: COLORS.secondarySoft,
+      softAlt: COLORS.statCardGreen,
+      iconBg: "rgba(22, 163, 74, 0.10)",
+      icon: COLORS.secondary,
+      border: "rgba(22, 163, 74, 0.10)",
+      accent: COLORS.secondary,
+      statBg: COLORS.statCardGreen,
     },
     warning: {
-      soft: "#FFF8E8",
-      softAlt: "#FFF3D9",
+      soft: COLORS.warningSoft,
+      softAlt: COLORS.statCardOrange,
       iconBg: "rgba(245, 158, 11, 0.12)",
       icon: COLORS.warning,
       border: "rgba(245, 158, 11, 0.10)",
-      title: COLORS.text,
-      subtitle: COLORS.textMuted,
       accent: COLORS.warning,
-      badgeBg: "rgba(245, 158, 11, 0.12)",
-      badgeText: COLORS.warning,
+      statBg: COLORS.statCardOrange,
     },
     info: {
-      soft: "#EEF4FF",
-      softAlt: "#E7F0FF",
+      soft: COLORS.infoSoft,
+      softAlt: COLORS.statCardBlue,
       iconBg: "rgba(37, 99, 235, 0.10)",
       icon: COLORS.info,
       border: "rgba(37, 99, 235, 0.10)",
-      title: COLORS.text,
-      subtitle: COLORS.textMuted,
       accent: COLORS.info,
-      badgeBg: "rgba(37, 99, 235, 0.10)",
-      badgeText: COLORS.info,
+      statBg: COLORS.statCardBlue,
     },
   };
 
@@ -126,96 +117,40 @@ function formatUserStatus(status?: string) {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
-function ActionTile({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  tone = "primary",
-  featured = false,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  tone?: "primary" | "success" | "warning" | "info";
-  featured?: boolean;
-}) {
-  const colors = getToneColors(tone);
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const n = Number(value.replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
 
-  return (
-    <Card
-      onPress={onPress}
-      style={[
-        styles.actionCard,
-        {
-          backgroundColor: featured ? colors.softAlt : COLORS.white,
-          borderColor: colors.border,
-        },
-        featured && styles.actionCardFeatured,
-      ]}
-      variant={featured ? "elevated" : "default"}
-    >
-      <View style={styles.actionCardTop}>
-        <View style={[styles.actionIconWrap, { backgroundColor: colors.iconBg }]}>
-          <Ionicons name={icon} size={20} color={colors.icon} />
-        </View>
+function formatKes(value: number): string {
+  return `KES ${value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+}
 
-        <View style={[styles.actionBadge, { backgroundColor: colors.badgeBg }]}>
-          <Text style={[styles.actionBadgeText, { color: colors.badgeText }]}>
-            {featured ? "Popular" : "Open"}
-          </Text>
-        </View>
-      </View>
+function hasAmount(value?: string | number | null): boolean {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0;
+}
 
-      <View style={styles.actionCardBody}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionSubtitle} numberOfLines={3}>
-          {subtitle}
-        </Text>
-      </View>
-
-      <View style={styles.actionFooter}>
-        <Text style={[styles.actionFooterText, { color: colors.accent }]}>
-          Continue
-        </Text>
-        <View style={[styles.actionArrow, { backgroundColor: colors.iconBg }]}>
-          <Ionicons name="arrow-forward" size={15} color={colors.icon} />
-        </View>
-      </View>
-    </Card>
+function getSavingsTotal(accounts: SavingsAccount[]): number {
+  return accounts.reduce(
+    (sum, account) =>
+      sum + toNumber(account.available_balance ?? account.balance ?? 0),
+    0
   );
 }
 
-function ShortcutCard({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  tone = "success",
-}: ShortcutItem) {
-  const colors = getToneColors(tone);
-
-  return (
-    <Card onPress={onPress} style={styles.shortcutCard} variant="default">
-      <View style={styles.shortcutMain}>
-        <View style={[styles.shortcutIconWrap, { backgroundColor: colors.iconBg }]}>
-          <Ionicons name={icon} size={20} color={colors.icon} />
-        </View>
-
-        <View style={styles.shortcutTextWrap}>
-          <Text style={styles.shortcutTitle}>{title}</Text>
-          <Text style={styles.shortcutSubtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-
-      <View style={[styles.shortcutArrow, { backgroundColor: colors.iconBg }]}>
-        <Ionicons name="chevron-forward" size={18} color={colors.icon} />
-      </View>
-    </Card>
-  );
+function getLoansTotal(loansData: Loan[]): number {
+  const rows = Array.isArray(loansData) ? loansData : [];
+  return rows.reduce((sum: number, loan: Loan) => {
+    return sum + toNumber(loan?.outstanding_balance ?? 0);
+  }, 0);
 }
 
 function StatTile({
@@ -236,7 +171,7 @@ function StatTile({
       style={[
         styles.statCard,
         {
-          backgroundColor: COLORS.white,
+          backgroundColor: colors.statBg,
           borderColor: colors.border,
         },
       ]}
@@ -245,7 +180,6 @@ function StatTile({
       <View style={[styles.statIconWrap, { backgroundColor: colors.iconBg }]}>
         <Ionicons name={icon} size={18} color={colors.icon} />
       </View>
-
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue} numberOfLines={1}>
         {value}
@@ -254,161 +188,209 @@ function StatTile({
   );
 }
 
-function InfoBanner({
+function PriorityActionCard({
   title,
   subtitle,
+  amount,
   icon,
-  tone = "info",
-  onPress,
+  tone = "primary",
+  primaryLabel,
+  secondaryLabel,
+  onPrimaryPress,
+  onSecondaryPress,
 }: {
   title: string;
   subtitle: string;
+  amount?: string;
   icon: keyof typeof Ionicons.glyphMap;
   tone?: "primary" | "success" | "warning" | "info";
-  onPress?: () => void;
+  primaryLabel: string;
+  secondaryLabel?: string;
+  onPrimaryPress: () => void;
+  onSecondaryPress?: () => void;
 }) {
   const colors = getToneColors(tone);
 
   return (
+    <Card style={styles.priorityCard} variant="default">
+      <View style={styles.priorityTop}>
+        <View style={[styles.priorityIconWrap, { backgroundColor: colors.iconBg }]}>
+          <Ionicons name={icon} size={20} color={colors.icon} />
+        </View>
+
+        <View style={styles.priorityTextWrap}>
+          <Text style={styles.priorityTitle}>{title}</Text>
+          <Text style={styles.prioritySubtitle}>{subtitle}</Text>
+        </View>
+      </View>
+
+      {amount ? (
+        <View style={[styles.priorityAmountBox, { backgroundColor: colors.soft }]}>
+          <Text style={styles.priorityAmountLabel}>Amount</Text>
+          <Text style={[styles.priorityAmountValue, { color: colors.accent }]}>
+            {amount}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.priorityButtonRow}>
+        <Button title={primaryLabel} onPress={onPrimaryPress} style={{ flex: 1 }} />
+        {secondaryLabel && onSecondaryPress ? (
+          <>
+            <View style={{ width: SPACING.sm }} />
+            <Button
+              title={secondaryLabel}
+              variant="secondary"
+              onPress={onSecondaryPress}
+              style={{ flex: 1 }}
+            />
+          </>
+        ) : null}
+      </View>
+    </Card>
+  );
+}
+
+function NotificationCard({ item }: { item: NotificationItem }) {
+  const colors = getToneColors(item.tone);
+
+  return (
     <Card
-      onPress={onPress}
+      onPress={item.onPress}
       style={[
-        styles.infoBanner,
+        styles.notificationCard,
         {
-          backgroundColor: colors.soft,
+          backgroundColor: COLORS.white,
           borderColor: colors.border,
         },
       ]}
-      variant="soft"
+      variant="default"
     >
-      <View style={[styles.infoBannerIcon, { backgroundColor: colors.iconBg }]}>
-        <Ionicons name={icon} size={18} color={colors.icon} />
+      <View style={[styles.notificationIconWrap, { backgroundColor: colors.iconBg }]}>
+        <Ionicons name={item.icon} size={18} color={colors.icon} />
       </View>
 
-      <View style={styles.infoBannerText}>
-        <Text style={styles.infoBannerTitle}>{title}</Text>
-        <Text style={styles.infoBannerSubtitle}>{subtitle}</Text>
+      <View style={styles.notificationTextWrap}>
+        <Text style={styles.notificationTitle}>{item.title}</Text>
+        <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>
+        {item.actionLabel ? (
+          <Text style={[styles.notificationAction, { color: colors.accent }]}>
+            {item.actionLabel}
+          </Text>
+        ) : null}
       </View>
 
-      {onPress ? (
+      {item.onPress ? (
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       ) : null}
     </Card>
   );
 }
 
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value === "string") {
-    const n = Number(value.replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
-
-function formatKes(value: number): string {
-  return `KES ${value.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
-}
-
-function getSavingsTotal(accounts: SavingsAccount[]): number {
-  return accounts.reduce(
-    (sum, account) =>
-      sum + toNumber(account.available_balance ?? account.balance ?? 0),
-    0
+function MiniLink({
+  title,
+  icon,
+  onPress,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  return (
+    <Card onPress={onPress} style={styles.miniLinkCard} variant="default">
+      <View style={styles.miniLinkInner}>
+        <View style={styles.miniLinkIcon}>
+          <Ionicons name={icon} size={16} color={COLORS.primary} />
+        </View>
+        <Text style={styles.miniLinkText}>{title}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+    </Card>
   );
 }
 
-function getLoansTotal(loansData: any): number {
-  const rows = Array.isArray(loansData)
-    ? loansData
-    : Array.isArray(loansData?.results)
-      ? loansData.results
-      : Array.isArray(loansData?.data)
-        ? loansData.data
-        : [];
+function MerryDueCard({ item }: { item: MerryDueSummaryItem }) {
+  const overdue = hasAmount(item.overdue);
+  const current = hasAmount(item.current_due);
+  const next = hasAmount(item.next_due);
 
-  return rows.reduce((sum: number, loan: any) => {
-    return (
-      sum +
-      toNumber(
-        loan?.outstanding_balance ??
-          loan?.balance ??
-          loan?.remaining_balance ??
-          loan?.amount ??
-          0
-      )
-    );
-  }, 0);
-}
+  const badgeText = overdue
+    ? "Overdue"
+    : current
+      ? "Due now"
+      : next
+        ? "Next due"
+        : "Up to date";
 
-function getLedgerCount(ledgerData: any): number {
-  const rows = Array.isArray(ledgerData)
-    ? ledgerData
-    : Array.isArray(ledgerData?.results)
-      ? ledgerData.results
-      : Array.isArray(ledgerData?.data)
-        ? ledgerData.data
-        : [];
+  const badgeStyle = overdue
+    ? styles.merryBadgeDanger
+    : current
+      ? styles.merryBadgeWarning
+      : styles.merryBadgeSuccess;
 
-  return rows.length;
-}
+  return (
+    <Card style={styles.merryCard} variant="default">
+      <View style={styles.merryCardTop}>
+        <View style={{ flex: 1, paddingRight: SPACING.sm }}>
+          <Text style={styles.merryCardTitle}>{item.merry_name}</Text>
+          <Text style={styles.merryCardSub}>
+            {item.seat_count} seat{item.seat_count === 1 ? "" : "s"}
+            {item.seat_numbers?.length ? ` • ${item.seat_numbers.join(", ")}` : ""}
+          </Text>
+        </View>
 
-function normalizeMerryPayload(merryData: any) {
-  const created = Array.isArray(merryData?.created) ? merryData.created : [];
-  const memberships = Array.isArray(merryData?.memberships)
-    ? merryData.memberships
-    : [];
-  return { created, memberships };
-}
+        <View style={[styles.merryBadge, badgeStyle]}>
+          <Text style={styles.merryBadgeText}>{badgeText}</Text>
+        </View>
+      </View>
 
-function getCommunityCount(merryData: any) {
-  const { created, memberships } = normalizeMerryPayload(merryData);
-  return created.length + memberships.length;
-}
+      <View style={styles.merryAmountBox}>
+        <Text style={styles.merryAmountLabel}>Required now</Text>
+        <Text style={styles.merryAmountValue}>{fmtKES(item.required_now)}</Text>
+      </View>
 
-function getFirstMerryShortcut(merryData: any) {
-  const { memberships, created } = normalizeMerryPayload(merryData);
+      <View style={styles.merryMeta}>
+        <View style={styles.merryMetaRow}>
+          <Text style={styles.merryMetaLabel}>Overdue</Text>
+          <Text style={styles.merryMetaValue}>{fmtKES(item.overdue)}</Text>
+        </View>
 
-  const firstMembership = memberships[0];
-  if (firstMembership) {
-    const merryId =
-      Number(firstMembership?.merry_id) ||
-      Number(firstMembership?.merry) ||
-      Number(firstMembership?.id);
+        <View style={styles.merryMetaRow}>
+          <Text style={styles.merryMetaLabel}>Current due</Text>
+          <Text style={styles.merryMetaValue}>{fmtKES(item.current_due)}</Text>
+        </View>
 
-    const merryName =
-      firstMembership?.merry_name ||
-      firstMembership?.name ||
-      firstMembership?.merry_detail?.name ||
-      "My Merry";
+        {next ? (
+          <View style={styles.merryMetaRow}>
+            <Text style={styles.merryMetaLabel}>Next due</Text>
+            <Text style={styles.merryMetaValue}>
+              {fmtKES(item.next_due)}
+              {item.next_due_date ? ` • ${item.next_due_date}` : ""}
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
-    if (Number.isFinite(merryId)) {
-      return {
-        id: merryId,
-        name: merryName,
-        subtitle: "Continue with contributions and recent activity",
-      };
-    }
-  }
-
-  const firstCreated = created[0];
-  if (firstCreated) {
-    const merryId = Number(firstCreated?.id);
-    const merryName = firstCreated?.name || "My Merry";
-
-    if (Number.isFinite(merryId)) {
-      return {
-        id: merryId,
-        name: merryName,
-        subtitle: "Open your merry and manage member activity",
-      };
-    }
-  }
-
-  return null;
+      <View style={styles.merryActionRow}>
+        <Button
+          title="Open"
+          variant="secondary"
+          onPress={() =>
+            router.push(ROUTES.dynamic.merryDetail(item.merry_id) as any)
+          }
+          style={{ flex: 1 }}
+        />
+        <View style={{ width: SPACING.sm }} />
+        <Button
+          title={hasAmount(item.required_now) ? "Pay Now" : "View"}
+          onPress={() =>
+            router.push(ROUTES.dynamic.merryDetail(item.merry_id) as any)
+          }
+          style={{ flex: 1 }}
+        />
+      </View>
+    </Card>
+  );
 }
 
 export default function DashboardScreen() {
@@ -417,22 +399,10 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [heroSavings, setHeroSavings] = useState("—");
-  const [stats, setStats] = useState({
-    loans: "—",
-    ledger: "—",
-    community: "—",
-  });
-
-  const [merryShortcut, setMerryShortcut] = useState<{
-    id: number;
-    name: string;
-    subtitle: string;
-  } | null>(null);
-
-  const [groupShortcut, setGroupShortcut] = useState<{
-    title: string;
-    subtitle: string;
-  } | null>(null);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
+  const [merrySummary, setMerrySummary] =
+    useState<MyAllMerryDueSummaryResponse | null>(null);
 
   const isAdmin = isAdminUser(user);
   const kycComplete = isKycComplete(user);
@@ -453,15 +423,15 @@ export default function DashboardScreen() {
         meResult,
         savingsResult,
         loansResult,
-        ledgerResult,
-        merryResult,
+        merrySummaryResult,
+        guaranteeResult,
       ] = await Promise.allSettled([
         getSessionUser(),
         getMe(),
         listMySavingsAccounts(),
         getMyLoans(),
-        getMyLedger(),
-        getMyMerries(),
+        getMyAllMerryDueSummary(),
+        getMyGuaranteeRequests(),
       ]);
 
       const sessionUser =
@@ -478,50 +448,22 @@ export default function DashboardScreen() {
 
       setUser(mergedUser);
 
-      const savingsTotal =
-        savingsResult.status === "fulfilled"
-          ? getSavingsTotal(savingsResult.value)
-          : 0;
-
-      const loansTotal =
-        loansResult.status === "fulfilled" ? getLoansTotal(loansResult.value) : 0;
-
-      const ledgerCount =
-        ledgerResult.status === "fulfilled"
-          ? getLedgerCount(ledgerResult.value)
-          : 0;
-
-      const communityCount =
-        merryResult.status === "fulfilled"
-          ? getCommunityCount(merryResult.value)
-          : 0;
-
+      const savingsAccounts =
+        savingsResult.status === "fulfilled" ? savingsResult.value : [];
+      const savingsTotal = getSavingsTotal(savingsAccounts);
       setHeroSavings(formatKes(savingsTotal));
 
-      setStats({
-        loans: formatKes(loansTotal),
-        ledger: `${ledgerCount} records`,
-        community: `${communityCount} active`,
-      });
-
-      if (merryResult.status === "fulfilled") {
-        setMerryShortcut(getFirstMerryShortcut(merryResult.value));
-      } else {
-        setMerryShortcut(null);
-      }
-
-      setGroupShortcut(
-        groupAllowed
-          ? {
-              title: "Groups Hub",
-              subtitle: "Open groups, memberships and contributions",
-            }
-          : null
+      setLoans(loansResult.status === "fulfilled" ? loansResult.value : []);
+      setGuaranteeRequests(
+        guaranteeResult.status === "fulfilled" ? guaranteeResult.value : []
+      );
+      setMerrySummary(
+        merrySummaryResult.status === "fulfilled" ? merrySummaryResult.value : null
       );
     } finally {
       setLoading(false);
     }
-  }, [groupAllowed]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -538,91 +480,106 @@ export default function DashboardScreen() {
     }
   }, [load]);
 
-  const actions = useMemo<ActionItem[]>(() => {
-    if (isAdmin) {
-      return [
-        {
-          title: "Deposit",
-          subtitle: "Add money quickly to savings accounts",
-          icon: "arrow-down-circle-outline",
-          go: () => router.push(ROUTES.tabs.paymentsDeposit as any),
-          tone: "primary",
-          featured: true,
-        },
-        {
-          title: "Loans",
-          subtitle: "Review loan requests and balances",
-          icon: "cash-outline",
-          go: () => router.push(ROUTES.tabs.loans as any),
-          tone: "warning",
-        },
-        {
-          title: "Groups",
-          subtitle: "Manage memberships and requests",
-          icon: "people-outline",
-          go: () => router.push(ROUTES.tabs.groups as any),
-          tone: "success",
-        },
-        {
-          title: "Merry",
-          subtitle: "Track merry contributions and activity",
-          icon: "repeat-outline",
-          go: () => router.push(ROUTES.tabs.merry as any),
-          tone: "success",
-        },
-      ];
-    }
-
-    return [
-      {
-        title: "Deposit",
-        subtitle: "Add money directly to your savings",
-        icon: "arrow-down-circle-outline",
-        go: () => router.push(ROUTES.tabs.paymentsDeposit as any),
-        tone: "primary",
-        featured: true,
-      },
-      {
-        title: "Loans",
-        subtitle: loanAllowed
-          ? "Request a loan or manage existing ones"
-          : "Complete KYC to access loans",
-        icon: "cash-outline",
-        go: () =>
-          loanAllowed ? router.push(ROUTES.tabs.loans as any) : goToKyc(),
-        tone: "warning",
-      },
-      {
-        title: "Groups",
-        subtitle: groupAllowed
-          ? "Join and manage your self-help groups"
-          : "Complete KYC to join groups",
-        icon: "people-outline",
-        go: () =>
-          groupAllowed ? router.push(ROUTES.tabs.groups as any) : goToKyc(),
-        tone: "success",
-      },
-      {
-        title: "Merry",
-        subtitle: merryAllowed
-          ? "Continue with merry contributions"
-          : "Open merry and review your status",
-        icon: "repeat-outline",
-        go: () => router.push(ROUTES.tabs.merry as any),
-        tone: "success",
-      },
-    ];
-  }, [goToKyc, groupAllowed, isAdmin, loanAllowed, merryAllowed]);
-
   const greetingName = useMemo(() => {
-    const username =
+    return (
       user?.username ||
       (typeof user?.phone === "string" ? user.phone : "") ||
-      "Member";
-    return username;
+      "Member"
+    );
   }, [user]);
 
   const greetingText = useMemo(() => getGreetingByTime(), []);
+  const totalOutstandingLoans = useMemo(() => getLoansTotal(loans), [loans]);
+
+  const topMerryCards = useMemo(() => {
+    return (merrySummary?.items ?? []).slice(0, 2);
+  }, [merrySummary]);
+
+  const firstPayableMerry = useMemo(() => {
+    const items = merrySummary?.items ?? [];
+    return (
+      items.find((item) => hasAmount(item.required_now)) ||
+      items.find((item) => hasAmount(item.pay_with_next)) ||
+      items[0] ||
+      null
+    );
+  }, [merrySummary]);
+
+  const stats = useMemo(() => {
+    return {
+      savings: heroSavings,
+      merryDue: fmtKES(merrySummary?.total_required_now),
+      activeMerry: String(merrySummary?.active_merries ?? 0),
+    };
+  }, [heroSavings, merrySummary]);
+
+  const notificationItems = useMemo<NotificationItem[]>(() => {
+    const items: NotificationItem[] = [];
+
+    if (!kycComplete) {
+      items.push({
+        id: "kyc-needed",
+        title: "Complete your verification",
+        subtitle:
+          "Finish KYC to unlock full participation in savings, groups and merry.",
+        icon: "shield-checkmark-outline",
+        tone: "info",
+        actionLabel: "Open KYC",
+        onPress: () => router.push(ROUTES.tabs.profileKyc as any),
+      });
+    }
+
+    if (hasAmount(merrySummary?.total_overdue)) {
+      items.push({
+        id: "merry-overdue",
+        title: "Merry contribution needs attention",
+        subtitle: `You have overdue merry contributions of ${fmtKES(
+          merrySummary?.total_overdue
+        )}.`,
+        icon: "warning-outline",
+        tone: "warning",
+        actionLabel: "Open merry",
+        onPress: () => router.push(ROUTES.tabs.merry as any),
+      });
+    }
+
+    if (guaranteeRequests.length > 0) {
+      items.push({
+        id: "guarantee-requests",
+        title: "Support request waiting",
+        subtitle:
+          guaranteeRequests.length === 1
+            ? "You have 1 pending guarantor request."
+            : `You have ${guaranteeRequests.length} pending guarantor requests.`,
+        icon: "notifications-outline",
+        tone: "warning",
+        actionLabel: "View requests",
+        onPress: () => router.push("/(tabs)/loans/guarantee-requests" as any),
+      });
+    }
+
+    const approvedLoan = loans.find(
+      (l) => String(l.status).toUpperCase() === "APPROVED"
+    );
+
+    if (approvedLoan) {
+      items.push({
+        id: "loan-approved",
+        title: "Loan update available",
+        subtitle: "One of your loan applications has been approved.",
+        icon: "checkmark-circle-outline",
+        tone: "success",
+        actionLabel: "Open loan",
+        onPress: () =>
+          router.push({
+            pathname: "/(tabs)/loans/[id]" as any,
+            params: { id: String(approvedLoan.id) },
+          }),
+      });
+    }
+
+    return items.slice(0, 3);
+  }, [guaranteeRequests, kycComplete, loans, merrySummary]);
 
   if (loading) {
     return (
@@ -657,10 +614,14 @@ export default function DashboardScreen() {
       <View style={styles.headerRow}>
         <View style={styles.headerBrand}>
           <View style={styles.headerBrandIcon}>
-            <Ionicons name="people-circle-outline" size={20} color={COLORS.white} />
+            <Ionicons
+              name="people-circle-outline"
+              size={22}
+              color={COLORS.white}
+            />
           </View>
 
-          <View style={{ flex: 1 }}>
+          <View style={styles.headerBrandText}>
             <Text style={styles.headerTitle}>United Care</Text>
             <Text style={styles.headerSubtitle}>Self-help group dashboard</Text>
           </View>
@@ -671,7 +632,11 @@ export default function DashboardScreen() {
           title="Refresh"
           onPress={onRefresh}
           leftIcon={
-            <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
+            <Ionicons
+              name="refresh-outline"
+              size={16}
+              color={COLORS.primary}
+            />
           }
         />
       </View>
@@ -679,27 +644,26 @@ export default function DashboardScreen() {
       <Card style={styles.heroCard} variant="elevated">
         <View style={styles.heroCircleOne} />
         <View style={styles.heroCircleTwo} />
+        <View style={styles.heroGlow} />
 
         <View style={styles.heroTop}>
           <View style={styles.heroTextBlock}>
             <Text style={styles.heroEyebrow}>
-              {isAdmin ? "ADMIN PANEL" : "COMMUNITY ACCOUNT"}
+              {isAdmin ? "COMMUNITY LEAD VIEW" : "SELF-HELP GROUP MEMBER"}
             </Text>
             <Text style={styles.heroTitle}>
               {greetingText}, {greetingName}
             </Text>
             <Text style={styles.heroSubtitle}>
               {isAdmin
-                ? "Manage members, savings activity, loans and community operations from one clean place."
-                : kycComplete
-                  ? "Welcome back. Keep your savings, groups, merry and loan activity moving smoothly."
-                  : "Complete your verification to unlock full access to loans, groups and more member services."}
+                ? "Support the group through active merry participation and steady savings."
+                : "Stay active in merry and keep building your savings journey."}
             </Text>
           </View>
 
           <View style={styles.heroAvatar}>
             <Ionicons
-              name={isAdmin ? "shield-checkmark-outline" : "person-outline"}
+              name={isAdmin ? "shield-checkmark-outline" : "heart-outline"}
               size={24}
               color={COLORS.white}
             />
@@ -707,17 +671,54 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.heroBalanceCard}>
-          <Text style={styles.heroBalanceLabel}>Total savings</Text>
-          <Text style={styles.heroBalanceValue}>{heroSavings}</Text>
-          <Text style={styles.heroBalanceNote}>
-            Build steadily through savings, group support and consistent contribution.
+          <Text style={styles.heroBalanceLabel}>Merry due now</Text>
+          <Text style={styles.heroBalanceValue}>
+            {fmtKES(merrySummary?.total_required_now)}
           </Text>
+          <Text style={styles.heroBalanceNote}>
+            {hasAmount(merrySummary?.total_overdue)
+              ? `Includes overdue of ${fmtKES(merrySummary?.total_overdue)}`
+              : "Open merry to review your current and upcoming contributions."}
+          </Text>
+        </View>
+
+        <View style={styles.heroButtonRow}>
+          <Button
+            title={
+              firstPayableMerry
+                ? "Pay Merry Now"
+                : merryAllowed
+                  ? "Open Merry"
+                  : "Unlock Merry"
+            }
+            onPress={() => {
+              if (firstPayableMerry) {
+                router.push(
+                  ROUTES.dynamic.merryDetail(firstPayableMerry.merry_id) as any
+                );
+              } else if (merryAllowed) {
+                router.push(ROUTES.tabs.merry as any);
+              } else {
+                goToKyc();
+              }
+            }}
+            style={{ flex: 1 }}
+          />
+          <View style={{ width: SPACING.sm }} />
+          <Button
+            title="Savings"
+            variant="secondary"
+            onPress={() => router.push(ROUTES.tabs.savings as any)}
+            style={{ flex: 1 }}
+          />
         </View>
 
         <View style={styles.heroPills}>
           <View style={styles.heroPill}>
             <Ionicons name="ellipse" size={8} color="#8CF0C7" />
-            <Text style={styles.heroPillText}>{formatUserStatus(user?.status)}</Text>
+            <Text style={styles.heroPillText}>
+              {formatUserStatus(user?.status)}
+            </Text>
           </View>
 
           <View style={styles.heroPill}>
@@ -727,7 +728,7 @@ export default function DashboardScreen() {
               color={COLORS.white}
             />
             <Text style={styles.heroPillText}>
-              {isAdmin ? "Admin view" : "Member view"}
+              {isAdmin ? "Community lead" : "Saving together"}
             </Text>
           </View>
         </View>
@@ -735,102 +736,164 @@ export default function DashboardScreen() {
 
       <View style={styles.overviewRow}>
         <StatTile
-          label="Loan Balance"
-          value={stats.loans}
-          icon="cash-outline"
-          tone="warning"
+          label="Savings"
+          value={stats.savings}
+          icon="wallet-outline"
+          tone="primary"
         />
         <StatTile
-          label="Transactions"
-          value={stats.ledger}
-          icon="receipt-outline"
-          tone="info"
-        />
-        <StatTile
-          label="Community"
-          value={stats.community}
-          icon="people-outline"
+          label="Merry Due"
+          value={stats.merryDue}
+          icon="repeat-outline"
           tone="success"
+        />
+        <StatTile
+          label="Active Merry"
+          value={stats.activeMerry}
+          icon="people-outline"
+          tone="info"
         />
       </View>
 
-      {(merryShortcut || groupShortcut) && (
-        <Section title="Continue" subtitle="Return to what matters most.">
-          <View style={styles.continueWrap}>
-            {merryShortcut ? (
-              <ShortcutCard
-                title={merryShortcut.name}
-                subtitle={merryShortcut.subtitle}
-                icon="repeat-outline"
-                tone="success"
-                onPress={() =>
-                  router.push(ROUTES.dynamic.merryDetail(merryShortcut.id) as any)
-                }
-              />
-            ) : null}
-
-            {groupShortcut ? (
-              <ShortcutCard
-                title={groupShortcut.title}
-                subtitle={groupShortcut.subtitle}
-                icon="people-outline"
-                tone="primary"
-                onPress={() => router.push(ROUTES.tabs.groups as any)}
-              />
-            ) : null}
-          </View>
-        </Section>
-      )}
-
-      {!kycComplete ? (
-        <Section title="Verification" subtitle="One more step to unlock full access.">
-          <InfoBanner
-            title="Complete your KYC"
-            subtitle="Verification is required before you can access loans and some group features."
-            icon="alert-circle-outline"
-            tone="info"
-            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
+      <Section
+        title="Main Actions"
+        subtitle="Keep the dashboard focused on the two most important areas."
+      >
+        <View style={styles.priorityWrap}>
+          <PriorityActionCard
+            title="Merry"
+            subtitle={
+              hasAmount(merrySummary?.total_required_now)
+                ? "Your merry has an amount ready for action."
+                : "Open merry and manage your participation."
+            }
+            amount={fmtKES(merrySummary?.total_required_now)}
+            icon="repeat-outline"
+            tone="success"
+            primaryLabel={
+              hasAmount(merrySummary?.total_required_now) ? "Pay Now" : "Open Merry"
+            }
+            secondaryLabel="View"
+            onPrimaryPress={() => {
+              if (firstPayableMerry) {
+                router.push(
+                  ROUTES.dynamic.merryDetail(firstPayableMerry.merry_id) as any
+                );
+              } else {
+                router.push(ROUTES.tabs.merry as any);
+              }
+            }}
+            onSecondaryPress={() => router.push(ROUTES.tabs.merry as any)}
           />
-        </Section>
-      ) : null}
 
-      <Section title="Quick Actions" subtitle="Move faster with the main services.">
-        <View style={styles.actionsGrid}>
-          {actions.map((a) => (
-            <ActionTile
-              key={a.title}
-              title={a.title}
-              subtitle={a.subtitle}
-              icon={a.icon}
-              onPress={a.go}
-              tone={a.tone}
-              featured={a.featured}
-            />
-          ))}
+          <PriorityActionCard
+            title="Savings"
+            subtitle="Continue growing your savings without leaving the main flow."
+            amount={heroSavings}
+            icon="wallet-outline"
+            tone="primary"
+            primaryLabel="Open Savings"
+            secondaryLabel="Deposit"
+            onPrimaryPress={() => router.push(ROUTES.tabs.savings as any)}
+            onSecondaryPress={() => router.push(ROUTES.tabs.savings as any)}
+          />
         </View>
       </Section>
 
       <Section
-        title={isAdmin ? "Operations Note" : "Member Guidance"}
-        subtitle={
-          isAdmin
-            ? "Keep the platform clean, organized and active."
-            : "Small consistent steps strengthen your account."
-        }
+        title="Merry Summary"
+        subtitle="A short summary only, without overcrowding the dashboard."
       >
-        <InfoBanner
-          title={isAdmin ? "Keep records aligned" : "Stay consistent"}
-          subtitle={
-            isAdmin
-              ? "Review approvals, deposits, loan activity and member participation regularly."
-              : kycComplete
-                ? "Regular deposits and active participation help you get more value from the group."
-                : "Finish verification first so you can access more services without restrictions."
-          }
-          icon={isAdmin ? "shield-outline" : "sparkles-outline"}
-          tone={isAdmin ? "primary" : "success"}
-        />
+        {topMerryCards.length === 0 ? (
+          <EmptyState
+            icon="repeat-outline"
+            title="No active merry yet"
+            subtitle={
+              merryAllowed
+                ? "When you join a merry, your summary will appear here."
+                : "Complete the needed account steps to unlock merry participation."
+            }
+            actionLabel={merryAllowed ? "Open Merry" : "Complete KYC"}
+            onAction={() =>
+              merryAllowed
+                ? router.push(ROUTES.tabs.merry as any)
+                : goToKyc()
+            }
+          />
+        ) : (
+          <View style={styles.merryCardsWrap}>
+            {topMerryCards.map((item) => (
+              <MerryDueCard key={`merry-${item.merry_id}`} item={item} />
+            ))}
+          </View>
+        )}
       </Section>
+
+      {notificationItems.length > 0 ? (
+        <Section
+          title="Action Needed"
+          subtitle="Only important updates are shown here."
+        >
+          <View style={styles.notificationsWrap}>
+            {notificationItems.map((item) => (
+              <NotificationCard key={item.id} item={item} />
+            ))}
+          </View>
+        </Section>
+      ) : null}
+
+      <Section
+        title="Other Links"
+        subtitle="Secondary areas stay small and out of the main dashboard flow."
+      >
+        <View style={styles.miniLinksWrap}>
+          {groupAllowed ? (
+            <MiniLink
+              title="Groups"
+              icon="people-outline"
+              onPress={() => router.push(ROUTES.tabs.groups as any)}
+            />
+          ) : null}
+
+          <MiniLink
+            title="Profile"
+            icon="person-outline"
+            onPress={() => router.push(ROUTES.tabs.profile as any)}
+          />
+
+          <MiniLink
+            title="Notifications"
+            icon="notifications-outline"
+            onPress={() => router.push("/(tabs)/notifications" as any)}
+          />
+
+          <MiniLink
+            title="Loans"
+            icon={loanAllowed ? "cash-outline" : "lock-closed-outline"}
+            onPress={() =>
+              loanAllowed
+                ? router.push(ROUTES.tabs.loans as any)
+                : goToKyc()
+            }
+          />
+
+          {isAdmin ? (
+            <MiniLink
+              title="Admin"
+              icon="shield-checkmark-outline"
+              onPress={() => router.push(ROUTES.tabs.groups as any)}
+            />
+          ) : null}
+        </View>
+      </Section>
+
+      {hasAmount(totalOutstandingLoans) ? (
+        <View style={styles.loanNoteWrap}>
+          <Text style={styles.loanNoteText}>
+            Loan balance: {formatKes(totalOutstandingLoans)}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ height: 12 }} />
     </ScrollView>
@@ -840,7 +903,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#F6FAF8",
+    backgroundColor: COLORS.background,
   },
 
   content: {
@@ -852,7 +915,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F6FAF8",
+    backgroundColor: COLORS.background,
   },
 
   headerRow: {
@@ -870,10 +933,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  headerBrandText: {
+    flex: 1,
+  },
+
   headerBrandIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 18,
     backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -893,33 +960,40 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: "#0D6E6E",
-    borderRadius: 28,
-    padding: SPACING.lg,
-    borderWidth: 0,
+    ...P.dashboardHero,
     overflow: "hidden",
     marginBottom: SPACING.lg,
-    ...SHADOW.strong,
+    borderRadius: 30,
   },
 
   heroCircleOne: {
     position: "absolute",
-    width: 220,
-    height: 220,
+    width: 240,
+    height: 240,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     top: -90,
-    right: -50,
+    right: -40,
   },
 
   heroCircleTwo: {
     position: "absolute",
-    width: 140,
-    height: 140,
+    width: 160,
+    height: 160,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.05)",
     bottom: -40,
     left: -30,
+  },
+
+  heroGlow: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(140, 240, 199, 0.09)",
+    top: 55,
+    right: 15,
   },
 
   heroTop: {
@@ -949,15 +1023,15 @@ const styles = StyleSheet.create({
 
   heroSubtitle: {
     ...TYPE.subtext,
-    color: "rgba(255,255,255,0.86)",
+    color: "rgba(255,255,255,0.88)",
     marginTop: 8,
     lineHeight: 20,
   },
 
   heroAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.14)",
@@ -968,8 +1042,8 @@ const styles = StyleSheet.create({
   heroBalanceCard: {
     marginTop: SPACING.lg,
     padding: SPACING.md,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: RADIUS.xl,
+    backgroundColor: "rgba(255,255,255,0.11)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
   },
@@ -997,6 +1071,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  heroButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: SPACING.md,
+  },
+
   heroPills: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1011,7 +1091,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: RADIUS.round,
   },
 
   heroPillText: {
@@ -1030,9 +1110,9 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     padding: SPACING.md,
-    borderRadius: 20,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
-    minHeight: 122,
+    minHeight: 118,
   },
 
   statIconWrap: {
@@ -1058,159 +1138,191 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
-  continueWrap: {
+  priorityWrap: {
     gap: SPACING.md,
   },
 
-  shortcutCard: {
+  priorityCard: {
     padding: SPACING.md,
-    borderRadius: 22,
+    borderRadius: 24,
     backgroundColor: COLORS.white,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "rgba(14, 94, 111, 0.08)",
   },
 
-  shortcutMain: {
+  priorityTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
-    flex: 1,
   },
 
-  shortcutIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+  priorityIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  shortcutTextWrap: {
+  priorityTextWrap: {
     flex: 1,
   },
 
-  shortcutTitle: {
+  priorityTitle: {
     ...TYPE.title,
     color: COLORS.text,
-    fontWeight: "800",
-    fontSize: 16,
+    fontWeight: "900",
   },
 
-  shortcutSubtitle: {
+  prioritySubtitle: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
     marginTop: 4,
     lineHeight: 18,
   },
 
-  shortcutArrow: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: SPACING.md,
+  priorityAmountBox: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
   },
 
-  actionsGrid: {
+  priorityAmountLabel: {
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+  },
+
+  priorityAmountValue: {
+    marginTop: 4,
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+
+  priorityButtonRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: SPACING.md,
+    alignItems: "center",
+    marginTop: SPACING.md,
   },
 
-  actionCard: {
-    width: "48.2%",
-    minHeight: 190,
+  merryCardsWrap: {
+    gap: SPACING.md,
+  },
+
+  merryCard: {
     padding: SPACING.md,
     borderRadius: 24,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    justifyContent: "space-between",
+    borderColor: "rgba(14, 94, 111, 0.08)",
   },
 
-  actionCardFeatured: {
-    ...SHADOW.strong,
-  },
-
-  actionCardTop: {
+  merryCardTop: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SPACING.md,
+    alignItems: "flex-start",
+    gap: SPACING.md,
   },
 
-  actionIconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  actionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  actionBadgeText: {
-    ...TYPE.caption,
-    fontWeight: "900",
-    letterSpacing: 0.3,
-  },
-
-  actionCardBody: {
-    flex: 1,
-  },
-
-  actionTitle: {
+  merryCardTitle: {
     ...TYPE.title,
     color: COLORS.text,
     fontWeight: "900",
-    fontSize: 16,
-    lineHeight: 21,
   },
 
-  actionSubtitle: {
+  merryCardSub: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
-    marginTop: 7,
-    lineHeight: 18,
-    fontSize: 13,
+    marginTop: 4,
   },
 
-  actionFooter: {
+  merryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.round,
+  },
+
+  merryBadgeDanger: {
+    backgroundColor: COLORS.dangerSoft,
+  },
+
+  merryBadgeWarning: {
+    backgroundColor: COLORS.warningSoft,
+  },
+
+  merryBadgeSuccess: {
+    backgroundColor: COLORS.successSoft,
+  },
+
+  merryBadgeText: {
+    ...TYPE.caption,
+    fontWeight: "900",
+    color: COLORS.text,
+  },
+
+  merryAmountBox: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.primarySoft,
+  },
+
+  merryAmountLabel: {
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+  },
+
+  merryAmountValue: {
+    ...TYPE.h2,
+    color: COLORS.primary,
+    marginTop: 4,
+    fontWeight: "900",
+  },
+
+  merryMeta: {
+    marginTop: SPACING.md,
+    gap: 10,
+  },
+
+  merryMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+
+  merryMetaLabel: {
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+  },
+
+  merryMetaValue: {
+    ...TYPE.bodyStrong,
+    color: COLORS.text,
+    flexShrink: 1,
+    textAlign: "right",
+  },
+
+  merryActionRow: {
     marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
 
-  actionFooterText: {
-    ...TYPE.caption,
-    fontWeight: "900",
-    letterSpacing: 0.3,
+  notificationsWrap: {
+    gap: SPACING.sm,
   },
 
-  actionArrow: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  infoBanner: {
+  notificationCard: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: 22,
-    borderWidth: 1,
   },
 
-  infoBannerIcon: {
+  notificationIconWrap: {
     width: 42,
     height: 42,
     borderRadius: 14,
@@ -1218,1299 +1330,75 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  infoBannerText: {
+  notificationTextWrap: {
     flex: 1,
   },
 
-  infoBannerTitle: {
+  notificationTitle: {
     ...TYPE.bodyStrong,
     color: COLORS.text,
     fontWeight: "800",
   },
 
-  infoBannerSubtitle: {
+  notificationSubtitle: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
     marginTop: 4,
     lineHeight: 18,
   },
+
+  notificationAction: {
+    ...TYPE.caption,
+    marginTop: 8,
+    fontWeight: "900",
+  },
+
+  miniLinksWrap: {
+    gap: SPACING.sm,
+  },
+
+  miniLinkCard: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: "rgba(14, 94, 111, 0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  miniLinkInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    flex: 1,
+  },
+
+  miniLinkIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(14, 94, 111, 0.08)",
+  },
+
+  miniLinkText: {
+    ...TYPE.bodyStrong,
+    color: COLORS.text,
+    fontWeight: "700",
+  },
+
+  loanNoteWrap: {
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+
+  loanNoteText: {
+    ...TYPE.caption,
+    color: COLORS.textMuted,
+    textAlign: "center",
+  },
 });
-
-// // app/(tabs)/dashboard/index.tsx
-// import { Ionicons } from "@expo/vector-icons";
-// import { router, useFocusEffect } from "expo-router";
-// import React, { useCallback, useMemo, useState } from "react";
-// import {
-//   ActivityIndicator,
-//   RefreshControl,
-//   ScrollView,
-//   StyleSheet,
-//   Text,
-//   View,
-// } from "react-native";
-
-// import Button from "@/components/ui/Button";
-// import Card from "@/components/ui/Card";
-// import EmptyState from "@/components/ui/EmptyState";
-// import Section from "@/components/ui/Section";
-
-// import { ROUTES } from "@/constants/routes";
-// import {
-//   COLORS,
-//   RADIUS,
-//   SHADOW,
-//   SPACING,
-//   STATUS,
-//   TYPE,
-// } from "@/constants/theme";
-// import { getMyLoans } from "@/services/loans";
-// import { getMyMerries } from "@/services/merry";
-// import { getMyLedger } from "@/services/payments";
-// import {
-//   canJoinGroup,
-//   canJoinMerry,
-//   canRequestLoan,
-//   getMe,
-//   isAdminUser,
-//   isKycComplete,
-//   MeResponse,
-// } from "@/services/profile";
-// import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
-// import { getSessionUser, SessionUser } from "@/services/session";
-
-// type DashboardUser = Partial<MeResponse> & Partial<SessionUser>;
-
-// type ActionItem = {
-//   title: string;
-//   subtitle: string;
-//   icon: keyof typeof Ionicons.glyphMap;
-//   go: () => void;
-//   tone?: "primary" | "success" | "warning" | "info";
-//   featured?: boolean;
-// };
-
-// type ShortcutItem = {
-//   title: string;
-//   subtitle: string;
-//   icon: keyof typeof Ionicons.glyphMap;
-//   onPress: () => void;
-//   tone?: "primary" | "success" | "warning" | "info";
-// };
-
-// function getStatusTone(status?: string) {
-//   const key = String(status || "").toUpperCase() as keyof typeof STATUS;
-//   return (
-//     STATUS[key] || {
-//       text: COLORS.gray600,
-//       bg: "rgba(107,114,128,0.12)",
-//     }
-//   );
-// }
-
-// function getGreetingByTime() {
-//   const hour = new Date().getHours();
-//   if (hour < 12) return "Good morning";
-//   if (hour < 17) return "Good afternoon";
-//   return "Good evening";
-// }
-
-// function getToneColors(
-//   tone: "primary" | "success" | "warning" | "info" = "primary"
-// ) {
-//   const map = {
-//     primary: {
-//       bg: COLORS.primarySoft,
-//       icon: COLORS.primary,
-//       chipBg: "rgba(14, 94, 111, 0.12)",
-//       chipText: COLORS.primary,
-//       border: "rgba(14, 94, 111, 0.18)",
-//       accent: COLORS.primary,
-//       cardBg: "#EEF8FA",
-//       title: COLORS.primaryDark ?? COLORS.primary,
-//       subtitle: COLORS.textSoft ?? COLORS.textMuted,
-//       footerBg: "rgba(14, 94, 111, 0.10)",
-//     },
-//     success: {
-//       bg: COLORS.successSoft,
-//       icon: COLORS.success,
-//       chipBg: "rgba(46, 125, 50, 0.12)",
-//       chipText: COLORS.success,
-//       border: "rgba(46, 125, 50, 0.18)",
-//       accent: COLORS.success,
-//       cardBg: "#F1FAF2",
-//       title: COLORS.text,
-//       subtitle: COLORS.textSoft ?? COLORS.textMuted,
-//       footerBg: "rgba(46, 125, 50, 0.10)",
-//     },
-//     warning: {
-//       bg: COLORS.warningSoft,
-//       icon: COLORS.warning,
-//       chipBg: "rgba(245, 158, 11, 0.14)",
-//       chipText: COLORS.warning,
-//       border: "rgba(245, 158, 11, 0.18)",
-//       accent: COLORS.warning,
-//       cardBg: "#FFF8EB",
-//       title: COLORS.text,
-//       subtitle: COLORS.textSoft ?? COLORS.textMuted,
-//       footerBg: "rgba(245, 158, 11, 0.10)",
-//     },
-//     info: {
-//       bg: COLORS.infoSoft,
-//       icon: COLORS.info,
-//       chipBg: COLORS.infoSoft,
-//       chipText: COLORS.info,
-//       border: "rgba(37, 99, 235, 0.18)",
-//       accent: COLORS.info,
-//       cardBg: "#EFF6FF",
-//       title: COLORS.text,
-//       subtitle: COLORS.textSoft ?? COLORS.textMuted,
-//       footerBg: "rgba(37, 99, 235, 0.10)",
-//     },
-//   };
-
-//   return map[tone];
-// }
-
-// function ActionTile({
-//   title,
-//   subtitle,
-//   icon,
-//   onPress,
-//   tone = "primary",
-//   featured = false,
-// }: {
-//   title: string;
-//   subtitle: string;
-//   icon: keyof typeof Ionicons.glyphMap;
-//   onPress: () => void;
-//   tone?: "primary" | "success" | "warning" | "info";
-//   featured?: boolean;
-// }) {
-//   const colors = getToneColors(tone);
-
-//   return (
-//     <Card
-//       onPress={onPress}
-//       style={[
-//         styles.actionCard,
-//         {
-//           borderColor: colors.border,
-//           backgroundColor: colors.cardBg,
-//         },
-//         featured && styles.actionCardFeatured,
-//       ]}
-//       variant={featured ? "elevated" : "default"}
-//     >
-//       <View style={styles.actionTop}>
-//         <View style={[styles.actionIconWrap, { backgroundColor: colors.bg }]}>
-//           <Ionicons name={icon} size={20} color={colors.icon} />
-//         </View>
-
-//         <View style={[styles.actionChip, { backgroundColor: colors.chipBg }]}>
-//           <Text style={[styles.actionChipText, { color: colors.chipText }]}>
-//             QUICK
-//           </Text>
-//         </View>
-//       </View>
-
-//       <View>
-//         <Text
-//           style={[
-//             styles.actionTitle,
-//             { color: colors.title },
-//             featured && styles.actionTitleFeatured,
-//           ]}
-//         >
-//           {title}
-//         </Text>
-//         <Text
-//           style={[styles.actionSubtitle, { color: colors.subtitle }]}
-//           numberOfLines={3}
-//         >
-//           {subtitle}
-//         </Text>
-//       </View>
-
-//       <View style={styles.actionFooter}>
-//         <Text style={[styles.actionLink, { color: colors.accent }]}>Open</Text>
-
-//         <View
-//           style={[
-//             styles.actionArrow,
-//             { backgroundColor: colors.footerBg || colors.bg },
-//           ]}
-//         >
-//           <Ionicons name="arrow-forward" size={15} color={colors.icon} />
-//         </View>
-//       </View>
-//     </Card>
-//   );
-// }
-
-// function ShortcutCard({
-//   title,
-//   subtitle,
-//   icon,
-//   onPress,
-//   tone = "success",
-// }: ShortcutItem) {
-//   const colors = getToneColors(tone);
-
-//   return (
-//     <Card onPress={onPress} style={styles.shortcutCard} variant="default">
-//       <View style={styles.shortcutLeft}>
-//         <View style={[styles.shortcutIcon, { backgroundColor: colors.bg }]}>
-//           <Ionicons name={icon} size={18} color={colors.icon} />
-//         </View>
-
-//         <View style={{ flex: 1 }}>
-//           <Text style={styles.shortcutTitle}>{title}</Text>
-//           <Text style={styles.shortcutSubtitle} numberOfLines={2}>
-//             {subtitle}
-//           </Text>
-//         </View>
-//       </View>
-
-//       <View style={[styles.shortcutArrow, { backgroundColor: colors.bg }]}>
-//         <Ionicons name="chevron-forward" size={18} color={colors.icon} />
-//       </View>
-//     </Card>
-//   );
-// }
-
-// function StatMini({
-//   label,
-//   value,
-//   icon,
-//   tone = "primary",
-// }: {
-//   label: string;
-//   value: string;
-//   icon: keyof typeof Ionicons.glyphMap;
-//   tone?: "primary" | "success" | "warning" | "info";
-// }) {
-//   const colors = getToneColors(tone);
-
-//   return (
-//     <Card style={styles.statCard} variant="default">
-//       <View style={styles.statHeader}>
-//         <View style={[styles.statIcon, { backgroundColor: colors.bg }]}>
-//           <Ionicons name={icon} size={17} color={colors.icon} />
-//         </View>
-//       </View>
-
-//       <Text style={styles.statLabel}>{label}</Text>
-//       <Text style={styles.statValue} numberOfLines={1}>
-//         {value}
-//       </Text>
-//     </Card>
-//   );
-// }
-
-// function toNumber(value: unknown): number {
-//   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-//   if (typeof value === "string") {
-//     const n = Number(value.replace(/,/g, "").trim());
-//     return Number.isFinite(n) ? n : 0;
-//   }
-//   return 0;
-// }
-
-// function formatKes(value: number): string {
-//   return `KES ${value.toLocaleString(undefined, {
-//     minimumFractionDigits: 0,
-//     maximumFractionDigits: 0,
-//   })}`;
-// }
-
-// function getSavingsTotal(accounts: SavingsAccount[]): number {
-//   return accounts.reduce(
-//     (sum, account) =>
-//       sum + toNumber(account.available_balance ?? account.balance ?? 0),
-//     0
-//   );
-// }
-
-// function getLoansTotal(loansData: any): number {
-//   const rows = Array.isArray(loansData)
-//     ? loansData
-//     : Array.isArray(loansData?.results)
-//       ? loansData.results
-//       : Array.isArray(loansData?.data)
-//         ? loansData.data
-//         : [];
-
-//   return rows.reduce((sum: number, loan: any) => {
-//     return (
-//       sum +
-//       toNumber(
-//         loan?.outstanding_balance ??
-//           loan?.balance ??
-//           loan?.remaining_balance ??
-//           loan?.amount ??
-//           0
-//       )
-//     );
-//   }, 0);
-// }
-
-// function getLedgerCount(ledgerData: any): number {
-//   const rows = Array.isArray(ledgerData)
-//     ? ledgerData
-//     : Array.isArray(ledgerData?.results)
-//       ? ledgerData.results
-//       : Array.isArray(ledgerData?.data)
-//         ? ledgerData.data
-//         : [];
-
-//   return rows.length;
-// }
-
-// function normalizeMerryPayload(merryData: any) {
-//   const created = Array.isArray(merryData?.created) ? merryData.created : [];
-//   const memberships = Array.isArray(merryData?.memberships)
-//     ? merryData.memberships
-//     : [];
-//   return { created, memberships };
-// }
-
-// function getCommunityCount(merryData: any) {
-//   const { created, memberships } = normalizeMerryPayload(merryData);
-//   return created.length + memberships.length;
-// }
-
-// function getFirstMerryShortcut(merryData: any) {
-//   const { memberships, created } = normalizeMerryPayload(merryData);
-
-//   const firstMembership = memberships[0];
-//   if (firstMembership) {
-//     const merryId =
-//       Number(firstMembership?.merry_id) ||
-//       Number(firstMembership?.merry) ||
-//       Number(firstMembership?.id);
-
-//     const merryName =
-//       firstMembership?.merry_name ||
-//       firstMembership?.name ||
-//       firstMembership?.merry_detail?.name ||
-//       "My Merry";
-
-//     if (Number.isFinite(merryId)) {
-//       return {
-//         id: merryId,
-//         name: merryName,
-//         subtitle: "Continue with dues, contributions and activity",
-//       };
-//     }
-//   }
-
-//   const firstCreated = created[0];
-//   if (firstCreated) {
-//     const merryId = Number(firstCreated?.id);
-//     const merryName = firstCreated?.name || "My Merry";
-
-//     if (Number.isFinite(merryId)) {
-//       return {
-//         id: merryId,
-//         name: merryName,
-//         subtitle: "Open your merry and review recent activity",
-//       };
-//     }
-//   }
-
-//   return null;
-// }
-
-// export default function DashboardScreen() {
-//   const [user, setUser] = useState<DashboardUser | null>(null);
-//   const [loading, setLoading] = useState(true);
-//   const [refreshing, setRefreshing] = useState(false);
-
-//   const [heroSavings, setHeroSavings] = useState("—");
-//   const [stats, setStats] = useState({
-//     loans: "—",
-//     ledger: "—",
-//     community: "—",
-//   });
-
-//   const [merryShortcut, setMerryShortcut] = useState<{
-//     id: number;
-//     name: string;
-//     subtitle: string;
-//   } | null>(null);
-
-//   const [groupShortcut, setGroupShortcut] = useState<{
-//     title: string;
-//     subtitle: string;
-//   } | null>(null);
-
-//   const isAdmin = isAdminUser(user);
-//   const kycComplete = isKycComplete(user);
-//   const loanAllowed = canRequestLoan(user);
-//   const groupAllowed = canJoinGroup(user);
-//   const merryAllowed = canJoinMerry(user);
-
-//   const goToKyc = useCallback(() => {
-//     router.push(ROUTES.tabs.profileKyc as any);
-//   }, []);
-
-//   const load = useCallback(async () => {
-//     try {
-//       setLoading(true);
-
-//       const [
-//         sessionResult,
-//         meResult,
-//         savingsResult,
-//         loansResult,
-//         ledgerResult,
-//         merryResult,
-//       ] = await Promise.allSettled([
-//         getSessionUser(),
-//         getMe(),
-//         listMySavingsAccounts(),
-//         getMyLoans(),
-//         getMyLedger(),
-//         getMyMerries(),
-//       ]);
-
-//       const sessionUser =
-//         sessionResult.status === "fulfilled" ? sessionResult.value : null;
-//       const meUser = meResult.status === "fulfilled" ? meResult.value : null;
-
-//       const mergedUser: DashboardUser | null =
-//         sessionUser || meUser
-//           ? {
-//               ...(sessionUser ?? {}),
-//               ...(meUser ?? {}),
-//             }
-//           : null;
-
-//       setUser(mergedUser);
-
-//       const savingsTotal =
-//         savingsResult.status === "fulfilled"
-//           ? getSavingsTotal(savingsResult.value)
-//           : 0;
-
-//       const loansTotal =
-//         loansResult.status === "fulfilled" ? getLoansTotal(loansResult.value) : 0;
-
-//       const ledgerCount =
-//         ledgerResult.status === "fulfilled"
-//           ? getLedgerCount(ledgerResult.value)
-//           : 0;
-
-//       const communityCount =
-//         merryResult.status === "fulfilled"
-//           ? getCommunityCount(merryResult.value)
-//           : 0;
-
-//       setHeroSavings(formatKes(savingsTotal));
-
-//       setStats({
-//         loans: formatKes(loansTotal),
-//         ledger: `${ledgerCount} records`,
-//         community: `${communityCount} active`,
-//       });
-
-//       if (merryResult.status === "fulfilled") {
-//         setMerryShortcut(getFirstMerryShortcut(merryResult.value));
-//       } else {
-//         setMerryShortcut(null);
-//       }
-
-//       setGroupShortcut(
-//         groupAllowed
-//           ? {
-//               title: "Groups Hub",
-//               subtitle: "Open groups and continue with memberships or contributions",
-//             }
-//           : null
-//       );
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [groupAllowed]);
-
-//   useFocusEffect(
-//     useCallback(() => {
-//       load();
-//     }, [load])
-//   );
-
-//   const onRefresh = useCallback(async () => {
-//     setRefreshing(true);
-//     try {
-//       await load();
-//     } finally {
-//       setRefreshing(false);
-//     }
-//   }, [load]);
-
-//   const actions = useMemo<ActionItem[]>(() => {
-//     if (isAdmin) {
-//       return [
-//         {
-//           title: "Deposit",
-//           subtitle: "Add money quickly to savings",
-//           icon: "arrow-down-circle-outline",
-//           go: () => router.push(ROUTES.tabs.paymentsDeposit as any),
-//           tone: "primary",
-//           featured: true,
-//         },
-//         {
-//           title: "Loans",
-//           subtitle: "Review and manage loan activity",
-//           icon: "cash-outline",
-//           go: () => router.push(ROUTES.tabs.loans as any),
-//           tone: "warning",
-//         },
-//         {
-//           title: "Groups",
-//           subtitle: "Manage memberships and requests",
-//           icon: "people-outline",
-//           go: () => router.push(ROUTES.tabs.groups as any),
-//           tone: "success",
-//         },
-//         {
-//           title: "Merry",
-//           subtitle: "Open merry activity and contributions",
-//           icon: "repeat-outline",
-//           go: () => router.push(ROUTES.tabs.merry as any),
-//           tone: "success",
-//         },
-//       ];
-//     }
-
-//     return [
-//       {
-//         title: "Deposit",
-//         subtitle: "Add money straight to your savings",
-//         icon: "arrow-down-circle-outline",
-//         go: () => router.push(ROUTES.tabs.paymentsDeposit as any),
-//         tone: "primary",
-//         featured: true,
-//       },
-//       {
-//         title: "Loans",
-//         subtitle: loanAllowed
-//           ? "Request or manage your loans"
-//           : "Complete KYC before requesting loans",
-//         icon: "cash-outline",
-//         go: () =>
-//           loanAllowed ? router.push(ROUTES.tabs.loans as any) : goToKyc(),
-//         tone: "warning",
-//       },
-//       {
-//         title: "Groups",
-//         subtitle: groupAllowed
-//           ? "Browse and join community groups"
-//           : "Complete KYC before joining groups",
-//         icon: "people-outline",
-//         go: () =>
-//           groupAllowed ? router.push(ROUTES.tabs.groups as any) : goToKyc(),
-//         tone: "success",
-//       },
-//       {
-//         title: "Merry",
-//         subtitle: merryAllowed
-//           ? "Go to merry contributions and activity"
-//           : "Open merry and check your status",
-//         icon: "repeat-outline",
-//         go: () => router.push(ROUTES.tabs.merry as any),
-//         tone: "success",
-//       },
-//     ];
-//   }, [goToKyc, groupAllowed, isAdmin, loanAllowed, merryAllowed]);
-
-//   const greetingName = useMemo(() => {
-//     const username =
-//       user?.username ||
-//       (typeof user?.phone === "string" ? user.phone : "") ||
-//       "Member";
-//     return username;
-//   }, [user]);
-
-//   const greetingText = useMemo(() => getGreetingByTime(), []);
-//   const statusColors = getStatusTone(user?.status);
-
-//   if (loading) {
-//     return (
-//       <View style={styles.loadingWrap}>
-//         <ActivityIndicator color={COLORS.primary} />
-//       </View>
-//     );
-//   }
-
-//   if (!user) {
-//     return (
-//       <View style={styles.page}>
-//         <EmptyState
-//           title="Not signed in"
-//           subtitle="Please login to access your dashboard."
-//           actionLabel="Go to Login"
-//           onAction={() => router.replace(ROUTES.auth.login as any)}
-//         />
-//       </View>
-//     );
-//   }
-
-//   return (
-//     <ScrollView
-//       style={styles.page}
-//       contentContainerStyle={styles.content}
-//       refreshControl={
-//         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-//       }
-//       showsVerticalScrollIndicator={false}
-//     >
-//       <View style={styles.topBar}>
-//         <View style={styles.brandRow}>
-//           <View style={styles.brandIcon}>
-//             <Ionicons
-//               name="shield-checkmark-outline"
-//               size={18}
-//               color={COLORS.white}
-//             />
-//           </View>
-
-//           <View>
-//             <Text style={styles.brandName}>United Care</Text>
-//             <Text style={styles.brandSub}>Member dashboard</Text>
-//           </View>
-//         </View>
-
-//         <Button
-//           variant="ghost"
-//           title="Refresh"
-//           onPress={onRefresh}
-//           leftIcon={
-//             <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
-//           }
-//         />
-//       </View>
-
-//       <View style={styles.heroShell}>
-//         <Card style={styles.heroCard} variant="elevated">
-//           <View style={styles.heroGlowOne} />
-//           <View style={styles.heroGlowTwo} />
-
-//           <View style={styles.heroTop}>
-//             <View style={{ flex: 1, paddingRight: SPACING.md }}>
-//               <Text style={styles.heroEyebrow}>
-//                 {isAdmin ? "ADMIN OVERVIEW" : "MEMBER OVERVIEW"}
-//               </Text>
-//               <Text style={styles.heroTitle}>
-//                 {greetingText}, {greetingName}
-//               </Text>
-//               <Text style={styles.heroSubtitle}>
-//                 {isAdmin
-//                   ? "Keep operations, reviews and service activity moving from one place."
-//                   : kycComplete
-//                     ? "Track your savings, payments, loans, groups and merry activity from one place."
-//                     : "Complete your KYC to unlock more account features and community access."}
-//               </Text>
-//             </View>
-
-//             <View style={styles.heroAvatar}>
-//               <Ionicons name="person-outline" size={24} color={COLORS.white} />
-//             </View>
-//           </View>
-
-//           <View style={styles.heroBalanceBlock}>
-//             <Text style={styles.heroBalanceLabel}>Savings balance</Text>
-//             <Text style={styles.heroBalanceValue}>{heroSavings}</Text>
-//             <Text style={styles.heroBalanceMeta}>
-//               Your savings remain the strongest starting point for the rest of your account activity.
-//             </Text>
-//           </View>
-
-//           <View style={styles.heroFooter}>
-//             <View
-//               style={[
-//                 styles.statusPill,
-//                 { backgroundColor: "rgba(255,255,255,0.14)" },
-//               ]}
-//             >
-//               <Text style={[styles.statusPillText, { color: COLORS.white }]}>
-//                 {String(user?.status || "ACTIVE").replaceAll("_", " ")}
-//               </Text>
-//             </View>
-
-//             <View style={styles.rolePill}>
-//               <Ionicons
-//                 name={isAdmin ? "shield-outline" : "checkmark-circle-outline"}
-//                 size={14}
-//                 color={COLORS.white}
-//               />
-//               <Text style={styles.rolePillText}>
-//                 {isAdmin ? "Admin view" : "Member view"}
-//               </Text>
-//             </View>
-//           </View>
-//         </Card>
-//       </View>
-
-//       {(merryShortcut || groupShortcut) && (
-//         <Section title="Continue" subtitle="Pick up where you left off.">
-//           <View style={styles.shortcutsWrap}>
-//             {merryShortcut ? (
-//               <ShortcutCard
-//                 title={merryShortcut.name}
-//                 subtitle={merryShortcut.subtitle}
-//                 icon="repeat-outline"
-//                 tone="success"
-//                 onPress={() =>
-//                   router.push(ROUTES.dynamic.merryDetail(merryShortcut.id) as any)
-//                 }
-//               />
-//             ) : null}
-
-//             {groupShortcut ? (
-//               <ShortcutCard
-//                 title={groupShortcut.title}
-//                 subtitle={groupShortcut.subtitle}
-//                 icon="people-outline"
-//                 tone="primary"
-//                 onPress={() => router.push(ROUTES.tabs.groups as any)}
-//               />
-//             ) : null}
-//           </View>
-//         </Section>
-//       )}
-
-//       {!kycComplete ? (
-//         <Section
-//           title="Verification"
-//           subtitle="Complete verification to unlock more account features."
-//         >
-//           <Card
-//             onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-//             style={styles.noticeCard}
-//             variant="soft"
-//           >
-//             <View style={styles.noticeIcon}>
-//               <Ionicons
-//                 name="alert-circle-outline"
-//                 size={18}
-//                 color={COLORS.info}
-//               />
-//             </View>
-
-//             <View style={{ flex: 1 }}>
-//               <Text style={styles.noticeTitle}>Finish account verification</Text>
-//               <Text style={styles.noticeText}>
-//                 Loans and groups require completed KYC before access is granted.
-//               </Text>
-//             </View>
-
-//             <Ionicons
-//               name="chevron-forward"
-//               size={18}
-//               color={COLORS.textMuted}
-//             />
-//           </Card>
-//         </Section>
-//       ) : null}
-
-//       <Section title="Quick Actions">
-//         <View style={styles.actionsGrid}>
-//           {actions.map((a) => (
-//             <ActionTile
-//               key={a.title}
-//               title={a.title}
-//               subtitle={a.subtitle}
-//               icon={a.icon}
-//               onPress={a.go}
-//               tone={a.tone}
-//               featured={a.featured}
-//             />
-//           ))}
-//         </View>
-//       </Section>
-
-//       <Section
-//         title="Activity"
-//         subtitle="Keep an eye on the parts of your account that move most."
-//       >
-//         <View style={styles.statsGrid}>
-//           <StatMini
-//             label="Loan Balance"
-//             value={stats.loans}
-//             icon="cash-outline"
-//             tone="warning"
-//           />
-//           <StatMini
-//             label="Transactions"
-//             value={stats.ledger}
-//             icon="receipt-outline"
-//             tone="info"
-//           />
-//           <StatMini
-//             label="Community"
-//             value={stats.community}
-//             icon="people-outline"
-//             tone="success"
-//           />
-//         </View>
-//       </Section>
-
-//       <Section
-//         title={isAdmin ? "Operations Guidance" : "Guidance"}
-//         subtitle={
-//           isAdmin
-//             ? "Keep reviews and records organized."
-//             : "A practical reminder based on your account state."
-//         }
-//       >
-//         <Card style={styles.infoCard} variant="soft">
-//           <View style={styles.infoIcon}>
-//             <Ionicons
-//               name={isAdmin ? "shield-outline" : "sparkles-outline"}
-//               size={18}
-//               color={COLORS.info}
-//             />
-//           </View>
-
-//           <View style={{ flex: 1 }}>
-//             <Text style={styles.infoTitle}>
-//               {isAdmin ? "Operational note" : "Member tip"}
-//             </Text>
-//             <Text style={styles.infoText}>
-//               {isAdmin
-//                 ? "Keep approvals, payments and member activity aligned so the platform remains clean and auditable."
-//                 : kycComplete
-//                   ? "Consistent deposits and good community participation help keep your account healthy."
-//                   : "Completing KYC is the next best step to unlock more account functions."}
-//             </Text>
-//           </View>
-//         </Card>
-//       </Section>
-
-//       <View style={{ height: 10 }} />
-//     </ScrollView>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   page: {
-//     flex: 1,
-//     backgroundColor: COLORS.background,
-//   },
-
-//   content: {
-//     padding: SPACING.md,
-//     paddingBottom: SPACING.xl,
-//   },
-
-//   loadingWrap: {
-//     flex: 1,
-//     alignItems: "center",
-//     justifyContent: "center",
-//     backgroundColor: COLORS.background,
-//   },
-
-//   topBar: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "space-between",
-//     marginBottom: SPACING.md,
-//     gap: SPACING.sm,
-//   },
-
-//   brandRow: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     gap: SPACING.sm,
-//     flex: 1,
-//   },
-
-//   brandIcon: {
-//     width: 42,
-//     height: 42,
-//     borderRadius: RADIUS.md,
-//     backgroundColor: COLORS.primary,
-//     alignItems: "center",
-//     justifyContent: "center",
-//     ...SHADOW.soft,
-//   },
-
-//   brandName: {
-//     ...TYPE.title,
-//     color: COLORS.text,
-//     fontWeight: "800",
-//   },
-
-//   brandSub: {
-//     ...TYPE.caption,
-//     color: COLORS.textMuted,
-//     marginTop: 2,
-//     letterSpacing: 0.2,
-//   },
-
-//   heroShell: {
-//     marginBottom: SPACING.lg,
-//   },
-
-//   heroCard: {
-//     backgroundColor: COLORS.primary,
-//     borderRadius: RADIUS.xl,
-//     padding: SPACING.lg,
-//     borderWidth: 0,
-//     overflow: "hidden",
-//     ...SHADOW.strong,
-//   },
-
-//   heroGlowOne: {
-//     position: "absolute",
-//     width: 180,
-//     height: 180,
-//     borderRadius: 999,
-//     backgroundColor: "rgba(255,255,255,0.08)",
-//     top: -60,
-//     right: -40,
-//   },
-
-//   heroGlowTwo: {
-//     position: "absolute",
-//     width: 120,
-//     height: 120,
-//     borderRadius: 999,
-//     backgroundColor: "rgba(255,255,255,0.06)",
-//     bottom: -30,
-//     left: -20,
-//   },
-
-//   heroTop: {
-//     flexDirection: "row",
-//     alignItems: "flex-start",
-//     justifyContent: "space-between",
-//   },
-
-//   heroEyebrow: {
-//     ...TYPE.caption,
-//     color: "rgba(255,255,255,0.78)",
-//     fontWeight: "800",
-//     letterSpacing: 1,
-//   },
-
-//   heroTitle: {
-//     ...TYPE.h1,
-//     color: COLORS.white,
-//     marginTop: 6,
-//     fontWeight: "900",
-//   },
-
-//   heroSubtitle: {
-//     ...TYPE.subtext,
-//     color: "rgba(255,255,255,0.84)",
-//     marginTop: 8,
-//     lineHeight: 20,
-//   },
-
-//   heroAvatar: {
-//     width: 52,
-//     height: 52,
-//     borderRadius: RADIUS.round,
-//     alignItems: "center",
-//     justifyContent: "center",
-//     backgroundColor: "rgba(255,255,255,0.16)",
-//     borderWidth: 1,
-//     borderColor: "rgba(255,255,255,0.20)",
-//   },
-
-//   heroBalanceBlock: {
-//     marginTop: SPACING.lg,
-//     paddingTop: SPACING.md,
-//     borderTopWidth: 1,
-//     borderTopColor: "rgba(255,255,255,0.12)",
-//   },
-
-//   heroBalanceLabel: {
-//     ...TYPE.caption,
-//     color: "rgba(255,255,255,0.72)",
-//     letterSpacing: 0.7,
-//     textTransform: "uppercase",
-//     fontWeight: "700",
-//   },
-
-//   heroBalanceValue: {
-//     marginTop: 6,
-//     fontSize: 30,
-//     lineHeight: 36,
-//     fontWeight: "900",
-//     color: COLORS.white,
-//   },
-
-//   heroBalanceMeta: {
-//     ...TYPE.subtext,
-//     color: "rgba(255,255,255,0.80)",
-//     marginTop: 6,
-//   },
-
-//   heroFooter: {
-//     marginTop: SPACING.md,
-//     flexDirection: "row",
-//     flexWrap: "wrap",
-//     gap: SPACING.sm,
-//   },
-
-//   statusPill: {
-//     paddingHorizontal: 12,
-//     paddingVertical: 8,
-//     borderRadius: RADIUS.round,
-//   },
-
-//   statusPillText: {
-//     ...TYPE.caption,
-//     fontWeight: "800",
-//     letterSpacing: 0.4,
-//   },
-
-//   rolePill: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     gap: 6,
-//     paddingHorizontal: 12,
-//     paddingVertical: 8,
-//     borderRadius: RADIUS.round,
-//     backgroundColor: "rgba(255,255,255,0.12)",
-//   },
-
-//   rolePillText: {
-//     ...TYPE.caption,
-//     color: COLORS.white,
-//     fontWeight: "800",
-//   },
-
-//   shortcutsWrap: {
-//     gap: SPACING.md,
-//   },
-
-//   shortcutCard: {
-//     padding: SPACING.md,
-//     borderRadius: RADIUS.xl,
-//     backgroundColor: COLORS.white,
-//   },
-
-//   shortcutLeft: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     gap: SPACING.md,
-//     flex: 1,
-//   },
-
-//   shortcutIcon: {
-//     width: 46,
-//     height: 46,
-//     borderRadius: RADIUS.lg,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   shortcutTitle: {
-//     ...TYPE.title,
-//     color: COLORS.text,
-//     fontWeight: "800",
-//     fontSize: 16,
-//   },
-
-//   shortcutSubtitle: {
-//     ...TYPE.subtext,
-//     marginTop: 4,
-//     lineHeight: 18,
-//   },
-
-//   shortcutArrow: {
-//     width: 34,
-//     height: 34,
-//     borderRadius: RADIUS.round,
-//     alignItems: "center",
-//     justifyContent: "center",
-//     marginLeft: SPACING.md,
-//   },
-
-//   noticeCard: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     gap: SPACING.md,
-//     padding: SPACING.md,
-//     backgroundColor: COLORS.white,
-//   },
-
-//   noticeIcon: {
-//     width: 40,
-//     height: 40,
-//     borderRadius: RADIUS.md,
-//     backgroundColor: COLORS.infoSoft,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   noticeTitle: {
-//     ...TYPE.bodyStrong,
-//     color: COLORS.text,
-//     fontWeight: "800",
-//   },
-
-//   noticeText: {
-//     ...TYPE.subtext,
-//     marginTop: 4,
-//   },
-
-//   actionsGrid: {
-//     flexDirection: "row",
-//     flexWrap: "wrap",
-//     justifyContent: "space-between",
-//     rowGap: SPACING.md,
-//   },
-
-//   actionCard: {
-//     width: "48.2%",
-//     minHeight: 188,
-//     padding: SPACING.md,
-//     borderRadius: RADIUS.xl,
-//     justifyContent: "space-between",
-//   },
-
-//   actionCardFeatured: {
-//     ...SHADOW.strong,
-//   },
-
-//   actionTop: {
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "space-between",
-//     marginBottom: SPACING.md,
-//   },
-
-//   actionIconWrap: {
-//     width: 50,
-//     height: 50,
-//     borderRadius: RADIUS.lg,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   actionChip: {
-//     paddingHorizontal: 10,
-//     paddingVertical: 6,
-//     borderRadius: RADIUS.round,
-//   },
-
-//   actionChipText: {
-//     ...TYPE.caption,
-//     fontWeight: "900",
-//     letterSpacing: 0.5,
-//   },
-
-//   actionTitle: {
-//     ...TYPE.title,
-//     fontSize: 16,
-//     lineHeight: 21,
-//     fontWeight: "900",
-//   },
-
-//   actionTitleFeatured: {
-//     fontSize: 17,
-//   },
-
-//   actionSubtitle: {
-//     ...TYPE.subtext,
-//     marginTop: 7,
-//     lineHeight: 18,
-//     fontSize: 13,
-//   },
-
-//   actionFooter: {
-//     marginTop: SPACING.md,
-//     flexDirection: "row",
-//     alignItems: "center",
-//     justifyContent: "space-between",
-//   },
-
-//   actionLink: {
-//     ...TYPE.caption,
-//     fontWeight: "900",
-//     letterSpacing: 0.35,
-//     fontSize: 12,
-//   },
-
-//   actionArrow: {
-//     width: 34,
-//     height: 34,
-//     borderRadius: RADIUS.round,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   statsGrid: {
-//     flexDirection: "row",
-//     justifyContent: "space-between",
-//     gap: SPACING.sm,
-//   },
-
-//   statCard: {
-//     flex: 1,
-//     padding: SPACING.md,
-//     borderRadius: RADIUS.lg,
-//     backgroundColor: COLORS.white,
-//   },
-
-//   statHeader: {
-//     marginBottom: SPACING.sm,
-//   },
-
-//   statIcon: {
-//     width: 38,
-//     height: 38,
-//     borderRadius: RADIUS.md,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   statLabel: {
-//     ...TYPE.caption,
-//     color: COLORS.textMuted,
-//     fontWeight: "700",
-//     letterSpacing: 0.2,
-//   },
-
-//   statValue: {
-//     marginTop: 7,
-//     fontSize: 16,
-//     lineHeight: 22,
-//     fontWeight: "900",
-//     color: COLORS.text,
-//   },
-
-//   infoCard: {
-//     flexDirection: "row",
-//     alignItems: "flex-start",
-//     gap: SPACING.md,
-//     padding: SPACING.md,
-//     backgroundColor: COLORS.white,
-//   },
-
-//   infoIcon: {
-//     width: 40,
-//     height: 40,
-//     borderRadius: RADIUS.md,
-//     backgroundColor: COLORS.infoSoft,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
-//   infoTitle: {
-//     ...TYPE.bodyStrong,
-//     color: COLORS.text,
-//     fontWeight: "800",
-//   },
-
-//   infoText: {
-//     ...TYPE.subtext,
-//     marginTop: 4,
-//     lineHeight: 19,
-//   },
-// });

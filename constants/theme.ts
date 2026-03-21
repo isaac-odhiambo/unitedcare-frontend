@@ -11,6 +11,12 @@ export const COLORS = {
   primaryDark: "#0A4B59",
   primaryLight: "#D8EEF2",
 
+  /* Added: reusable green secondary for savings / growth / success flows */
+  secondary: "#16A34A",
+  secondaryDark: "#15803D",
+  secondaryLight: "#DCFCE7",
+  secondarySoft: "rgba(22, 163, 74, 0.12)",
+
   accent: "#F28C28",
   accentDark: "#D97706",
   accentLight: "#FFF2E2",
@@ -18,6 +24,14 @@ export const COLORS = {
   /* Soft brand backgrounds */
   primarySoft: "rgba(14, 94, 111, 0.12)",
   accentSoft: "rgba(242, 140, 40, 0.14)",
+
+  /* Dashboard helpers */
+  dashboardHero: "#0E5E6F",
+  dashboardHeroSoft: "#EAF6F8",
+  statCardBlue: "#EEF4FF",
+  statCardGreen: "#ECFDF3",
+  statCardOrange: "#FFF7ED",
+  statCardNeutral: "#F8FAFC",
 
   /* Status */
   success: "#2E7D32",
@@ -260,6 +274,15 @@ export const SHADOW = {
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
+
+  /* Added: richer shadow for dashboard hero / premium cards */
+  hero: {
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
 };
 
 /* =========================================================
@@ -297,6 +320,56 @@ export const P = {
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
     borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  /* Added: dashboard hero preset */
+  dashboardHero: {
+    backgroundColor: COLORS.dashboardHero,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...SHADOW.hero,
+  },
+
+  /* Added: stat card presets for summary tiles */
+  statCard: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  statCardBlue: {
+    backgroundColor: COLORS.statCardBlue,
+    borderWidth: 1,
+    borderColor: "rgba(37, 99, 235, 0.10)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+  },
+
+  statCardGreen: {
+    backgroundColor: COLORS.statCardGreen,
+    borderWidth: 1,
+    borderColor: "rgba(22, 163, 74, 0.10)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+  },
+
+  statCardOrange: {
+    backgroundColor: COLORS.statCardOrange,
+    borderWidth: 1,
+    borderColor: "rgba(242, 140, 40, 0.12)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+  },
+
+  statCardNeutral: {
+    backgroundColor: COLORS.statCardNeutral,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    borderRadius: RADIUS.xl,
     padding: SPACING.md,
   },
 
@@ -355,6 +428,40 @@ export const P = {
     alignItems: "center" as const,
   },
 
+  /* Added: reusable chips / pills */
+  pill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.round,
+  },
+
+  chipPrimary: {
+    backgroundColor: COLORS.primarySoft,
+    borderWidth: 1,
+    borderColor: "rgba(14, 94, 111, 0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.round,
+  },
+
+  chipSecondary: {
+    backgroundColor: COLORS.secondarySoft,
+    borderWidth: 1,
+    borderColor: "rgba(22, 163, 74, 0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.round,
+  },
+
+  chipAccent: {
+    backgroundColor: COLORS.accentSoft,
+    borderWidth: 1,
+    borderColor: "rgba(242, 140, 40, 0.14)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: RADIUS.round,
+  },
+
   input: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -371,6 +478,17 @@ export const P = {
 
   buttonPrimary: {
     backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    ...SHADOW.soft,
+  },
+
+  /* Added: positive/green action button */
+  buttonSuccess: {
+    backgroundColor: COLORS.secondary,
     borderRadius: RADIUS.md,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -487,10 +605,12 @@ export const STATUS = {
 ========================================================= */
 export function getStatusColors(status?: string) {
   const key = String(status || "").toUpperCase() as keyof typeof STATUS;
-  return STATUS[key] || {
-    text: COLORS.gray600,
-    bg: "rgba(107, 114, 128, 0.12)",
-  };
+  return (
+    STATUS[key] || {
+      text: COLORS.gray600,
+      bg: "rgba(107, 114, 128, 0.12)",
+    }
+  );
 }
 
 export function getMpesaMethodColors(active?: boolean) {
@@ -514,3 +634,62 @@ export function getMpesaMethodColors(active?: boolean) {
     subtitle: COLORS.textMuted,
   };
 }
+
+/* =========================================================
+   FLAT TYPOGRAPHY / TOKEN ALIASES
+========================================================= */
+export const FONT_SIZE = {
+  h1: TYPE.h1.fontSize,
+  h2: TYPE.h2.fontSize,
+  h3: TYPE.h3.fontSize,
+  title: TYPE.title.fontSize,
+  body: TYPE.body.fontSize,
+  bodyStrong: TYPE.bodyStrong.fontSize,
+  subtext: TYPE.subtext.fontSize,
+  label: TYPE.label.fontSize,
+  caption: TYPE.caption.fontSize,
+  button: TYPE.button.fontSize,
+  tab: TYPE.tab.fontSize,
+  amountLg: TYPE.amountLg.fontSize,
+  amountMd: TYPE.amountMd.fontSize,
+  amountSm: TYPE.amountSm.fontSize,
+};
+
+export const LINE_HEIGHT = {
+  h1: TYPE.h1.lineHeight,
+  h2: TYPE.h2.lineHeight,
+  h3: TYPE.h3.lineHeight,
+  title: TYPE.title.lineHeight,
+  body: TYPE.body.lineHeight,
+  bodyStrong: TYPE.bodyStrong.lineHeight,
+  subtext: TYPE.subtext.lineHeight,
+  label: TYPE.label.lineHeight,
+  caption: TYPE.caption.lineHeight,
+  button: TYPE.button.lineHeight,
+  tab: TYPE.tab.lineHeight,
+  amountLg: TYPE.amountLg.lineHeight,
+  amountMd: TYPE.amountMd.lineHeight,
+  amountSm: TYPE.amountSm.lineHeight,
+};
+
+export const TEXT_COLOR = {
+  h1: TYPE.h1.color,
+  h2: TYPE.h2.color,
+  h3: TYPE.h3.color,
+  title: TYPE.title.color,
+  body: TYPE.body.color,
+  bodyStrong: TYPE.bodyStrong.color,
+  subtext: TYPE.subtext.color,
+  label: TYPE.label.color,
+  caption: TYPE.caption.color,
+  button: TYPE.button.color,
+  amountLg: TYPE.amountLg.color,
+  amountMd: TYPE.amountMd.color,
+  amountSm: TYPE.amountSm.color,
+};
+
+/* Flat shadow aliases */
+export const CARD_SHADOW = SHADOW.card;
+export const SOFT_SHADOW = SHADOW.soft;
+export const STRONG_SHADOW = SHADOW.strong;
+export const HERO_SHADOW = SHADOW.hero;

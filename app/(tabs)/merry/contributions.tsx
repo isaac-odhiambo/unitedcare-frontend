@@ -22,7 +22,9 @@ import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
   getMyMerryPayments,
+  getMyMerryWallet,
   MerryPaymentRow,
+  MerryWalletResponse,
 } from "@/services/merry";
 import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
@@ -118,6 +120,7 @@ function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
 export default function MerryContributionsScreen() {
   const [user, setUser] = useState<MerryPaymentsUser | null>(null);
   const [payments, setPayments] = useState<MerryPaymentRow[]>([]);
+  const [wallet, setWallet] = useState<MerryWalletResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -127,10 +130,11 @@ export default function MerryContributionsScreen() {
       setLoading(true);
       setError("");
 
-      const [sessionRes, meRes, paymentsRes] = await Promise.allSettled([
+      const [sessionRes, meRes, paymentsRes, walletRes] = await Promise.allSettled([
         getSessionUser(),
         getMe(),
         getMyMerryPayments(),
+        getMyMerryWallet(),
       ]);
 
       const sessionUser =
@@ -151,10 +155,20 @@ export default function MerryContributionsScreen() {
         setPayments(Array.isArray(paymentsRes.value) ? paymentsRes.value : []);
       } else {
         setPayments([]);
-        setError(getApiErrorMessage(paymentsRes.reason) || getErrorMessage(paymentsRes.reason));
+        setError(
+          getApiErrorMessage(paymentsRes.reason) ||
+            getErrorMessage(paymentsRes.reason)
+        );
+      }
+
+      if (walletRes.status === "fulfilled") {
+        setWallet(walletRes.value ?? null);
+      } else {
+        setWallet(null);
       }
     } catch (e: any) {
       setPayments([]);
+      setWallet(null);
       setError(getApiErrorMessage(e) || getErrorMessage(e));
     } finally {
       setLoading(false);
@@ -177,7 +191,10 @@ export default function MerryContributionsScreen() {
   }, [load]);
 
   const totals = useMemo(() => {
-    const totalAmount = payments.reduce((sum, p) => sum + (Number(p.amount || 0) || 0), 0);
+    const totalAmount = payments.reduce(
+      (sum, p) => sum + (Number(p.amount || 0) || 0),
+      0
+    );
     const confirmed = payments.filter(
       (p) => String(p.status || "").toUpperCase() === "CONFIRMED"
     ).length;
@@ -196,6 +213,10 @@ export default function MerryContributionsScreen() {
       failed,
     };
   }, [payments]);
+
+  const walletBalance = useMemo(() => {
+    return Number(wallet?.wallet_balance || 0) || 0;
+  }, [wallet]);
 
   if (loading) {
     return (
@@ -229,7 +250,7 @@ export default function MerryContributionsScreen() {
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text style={styles.hTitle}>My Merry Payments</Text>
           <Text style={styles.hSub}>
-            Personal merry payment history
+            Personal merry payment history and wallet balance
           </Text>
         </View>
 
@@ -247,6 +268,26 @@ export default function MerryContributionsScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
+
+      <Card style={styles.walletCard}>
+        <View style={styles.walletTop}>
+          <View style={styles.walletIconWrap}>
+            <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.walletTitle}>Merry Wallet</Text>
+            <Text style={styles.walletSub}>
+              Extra merry payments stay here and can reduce future dues automatically.
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.walletAmount}>{formatKes(walletBalance)}</Text>
+        <Text style={styles.walletMeta}>
+          Last updated: {formatDateTime(wallet?.updated_at)}
+        </Text>
+      </Card>
 
       <View style={styles.summaryGrid}>
         <View style={styles.summaryCard}>
@@ -277,9 +318,10 @@ export default function MerryContributionsScreen() {
           <Text style={styles.summaryLabel}>Failed / Cancelled</Text>
           <Text style={styles.summaryValue}>{totals.failed}</Text>
         </View>
+
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}> </Text>
-          <Text style={styles.summaryValue}> </Text>
+          <Text style={styles.summaryLabel}>Wallet Balance</Text>
+          <Text style={styles.summaryValue}>{formatKes(walletBalance)}</Text>
         </View>
       </View>
 
@@ -357,6 +399,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
+  },
+
+  walletCard: {
+    marginBottom: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    ...SHADOW.card,
+  },
+
+  walletTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  walletIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  walletTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 15,
+    color: COLORS.dark,
+  },
+
+  walletSub: {
+    marginTop: 4,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  walletAmount: {
+    marginTop: SPACING.md,
+    fontFamily: FONT.bold,
+    fontSize: 22,
+    color: COLORS.dark,
+  },
+
+  walletMeta: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
   },
 
   summaryGrid: {
