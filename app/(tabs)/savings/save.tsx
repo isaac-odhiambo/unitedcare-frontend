@@ -1,11 +1,12 @@
+// app/(tabs)/savings/save.tsx
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -28,9 +29,7 @@ function formatKes(value?: string | number) {
 }
 
 function getPrimaryAccount(accounts: SavingsAccount[]) {
-  return (
-    accounts.find((a) => a.account_type === "FLEXIBLE") || accounts[0]
-  );
+  return accounts.find((a) => a.account_type === "FLEXIBLE") || accounts[0];
 }
 
 export default function SavingsSaveScreen() {
@@ -69,18 +68,17 @@ export default function SavingsSaveScreen() {
   );
 
   const handleContinue = () => {
-    if (!primaryAccount) return;
+    if (!primaryAccount || !user?.id) return;
 
     router.push({
       pathname: ROUTES.tabs.paymentsDeposit as any,
       params: {
         purpose: "SAVINGS_DEPOSIT",
-        reference: `saving${user?.id}`,
+        reference: `saving${user.id}`,
         narration: "Savings deposit",
         phone: user?.phone || "",
         returnTo: ROUTES.tabs.savings,
         title: "Save Money",
-        subtitle: "Deposit to Main Wallet",
       },
     });
   };
@@ -108,12 +106,9 @@ export default function SavingsSaveScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.hero}>
         <Text style={styles.title}>Save Money</Text>
-        <Text style={styles.subtitle}>
-          Deposit directly to your main wallet
-        </Text>
       </View>
 
-      <Section title="Main Wallet">
+      <Section title="Wallet">
         <Card>
           <Text style={styles.walletName}>
             {primaryAccount.name || "Main Wallet"}
@@ -123,12 +118,8 @@ export default function SavingsSaveScreen() {
             {formatKes(primaryAccount.balance)}
           </Text>
 
-          <Text style={styles.label}>
-            Available: {formatKes(primaryAccount.available_balance)}
-          </Text>
-
           <View style={{ marginTop: 16 }}>
-            <Button title="Continue to Payment" onPress={handleContinue} />
+            <Button title="Continue" onPress={handleContinue} />
           </View>
         </Card>
       </Section>
@@ -138,6 +129,7 @@ export default function SavingsSaveScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   hero: {
@@ -151,11 +143,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
   },
 
-  subtitle: {
-    color: "#fff",
-    marginTop: 4,
-  },
-
   walletName: {
     fontSize: 16,
     fontFamily: FONT.bold,
@@ -165,10 +152,5 @@ const styles = StyleSheet.create({
     fontSize: 22,
     marginTop: 6,
     fontFamily: FONT.bold,
-  },
-
-  label: {
-    marginTop: 6,
-    color: "#64748B",
   },
 });

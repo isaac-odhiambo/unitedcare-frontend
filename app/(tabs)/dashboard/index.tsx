@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -33,7 +34,6 @@ import {
 import {
   fmtKES,
   getMyAllMerryDueSummary,
-  MerryDueSummaryItem,
   MyAllMerryDueSummaryResponse,
 } from "@/services/merry";
 import {
@@ -50,10 +50,10 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type DashboardUser = Partial<MeResponse> & Partial<SessionUser>;
 
-type NotificationItem = {
+type NoticeItem = {
   id: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   icon: keyof typeof Ionicons.glyphMap;
   tone: "primary" | "success" | "warning" | "info";
   actionLabel?: string;
@@ -65,56 +65,6 @@ function getGreetingByTime() {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
-}
-
-function getToneColors(
-  tone: "primary" | "success" | "warning" | "info" = "primary"
-) {
-  const map = {
-    primary: {
-      soft: COLORS.primarySoft,
-      softAlt: COLORS.dashboardHeroSoft,
-      iconBg: "rgba(14, 94, 111, 0.10)",
-      icon: COLORS.primary,
-      border: "rgba(14, 94, 111, 0.10)",
-      accent: COLORS.primary,
-      statBg: COLORS.statCardBlue,
-    },
-    success: {
-      soft: COLORS.secondarySoft,
-      softAlt: COLORS.statCardGreen,
-      iconBg: "rgba(22, 163, 74, 0.10)",
-      icon: COLORS.secondary,
-      border: "rgba(22, 163, 74, 0.10)",
-      accent: COLORS.secondary,
-      statBg: COLORS.statCardGreen,
-    },
-    warning: {
-      soft: COLORS.warningSoft,
-      softAlt: COLORS.statCardOrange,
-      iconBg: "rgba(245, 158, 11, 0.12)",
-      icon: COLORS.warning,
-      border: "rgba(245, 158, 11, 0.10)",
-      accent: COLORS.warning,
-      statBg: COLORS.statCardOrange,
-    },
-    info: {
-      soft: COLORS.infoSoft,
-      softAlt: COLORS.statCardBlue,
-      iconBg: "rgba(37, 99, 235, 0.10)",
-      icon: COLORS.info,
-      border: "rgba(37, 99, 235, 0.10)",
-      accent: COLORS.info,
-      statBg: COLORS.statCardBlue,
-    },
-  };
-
-  return map[tone];
-}
-
-function formatUserStatus(status?: string) {
-  const value = String(status || "ACTIVE").replaceAll("_", " ").trim();
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 function toNumber(value: unknown): number {
@@ -153,95 +103,146 @@ function getLoansTotal(loansData: Loan[]): number {
   }, 0);
 }
 
-function StatTile({
+function getPrimarySavingsAccount(accounts: SavingsAccount[]) {
+  if (!Array.isArray(accounts) || accounts.length === 0) return null;
+  return accounts[0];
+}
+
+function formatUserStatus(status?: string) {
+  const value = String(status || "ACTIVE").replaceAll("_", " ").trim();
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function getToneColors(
+  tone: "primary" | "success" | "warning" | "info" = "primary"
+) {
+  const map = {
+    primary: {
+      iconBg: "rgba(14, 94, 111, 0.10)",
+      icon: COLORS.primary,
+      border: "rgba(14, 94, 111, 0.10)",
+      accent: COLORS.primary,
+    },
+    success: {
+      iconBg: "rgba(22, 163, 74, 0.10)",
+      icon: COLORS.secondary,
+      border: "rgba(22, 163, 74, 0.10)",
+      accent: COLORS.secondary,
+    },
+    warning: {
+      iconBg: "rgba(245, 158, 11, 0.12)",
+      icon: COLORS.warning,
+      border: "rgba(245, 158, 11, 0.10)",
+      accent: COLORS.warning,
+    },
+    info: {
+      iconBg: "rgba(37, 99, 235, 0.10)",
+      icon: COLORS.info,
+      border: "rgba(37, 99, 235, 0.10)",
+      accent: COLORS.info,
+    },
+  };
+
+  return map[tone];
+}
+
+function StatPill({
   label,
   value,
   icon,
-  tone = "primary",
+  onPress,
 }: {
   label: string;
   value: string;
   icon: keyof typeof Ionicons.glyphMap;
+  onPress?: () => void;
+}) {
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper
+      onPress={onPress}
+      activeOpacity={0.86}
+      style={styles.statPill}
+    >
+      <View style={styles.statPillIcon}>
+        <Ionicons name={icon} size={15} color={COLORS.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.statPillLabel}>{label}</Text>
+        <Text style={styles.statPillValue} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      {onPress ? (
+        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.9)" />
+      ) : null}
+    </Wrapper>
+  );
+}
+
+function ActionCard({
+  title,
+  amount,
+  subtitle,
+  icon,
+  tone = "primary",
+  primaryLabel,
+  secondaryLabel,
+  onPrimary,
+  onSecondary,
+}: {
+  title: string;
+  amount?: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
   tone?: "primary" | "success" | "warning" | "info";
+  primaryLabel: string;
+  secondaryLabel?: string;
+  onPrimary: () => void;
+  onSecondary?: () => void;
 }) {
   const colors = getToneColors(tone);
 
   return (
     <Card
       style={[
-        styles.statCard,
+        styles.actionCard,
         {
-          backgroundColor: colors.statBg,
           borderColor: colors.border,
         },
       ]}
       variant="default"
     >
-      <View style={[styles.statIconWrap, { backgroundColor: colors.iconBg }]}>
-        <Ionicons name={icon} size={18} color={colors.icon} />
-      </View>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue} numberOfLines={1}>
-        {value}
-      </Text>
-    </Card>
-  );
-}
-
-function PriorityActionCard({
-  title,
-  subtitle,
-  amount,
-  icon,
-  tone = "primary",
-  primaryLabel,
-  secondaryLabel,
-  onPrimaryPress,
-  onSecondaryPress,
-}: {
-  title: string;
-  subtitle: string;
-  amount?: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tone?: "primary" | "success" | "warning" | "info";
-  primaryLabel: string;
-  secondaryLabel?: string;
-  onPrimaryPress: () => void;
-  onSecondaryPress?: () => void;
-}) {
-  const colors = getToneColors(tone);
-
-  return (
-    <Card style={styles.priorityCard} variant="default">
-      <View style={styles.priorityTop}>
-        <View style={[styles.priorityIconWrap, { backgroundColor: colors.iconBg }]}>
+      <View style={styles.actionTop}>
+        <View style={[styles.actionIconWrap, { backgroundColor: colors.iconBg }]}>
           <Ionicons name={icon} size={20} color={colors.icon} />
         </View>
 
-        <View style={styles.priorityTextWrap}>
-          <Text style={styles.priorityTitle}>{title}</Text>
-          <Text style={styles.prioritySubtitle}>{subtitle}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.actionTitle}>{title}</Text>
+          <Text style={styles.actionSubtitle}>{subtitle}</Text>
         </View>
       </View>
 
       {amount ? (
-        <View style={[styles.priorityAmountBox, { backgroundColor: colors.soft }]}>
-          <Text style={styles.priorityAmountLabel}>Amount</Text>
-          <Text style={[styles.priorityAmountValue, { color: colors.accent }]}>
+        <View style={styles.actionAmountBox}>
+          <Text style={styles.actionAmountLabel}>Amount</Text>
+          <Text style={[styles.actionAmountValue, { color: colors.accent }]}>
             {amount}
           </Text>
         </View>
       ) : null}
 
-      <View style={styles.priorityButtonRow}>
-        <Button title={primaryLabel} onPress={onPrimaryPress} style={{ flex: 1 }} />
-        {secondaryLabel && onSecondaryPress ? (
+      <View style={styles.actionButtons}>
+        <Button title={primaryLabel} onPress={onPrimary} style={{ flex: 1 }} />
+        {secondaryLabel && onSecondary ? (
           <>
             <View style={{ width: SPACING.sm }} />
             <Button
               title={secondaryLabel}
               variant="secondary"
-              onPress={onSecondaryPress}
+              onPress={onSecondary}
               style={{ flex: 1 }}
             />
           </>
@@ -251,43 +252,39 @@ function PriorityActionCard({
   );
 }
 
-function NotificationCard({ item }: { item: NotificationItem }) {
+function NoticeCard({ item }: { item: NoticeItem }) {
   const colors = getToneColors(item.tone);
 
   return (
     <Card
       onPress={item.onPress}
-      style={[
-        styles.notificationCard,
-        {
-          backgroundColor: COLORS.white,
-          borderColor: colors.border,
-        },
-      ]}
+      style={[styles.noticeCard, { borderColor: colors.border }]}
       variant="default"
     >
-      <View style={[styles.notificationIconWrap, { backgroundColor: colors.iconBg }]}>
+      <View style={[styles.noticeIcon, { backgroundColor: colors.iconBg }]}>
         <Ionicons name={item.icon} size={18} color={colors.icon} />
       </View>
 
-      <View style={styles.notificationTextWrap}>
-        <Text style={styles.notificationTitle}>{item.title}</Text>
-        <Text style={styles.notificationSubtitle}>{item.subtitle}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.noticeTitle}>{item.title}</Text>
+        {item.subtitle ? (
+          <Text style={styles.noticeSubtitle}>{item.subtitle}</Text>
+        ) : null}
         {item.actionLabel ? (
-          <Text style={[styles.notificationAction, { color: colors.accent }]}>
+          <Text style={[styles.noticeAction, { color: colors.accent }]}>
             {item.actionLabel}
           </Text>
         ) : null}
       </View>
 
       {item.onPress ? (
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        <Ionicons name="chevron-forward" size={17} color={COLORS.textMuted} />
       ) : null}
     </Card>
   );
 }
 
-function MiniLink({
+function SmallLink({
   title,
   icon,
   onPress,
@@ -297,99 +294,19 @@ function MiniLink({
   onPress: () => void;
 }) {
   return (
-    <Card onPress={onPress} style={styles.miniLinkCard} variant="default">
-      <View style={styles.miniLinkInner}>
-        <View style={styles.miniLinkIcon}>
-          <Ionicons name={icon} size={16} color={COLORS.primary} />
+    <TouchableOpacity
+      activeOpacity={0.86}
+      onPress={onPress}
+      style={styles.smallLink}
+    >
+      <View style={styles.smallLinkLeft}>
+        <View style={styles.smallLinkIcon}>
+          <Ionicons name={icon} size={15} color={COLORS.primary} />
         </View>
-        <Text style={styles.miniLinkText}>{title}</Text>
+        <Text style={styles.smallLinkText}>{title}</Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-    </Card>
-  );
-}
-
-function MerryDueCard({ item }: { item: MerryDueSummaryItem }) {
-  const overdue = hasAmount(item.overdue);
-  const current = hasAmount(item.current_due);
-  const next = hasAmount(item.next_due);
-
-  const badgeText = overdue
-    ? "Overdue"
-    : current
-      ? "Due now"
-      : next
-        ? "Next due"
-        : "Up to date";
-
-  const badgeStyle = overdue
-    ? styles.merryBadgeDanger
-    : current
-      ? styles.merryBadgeWarning
-      : styles.merryBadgeSuccess;
-
-  return (
-    <Card style={styles.merryCard} variant="default">
-      <View style={styles.merryCardTop}>
-        <View style={{ flex: 1, paddingRight: SPACING.sm }}>
-          <Text style={styles.merryCardTitle}>{item.merry_name}</Text>
-          <Text style={styles.merryCardSub}>
-            {item.seat_count} seat{item.seat_count === 1 ? "" : "s"}
-            {item.seat_numbers?.length ? ` • ${item.seat_numbers.join(", ")}` : ""}
-          </Text>
-        </View>
-
-        <View style={[styles.merryBadge, badgeStyle]}>
-          <Text style={styles.merryBadgeText}>{badgeText}</Text>
-        </View>
-      </View>
-
-      <View style={styles.merryAmountBox}>
-        <Text style={styles.merryAmountLabel}>Required now</Text>
-        <Text style={styles.merryAmountValue}>{fmtKES(item.required_now)}</Text>
-      </View>
-
-      <View style={styles.merryMeta}>
-        <View style={styles.merryMetaRow}>
-          <Text style={styles.merryMetaLabel}>Overdue</Text>
-          <Text style={styles.merryMetaValue}>{fmtKES(item.overdue)}</Text>
-        </View>
-
-        <View style={styles.merryMetaRow}>
-          <Text style={styles.merryMetaLabel}>Current due</Text>
-          <Text style={styles.merryMetaValue}>{fmtKES(item.current_due)}</Text>
-        </View>
-
-        {next ? (
-          <View style={styles.merryMetaRow}>
-            <Text style={styles.merryMetaLabel}>Next due</Text>
-            <Text style={styles.merryMetaValue}>
-              {fmtKES(item.next_due)}
-              {item.next_due_date ? ` • ${item.next_due_date}` : ""}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.merryActionRow}>
-        <Button
-          title="Open"
-          variant="secondary"
-          onPress={() =>
-            router.push(ROUTES.dynamic.merryDetail(item.merry_id) as any)
-          }
-          style={{ flex: 1 }}
-        />
-        <View style={{ width: SPACING.sm }} />
-        <Button
-          title={hasAmount(item.required_now) ? "Pay Now" : "View"}
-          onPress={() =>
-            router.push(ROUTES.dynamic.merryDetail(item.merry_id) as any)
-          }
-          style={{ flex: 1 }}
-        />
-      </View>
-    </Card>
+    </TouchableOpacity>
   );
 }
 
@@ -398,6 +315,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
   const [heroSavings, setHeroSavings] = useState("—");
   const [loans, setLoans] = useState<Loan[]>([]);
   const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
@@ -413,6 +331,44 @@ export default function DashboardScreen() {
   const goToKyc = useCallback(() => {
     router.push(ROUTES.tabs.profileKyc as any);
   }, []);
+
+  const openFirstMerryFlow = useCallback(() => {
+    const items = merrySummary?.items ?? [];
+    const payable =
+      items.find((item) => hasAmount(item.required_now)) ||
+      items.find((item) => hasAmount(item.pay_with_next)) ||
+      items[0];
+
+    if (!payable) {
+      router.push(ROUTES.tabs.merry as any);
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/payments/deposit" as any,
+      params: {
+        source: "merry",
+        merryId: String(payable.merry_id),
+        amount: String(payable.required_now || payable.pay_with_next || 0),
+        editableAmount: "true",
+      },
+    });
+  }, [merrySummary]);
+
+  const openSavingsDeposit = useCallback(
+    (account?: SavingsAccount | null) => {
+      router.push({
+        pathname: "/(tabs)/payments/deposit" as any,
+        params: {
+          source: "savings",
+          savingsId: account?.id ? String(account.id) : "",
+          amount: "",
+          editableAmount: "true",
+        },
+      });
+    },
+    []
+  );
 
   const load = useCallback(async () => {
     try {
@@ -448,10 +404,10 @@ export default function DashboardScreen() {
 
       setUser(mergedUser);
 
-      const savingsAccounts =
+      const savings =
         savingsResult.status === "fulfilled" ? savingsResult.value : [];
-      const savingsTotal = getSavingsTotal(savingsAccounts);
-      setHeroSavings(formatKes(savingsTotal));
+      setSavingsAccounts(savings);
+      setHeroSavings(formatKes(getSavingsTotal(savings)));
 
       setLoans(loansResult.status === "fulfilled" ? loansResult.value : []);
       setGuaranteeRequests(
@@ -490,70 +446,36 @@ export default function DashboardScreen() {
 
   const greetingText = useMemo(() => getGreetingByTime(), []);
   const totalOutstandingLoans = useMemo(() => getLoansTotal(loans), [loans]);
+  const primarySavingsAccount = useMemo(
+    () => getPrimarySavingsAccount(savingsAccounts),
+    [savingsAccounts]
+  );
 
-  const topMerryCards = useMemo(() => {
-    return (merrySummary?.items ?? []).slice(0, 2);
-  }, [merrySummary]);
-
-  const firstPayableMerry = useMemo(() => {
-    const items = merrySummary?.items ?? [];
-    return (
-      items.find((item) => hasAmount(item.required_now)) ||
-      items.find((item) => hasAmount(item.pay_with_next)) ||
-      items[0] ||
-      null
-    );
-  }, [merrySummary]);
-
-  const stats = useMemo(() => {
-    return {
-      savings: heroSavings,
-      merryDue: fmtKES(merrySummary?.total_required_now),
-      activeMerry: String(merrySummary?.active_merries ?? 0),
-    };
-  }, [heroSavings, merrySummary]);
-
-  const notificationItems = useMemo<NotificationItem[]>(() => {
-    const items: NotificationItem[] = [];
+  const noticeItems = useMemo<NoticeItem[]>(() => {
+    const items: NoticeItem[] = [];
 
     if (!kycComplete) {
       items.push({
         id: "kyc-needed",
-        title: "Complete your verification",
-        subtitle:
-          "Finish KYC to unlock full participation in savings, groups and merry.",
+        title: "Complete KYC",
+        subtitle: "Finish verification to continue using all services.",
         icon: "shield-checkmark-outline",
         tone: "info",
-        actionLabel: "Open KYC",
+        actionLabel: "Open",
         onPress: () => router.push(ROUTES.tabs.profileKyc as any),
-      });
-    }
-
-    if (hasAmount(merrySummary?.total_overdue)) {
-      items.push({
-        id: "merry-overdue",
-        title: "Merry contribution needs attention",
-        subtitle: `You have overdue merry contributions of ${fmtKES(
-          merrySummary?.total_overdue
-        )}.`,
-        icon: "warning-outline",
-        tone: "warning",
-        actionLabel: "Open merry",
-        onPress: () => router.push(ROUTES.tabs.merry as any),
       });
     }
 
     if (guaranteeRequests.length > 0) {
       items.push({
         id: "guarantee-requests",
-        title: "Support request waiting",
-        subtitle:
+        title:
           guaranteeRequests.length === 1
-            ? "You have 1 pending guarantor request."
-            : `You have ${guaranteeRequests.length} pending guarantor requests.`,
-        icon: "notifications-outline",
-        tone: "warning",
-        actionLabel: "View requests",
+            ? "1 guarantor request pending"
+            : `${guaranteeRequests.length} guarantor requests pending`,
+        icon: "people-outline",
+        tone: "primary",
+        actionLabel: "View",
         onPress: () => router.push("/(tabs)/loans/guarantee-requests" as any),
       });
     }
@@ -565,11 +487,10 @@ export default function DashboardScreen() {
     if (approvedLoan) {
       items.push({
         id: "loan-approved",
-        title: "Loan update available",
-        subtitle: "One of your loan applications has been approved.",
+        title: "Loan approved",
         icon: "checkmark-circle-outline",
         tone: "success",
-        actionLabel: "Open loan",
+        actionLabel: "Open",
         onPress: () =>
           router.push({
             pathname: "/(tabs)/loans/[id]" as any,
@@ -578,8 +499,8 @@ export default function DashboardScreen() {
       });
     }
 
-    return items.slice(0, 3);
-  }, [guaranteeRequests, kycComplete, loans, merrySummary]);
+    return items.slice(0, 2);
+  }, [guaranteeRequests, kycComplete, loans]);
 
   if (loading) {
     return (
@@ -594,7 +515,7 @@ export default function DashboardScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to access your dashboard."
+          subtitle="Please login to continue."
           actionLabel="Go to Login"
           onAction={() => router.replace(ROUTES.auth.login as any)}
         />
@@ -611,265 +532,174 @@ export default function DashboardScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.headerRow}>
-        <View style={styles.headerBrand}>
-          <View style={styles.headerBrandIcon}>
+      <View style={styles.topBar}>
+        <View style={styles.topBarLeft}>
+          <View style={styles.brandIcon}>
             <Ionicons
               name="people-circle-outline"
-              size={22}
-              color={COLORS.white}
-            />
-          </View>
-
-          <View style={styles.headerBrandText}>
-            <Text style={styles.headerTitle}>United Care</Text>
-            <Text style={styles.headerSubtitle}>Self-help group dashboard</Text>
-          </View>
-        </View>
-
-        <Button
-          variant="ghost"
-          title="Refresh"
-          onPress={onRefresh}
-          leftIcon={
-            <Ionicons
-              name="refresh-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
-        />
-      </View>
-
-      <Card style={styles.heroCard} variant="elevated">
-        <View style={styles.heroCircleOne} />
-        <View style={styles.heroCircleTwo} />
-        <View style={styles.heroGlow} />
-
-        <View style={styles.heroTop}>
-          <View style={styles.heroTextBlock}>
-            <Text style={styles.heroEyebrow}>
-              {isAdmin ? "COMMUNITY LEAD VIEW" : "SELF-HELP GROUP MEMBER"}
-            </Text>
-            <Text style={styles.heroTitle}>
-              {greetingText}, {greetingName}
-            </Text>
-            <Text style={styles.heroSubtitle}>
-              {isAdmin
-                ? "Support the group through active merry participation and steady savings."
-                : "Stay active in merry and keep building your savings journey."}
-            </Text>
-          </View>
-
-          <View style={styles.heroAvatar}>
-            <Ionicons
-              name={isAdmin ? "shield-checkmark-outline" : "heart-outline"}
               size={24}
               color={COLORS.white}
             />
           </View>
-        </View>
-
-        <View style={styles.heroBalanceCard}>
-          <Text style={styles.heroBalanceLabel}>Merry due now</Text>
-          <Text style={styles.heroBalanceValue}>
-            {fmtKES(merrySummary?.total_required_now)}
-          </Text>
-          <Text style={styles.heroBalanceNote}>
-            {hasAmount(merrySummary?.total_overdue)
-              ? `Includes overdue of ${fmtKES(merrySummary?.total_overdue)}`
-              : "Open merry to review your current and upcoming contributions."}
-          </Text>
-        </View>
-
-        <View style={styles.heroButtonRow}>
-          <Button
-            title={
-              firstPayableMerry
-                ? "Pay Merry Now"
-                : merryAllowed
-                  ? "Open Merry"
-                  : "Unlock Merry"
-            }
-            onPress={() => {
-              if (firstPayableMerry) {
-                router.push(
-                  ROUTES.dynamic.merryDetail(firstPayableMerry.merry_id) as any
-                );
-              } else if (merryAllowed) {
-                router.push(ROUTES.tabs.merry as any);
-              } else {
-                goToKyc();
-              }
-            }}
-            style={{ flex: 1 }}
-          />
-          <View style={{ width: SPACING.sm }} />
-          <Button
-            title="Savings"
-            variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.savings as any)}
-            style={{ flex: 1 }}
-          />
-        </View>
-
-        <View style={styles.heroPills}>
-          <View style={styles.heroPill}>
-            <Ionicons name="ellipse" size={8} color="#8CF0C7" />
-            <Text style={styles.heroPillText}>
-              {formatUserStatus(user?.status)}
-            </Text>
-          </View>
-
-          <View style={styles.heroPill}>
-            <Ionicons
-              name={isAdmin ? "shield-outline" : "people-outline"}
-              size={14}
-              color={COLORS.white}
-            />
-            <Text style={styles.heroPillText}>
-              {isAdmin ? "Community lead" : "Saving together"}
-            </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.brandTitle}>United Care</Text>
+            <Text style={styles.brandSubtitle}>Self Help Group</Text>
           </View>
         </View>
-      </Card>
 
-      <View style={styles.overviewRow}>
-        <StatTile
-          label="Savings"
-          value={stats.savings}
-          icon="wallet-outline"
-          tone="primary"
-        />
-        <StatTile
-          label="Merry Due"
-          value={stats.merryDue}
-          icon="repeat-outline"
-          tone="success"
-        />
-        <StatTile
-          label="Active Merry"
-          value={stats.activeMerry}
-          icon="people-outline"
-          tone="info"
-        />
+        <TouchableOpacity
+          activeOpacity={0.86}
+          onPress={onRefresh}
+          style={styles.refreshBtn}
+        >
+          <Ionicons name="refresh-outline" size={18} color={COLORS.primary} />
+        </TouchableOpacity>
       </View>
 
-      <Section
-        title="Main Actions"
-        subtitle="Keep the dashboard focused on the two most important areas."
+      <TouchableOpacity
+        activeOpacity={0.92}
+        onPress={() => router.push(ROUTES.tabs.profile as any)}
       >
-        <View style={styles.priorityWrap}>
-          <PriorityActionCard
+        <Card style={styles.heroCard} variant="elevated">
+          <View style={styles.heroDecorOne} />
+          <View style={styles.heroDecorTwo} />
+
+          <View style={styles.heroHeaderRow}>
+            <View>
+              <Text style={styles.heroTag}>
+                {isAdmin ? "COMMUNITY LEAD" : "MEMBER"}
+              </Text>
+              <Text style={styles.heroTitle}>
+                {greetingText}, {greetingName}
+              </Text>
+            </View>
+
+            <View style={styles.heroArrow}>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.white} />
+            </View>
+          </View>
+
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroMetaPill}>
+              <Ionicons name="ellipse" size={8} color="#8CF0C7" />
+              <Text style={styles.heroMetaText}>
+                {formatUserStatus(user?.status)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.heroStatsWrap}>
+            <StatPill
+              label="Savings"
+              value={heroSavings}
+              icon="wallet-outline"
+              onPress={() => router.push(ROUTES.tabs.savings as any)}
+            />
+            <StatPill
+              label="Merry Due"
+              value={fmtKES(merrySummary?.total_required_now)}
+              icon="repeat-outline"
+              onPress={() => {
+                if (!merryAllowed) {
+                  goToKyc();
+                  return;
+                }
+                openFirstMerryFlow();
+              }}
+            />
+            <StatPill
+              label="Groups"
+              value={String(merrySummary?.active_merries ?? 0)}
+              icon="people-outline"
+              onPress={() => router.push(ROUTES.tabs.groups as any)}
+            />
+          </View>
+        </Card>
+      </TouchableOpacity>
+
+      <Section title="Quick Actions">
+        <View style={styles.actionsWrap}>
+          <ActionCard
+            title="Save"
+            subtitle="Add money to your savings account."
+            amount={heroSavings}
+            icon="wallet-outline"
+            tone="primary"
+            primaryLabel="Save Now"
+            secondaryLabel="Open"
+            onPrimary={() => {
+              if (!kycComplete) {
+                goToKyc();
+                return;
+              }
+              openSavingsDeposit(primarySavingsAccount);
+            }}
+            onSecondary={() => router.push(ROUTES.tabs.savings as any)}
+          />
+
+          <ActionCard
             title="Merry"
-            subtitle={
-              hasAmount(merrySummary?.total_required_now)
-                ? "Your merry has an amount ready for action."
-                : "Open merry and manage your participation."
-            }
+            subtitle="Continue your contribution."
             amount={fmtKES(merrySummary?.total_required_now)}
             icon="repeat-outline"
             tone="success"
             primaryLabel={
-              hasAmount(merrySummary?.total_required_now) ? "Pay Now" : "Open Merry"
+              hasAmount(merrySummary?.total_required_now) ? "Contribute" : "Open"
             }
-            secondaryLabel="View"
-            onPrimaryPress={() => {
-              if (firstPayableMerry) {
-                router.push(
-                  ROUTES.dynamic.merryDetail(firstPayableMerry.merry_id) as any
-                );
-              } else {
-                router.push(ROUTES.tabs.merry as any);
+            secondaryLabel="Summary"
+            onPrimary={() => {
+              if (!merryAllowed) {
+                goToKyc();
+                return;
               }
+              openFirstMerryFlow();
             }}
-            onSecondaryPress={() => router.push(ROUTES.tabs.merry as any)}
-          />
-
-          <PriorityActionCard
-            title="Savings"
-            subtitle="Continue growing your savings without leaving the main flow."
-            amount={heroSavings}
-            icon="wallet-outline"
-            tone="primary"
-            primaryLabel="Open Savings"
-            secondaryLabel="Deposit"
-            onPrimaryPress={() => router.push(ROUTES.tabs.savings as any)}
-            onSecondaryPress={() => router.push(ROUTES.tabs.savings as any)}
+            onSecondary={() => {
+              if (!merryAllowed) {
+                goToKyc();
+                return;
+              }
+              router.push(ROUTES.tabs.merry as any);
+            }}
           />
         </View>
       </Section>
 
-      <Section
-        title="Merry Summary"
-        subtitle="A short summary only, without overcrowding the dashboard."
-      >
-        {topMerryCards.length === 0 ? (
-          <EmptyState
-            icon="repeat-outline"
-            title="No active merry yet"
-            subtitle={
-              merryAllowed
-                ? "When you join a merry, your summary will appear here."
-                : "Complete the needed account steps to unlock merry participation."
-            }
-            actionLabel={merryAllowed ? "Open Merry" : "Complete KYC"}
-            onAction={() =>
-              merryAllowed
-                ? router.push(ROUTES.tabs.merry as any)
-                : goToKyc()
-            }
-          />
-        ) : (
-          <View style={styles.merryCardsWrap}>
-            {topMerryCards.map((item) => (
-              <MerryDueCard key={`merry-${item.merry_id}`} item={item} />
-            ))}
-          </View>
-        )}
-      </Section>
-
-      {notificationItems.length > 0 ? (
-        <Section
-          title="Action Needed"
-          subtitle="Only important updates are shown here."
-        >
-          <View style={styles.notificationsWrap}>
-            {notificationItems.map((item) => (
-              <NotificationCard key={item.id} item={item} />
+      {noticeItems.length > 0 ? (
+        <Section title="Updates">
+          <View style={styles.noticeWrap}>
+            {noticeItems.map((item) => (
+              <NoticeCard key={item.id} item={item} />
             ))}
           </View>
         </Section>
       ) : null}
 
-      <Section
-        title="Other Links"
-        subtitle="Secondary areas stay small and out of the main dashboard flow."
-      >
-        <View style={styles.miniLinksWrap}>
+      <Section title="More">
+        <View style={styles.smallLinksWrap}>
           {groupAllowed ? (
-            <MiniLink
+            <SmallLink
               title="Groups"
               icon="people-outline"
               onPress={() => router.push(ROUTES.tabs.groups as any)}
             />
           ) : null}
 
-          <MiniLink
+          <SmallLink
             title="Profile"
             icon="person-outline"
             onPress={() => router.push(ROUTES.tabs.profile as any)}
           />
 
-          <MiniLink
+          <SmallLink
             title="Notifications"
             icon="notifications-outline"
             onPress={() => router.push("/(tabs)/notifications" as any)}
           />
 
-          <MiniLink
+          <SmallLink
             title="Loans"
-            icon={loanAllowed ? "cash-outline" : "lock-closed-outline"}
+            icon={loanAllowed ? "document-text-outline" : "lock-closed-outline"}
             onPress={() =>
               loanAllowed
                 ? router.push(ROUTES.tabs.loans as any)
@@ -878,7 +708,7 @@ export default function DashboardScreen() {
           />
 
           {isAdmin ? (
-            <MiniLink
+            <SmallLink
               title="Admin"
               icon="shield-checkmark-outline"
               onPress={() => router.push(ROUTES.tabs.groups as any)}
@@ -888,9 +718,9 @@ export default function DashboardScreen() {
       </Section>
 
       {hasAmount(totalOutstandingLoans) ? (
-        <View style={styles.loanNoteWrap}>
-          <Text style={styles.loanNoteText}>
-            Loan balance: {formatKes(totalOutstandingLoans)}
+        <View style={styles.loanStrip}>
+          <Text style={styles.loanStripText}>
+            Active loan balance: {formatKes(totalOutstandingLoans)}
           </Text>
         </View>
       ) : null}
@@ -918,7 +748,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  headerRow: {
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -926,20 +756,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
 
-  headerBrand: {
+  topBarLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     flex: 1,
   },
 
-  headerBrandText: {
-    flex: 1,
-  },
-
-  headerBrandIcon: {
-    width: 50,
-    height: 50,
+  brandIcon: {
+    width: 52,
+    height: 52,
     borderRadius: 18,
     backgroundColor: COLORS.primary,
     alignItems: "center",
@@ -947,67 +773,65 @@ const styles = StyleSheet.create({
     ...SHADOW.soft,
   },
 
-  headerTitle: {
+  brandTitle: {
     ...TYPE.title,
     color: COLORS.text,
     fontWeight: "900",
   },
 
-  headerSubtitle: {
+  brandSubtitle: {
     ...TYPE.caption,
     color: COLORS.textMuted,
     marginTop: 2,
   },
 
+  refreshBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: "rgba(14, 94, 111, 0.08)",
+  },
+
   heroCard: {
     ...P.dashboardHero,
+    borderRadius: 30,
     overflow: "hidden",
     marginBottom: SPACING.lg,
-    borderRadius: 30,
+    paddingBottom: SPACING.md,
   },
 
-  heroCircleOne: {
+  heroDecorOne: {
     position: "absolute",
-    width: 240,
-    height: 240,
+    width: 190,
+    height: 190,
     borderRadius: 999,
+    top: -60,
+    right: -35,
     backgroundColor: "rgba(255,255,255,0.08)",
-    top: -90,
-    right: -40,
   },
 
-  heroCircleTwo: {
+  heroDecorTwo: {
     position: "absolute",
-    width: 160,
-    height: 160,
+    width: 130,
+    height: 130,
     borderRadius: 999,
+    bottom: -30,
+    left: -15,
     backgroundColor: "rgba(255,255,255,0.05)",
-    bottom: -40,
-    left: -30,
   },
 
-  heroGlow: {
-    position: "absolute",
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    backgroundColor: "rgba(140, 240, 199, 0.09)",
-    top: 55,
-    right: 15,
-  },
-
-  heroTop: {
+  heroHeaderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
   },
 
-  heroTextBlock: {
-    flex: 1,
-    paddingRight: SPACING.md,
-  },
-
-  heroEyebrow: {
+  heroTag: {
     ...TYPE.caption,
     color: "rgba(255,255,255,0.78)",
     fontWeight: "900",
@@ -1017,146 +841,95 @@ const styles = StyleSheet.create({
   heroTitle: {
     ...TYPE.h1,
     color: COLORS.white,
-    marginTop: 6,
+    marginTop: 8,
     fontWeight: "900",
   },
 
-  heroSubtitle: {
-    ...TYPE.subtext,
-    color: "rgba(255,255,255,0.88)",
-    marginTop: 8,
-    lineHeight: 20,
-  },
-
-  heroAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  heroArrow: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    marginTop: 2,
   },
 
-  heroBalanceCard: {
-    marginTop: SPACING.lg,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: "rgba(255,255,255,0.11)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-  },
-
-  heroBalanceLabel: {
-    ...TYPE.caption,
-    color: "rgba(255,255,255,0.74)",
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-
-  heroBalanceValue: {
-    marginTop: 8,
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: "900",
-    color: COLORS.white,
-  },
-
-  heroBalanceNote: {
-    ...TYPE.subtext,
-    color: "rgba(255,255,255,0.82)",
-    marginTop: 6,
-    lineHeight: 18,
-  },
-
-  heroButtonRow: {
+  heroMetaRow: {
     flexDirection: "row",
-    alignItems: "center",
     marginTop: SPACING.md,
   },
 
-  heroPills: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-
-  heroPill: {
+  heroMetaPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.12)",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: RADIUS.round,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
-  heroPillText: {
+  heroMetaText: {
     ...TYPE.caption,
     color: COLORS.white,
     fontWeight: "800",
   },
 
-  overviewRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  heroStatsWrap: {
+    marginTop: SPACING.md,
     gap: SPACING.sm,
-    marginBottom: SPACING.lg,
   },
 
-  statCard: {
-    flex: 1,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    minHeight: 118,
+  statPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
   },
 
-  statIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  statPillIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SPACING.sm,
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
-  statLabel: {
+  statPillLabel: {
     ...TYPE.caption,
-    color: COLORS.textMuted,
-    fontWeight: "700",
+    color: "rgba(255,255,255,0.82)",
   },
 
-  statValue: {
-    marginTop: 8,
-    fontSize: 16,
-    lineHeight: 21,
+  statPillValue: {
+    ...TYPE.bodyStrong,
+    color: COLORS.white,
     fontWeight: "900",
-    color: COLORS.text,
+    marginTop: 2,
   },
 
-  priorityWrap: {
+  actionsWrap: {
     gap: SPACING.md,
   },
 
-  priorityCard: {
+  actionCard: {
     padding: SPACING.md,
     borderRadius: 24,
-    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
+    backgroundColor: COLORS.white,
   },
 
-  priorityTop: {
+  actionTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  priorityIconWrap: {
+  actionIconWrap: {
     width: 50,
     height: 50,
     borderRadius: 18,
@@ -1164,165 +937,59 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  priorityTextWrap: {
-    flex: 1,
-  },
-
-  priorityTitle: {
+  actionTitle: {
     ...TYPE.title,
     color: COLORS.text,
     fontWeight: "900",
   },
 
-  prioritySubtitle: {
+  actionSubtitle: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
     marginTop: 4,
     lineHeight: 18,
   },
 
-  priorityAmountBox: {
-    marginTop: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-  },
-
-  priorityAmountLabel: {
-    ...TYPE.caption,
-    color: COLORS.textMuted,
-  },
-
-  priorityAmountValue: {
-    marginTop: 4,
-    fontSize: 24,
-    lineHeight: 28,
-    fontWeight: "900",
-  },
-
-  priorityButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: SPACING.md,
-  },
-
-  merryCardsWrap: {
-    gap: SPACING.md,
-  },
-
-  merryCard: {
-    padding: SPACING.md,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
-  },
-
-  merryCardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
-  },
-
-  merryCardTitle: {
-    ...TYPE.title,
-    color: COLORS.text,
-    fontWeight: "900",
-  },
-
-  merryCardSub: {
-    ...TYPE.subtext,
-    color: COLORS.textMuted,
-    marginTop: 4,
-  },
-
-  merryBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: RADIUS.round,
-  },
-
-  merryBadgeDanger: {
-    backgroundColor: COLORS.dangerSoft,
-  },
-
-  merryBadgeWarning: {
-    backgroundColor: COLORS.warningSoft,
-  },
-
-  merryBadgeSuccess: {
-    backgroundColor: COLORS.successSoft,
-  },
-
-  merryBadgeText: {
-    ...TYPE.caption,
-    fontWeight: "900",
-    color: COLORS.text,
-  },
-
-  merryAmountBox: {
+  actionAmountBox: {
     marginTop: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
     backgroundColor: COLORS.primarySoft,
   },
 
-  merryAmountLabel: {
+  actionAmountLabel: {
     ...TYPE.caption,
     color: COLORS.textMuted,
   },
 
-  merryAmountValue: {
-    ...TYPE.h2,
-    color: COLORS.primary,
+  actionAmountValue: {
     marginTop: 4,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: "900",
   },
 
-  merryMeta: {
-    marginTop: SPACING.md,
-    gap: 10,
-  },
-
-  merryMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  merryMetaLabel: {
-    ...TYPE.caption,
-    color: COLORS.textMuted,
-  },
-
-  merryMetaValue: {
-    ...TYPE.bodyStrong,
-    color: COLORS.text,
-    flexShrink: 1,
-    textAlign: "right",
-  },
-
-  merryActionRow: {
-    marginTop: SPACING.md,
+  actionButtons: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: SPACING.md,
   },
 
-  notificationsWrap: {
+  noticeWrap: {
     gap: SPACING.sm,
   },
 
-  notificationCard: {
+  noticeCard: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
+    backgroundColor: COLORS.white,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  notificationIconWrap: {
+  noticeIcon: {
     width: 42,
     height: 42,
     borderRadius: 14,
@@ -1330,34 +997,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  notificationTextWrap: {
-    flex: 1,
-  },
-
-  notificationTitle: {
+  noticeTitle: {
     ...TYPE.bodyStrong,
     color: COLORS.text,
     fontWeight: "800",
   },
 
-  notificationSubtitle: {
+  noticeSubtitle: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
     marginTop: 4,
     lineHeight: 18,
   },
 
-  notificationAction: {
+  noticeAction: {
     ...TYPE.caption,
     marginTop: 8,
     fontWeight: "900",
   },
 
-  miniLinksWrap: {
+  smallLinksWrap: {
     gap: SPACING.sm,
   },
 
-  miniLinkCard: {
+  smallLink: {
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: 18,
@@ -1369,14 +1032,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  miniLinkInner: {
+  smallLinkLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     flex: 1,
   },
 
-  miniLinkIcon: {
+  smallLinkIcon: {
     width: 30,
     height: 30,
     borderRadius: 12,
@@ -1385,20 +1048,26 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(14, 94, 111, 0.08)",
   },
 
-  miniLinkText: {
+  smallLinkText: {
     ...TYPE.bodyStrong,
     color: COLORS.text,
     fontWeight: "700",
   },
 
-  loanNoteWrap: {
+  loanStrip: {
     marginTop: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
+    paddingVertical: 10,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: "rgba(14, 94, 111, 0.08)",
   },
 
-  loanNoteText: {
+  loanStripText: {
     ...TYPE.caption,
     color: COLORS.textMuted,
     textAlign: "center",
+    fontWeight: "700",
   },
 });

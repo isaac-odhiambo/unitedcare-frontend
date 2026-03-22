@@ -4,12 +4,17 @@
 // Centralized around ENDPOINTS from services/endpoints.ts
 //
 // BACKEND CONTRACT (confirmed):
-// - STK endpoint expects: phone, amount
+// - STK endpoint expects: phone, amount, purpose, reference, narration
 // - JWT Bearer token is required via api client
 // - Frontend sends BASE amount for STK
 // - Backend is source of truth for fee calculation
 // - Manual paybill/C2B callback returns TOTAL amount paid
 // - Frontend confirms paybill by polling member transaction endpoints
+// - Backend transaction statuses include:
+//   INITIATED, PENDING, SUCCESS, FAILED, CANCELLED, TIMEOUT, PROCESSING, PAID
+// - Backend allocation statuses include:
+//   UNALLOCATED, AUTO_ALLOCATED, PARTIALLY_ALLOCATED,
+//   MANUAL_REVIEW, MANUALLY_ALLOCATED, INVALID_REFERENCE
 //
 // REFERENCE STANDARD:
 // - saving19 => savings deposit for USER id 19
