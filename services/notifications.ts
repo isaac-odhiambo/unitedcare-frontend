@@ -25,27 +25,55 @@ export type AppNotification = {
   read_at?: string | null;
 };
 
-export async function getMyNotifications() {
-  const res = await api.get("/notifications/");
-  return Array.isArray(res.data) ? res.data : res.data?.results ?? [];
+type NotificationListResponse =
+  | AppNotification[]
+  | {
+      results?: AppNotification[];
+      count?: number;
+      next?: string | null;
+      previous?: string | null;
+    };
+
+function normalizeNotificationList(data: NotificationListResponse): AppNotification[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  return [];
 }
 
-export async function getUnreadNotificationCount() {
+function sortNewestFirst(items: AppNotification[]): AppNotification[] {
+  return [...items].sort((a, b) => {
+    const aTime = new Date(a.created_at).getTime();
+    const bTime = new Date(b.created_at).getTime();
+    return bTime - aTime;
+  });
+}
+
+export async function getMyNotifications(): Promise<AppNotification[]> {
+  const res = await api.get("/notifications/");
+  return sortNewestFirst(normalizeNotificationList(res.data));
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
   const res = await api.get("/notifications/unread-count/");
   return Number(res.data?.unread_count ?? 0);
 }
 
-export async function markNotificationRead(notificationId: number) {
+export async function markNotificationRead(notificationId: number): Promise<unknown> {
   const res = await api.post(`/notifications/${notificationId}/read/`);
   return res.data;
 }
 
-export async function markAllNotificationsRead() {
+export async function markAllNotificationsRead(): Promise<unknown> {
   const res = await api.post("/notifications/read-all/");
   return res.data;
 }
 
-export async function deleteNotification(notificationId: number) {
+export async function deleteNotification(notificationId: number): Promise<unknown> {
   const res = await api.post(`/notifications/${notificationId}/delete/`);
   return res.data;
+}
+
+export async function getUnreadNotifications(): Promise<AppNotification[]> {
+  const items = await getMyNotifications();
+  return items.filter((item) => !item.is_read && !item.is_deleted);
 }

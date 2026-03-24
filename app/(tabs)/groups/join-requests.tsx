@@ -1,23 +1,16 @@
 // app/(tabs)/groups/join-requests.tsx
-// ------------------------------------------------
-// ✅ New screen for my group join requests
-// ✅ Matches latest services/groups.ts
-// ✅ Uses listMyGroupJoinRequests()
-// ✅ Uses cancelGroupJoinRequest()
-// ✅ Opens related group detail
-// ------------------------------------------------
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -28,10 +21,10 @@ import Section from "@/components/ui/Section";
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import {
-    cancelGroupJoinRequest,
-    getApiErrorMessage,
-    GroupJoinRequest,
-    listMyGroupJoinRequests,
+  cancelGroupJoinRequest,
+  getApiErrorMessage,
+  GroupJoinRequest,
+  listMyGroupJoinRequests,
 } from "@/services/groups";
 import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
@@ -42,34 +35,60 @@ function fmtDate(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString();
+  return d.toLocaleDateString();
 }
 
-function statusColor(status?: string) {
-  switch (String(status || "").toUpperCase()) {
-    case "APPROVED":
-      return COLORS.success;
-    case "REJECTED":
-      return COLORS.danger;
-    case "CANCELLED":
-      return COLORS.gray;
-    case "PENDING":
-    default:
-      return COLORS.warning;
+function hasUsefulUserIdentity(user: any) {
+  if (!user || typeof user !== "object") return false;
+  return user.id != null || !!user.phone || !!user.username || !!user.email;
+}
+
+function statusTone(status?: string): {
+  bg: string;
+  color: string;
+  label: string;
+} {
+  const value = String(status || "").toUpperCase().trim();
+
+  if (value === "APPROVED") {
+    return {
+      bg: "rgba(46,125,50,0.12)",
+      color: COLORS.success,
+      label: "APPROVED",
+    };
   }
-}
 
-function statusLabel(status?: string) {
-  return String(status || "PENDING").replaceAll("_", " ").toUpperCase();
+  if (value === "REJECTED") {
+    return {
+      bg: "rgba(220,53,69,0.12)",
+      color: COLORS.danger,
+      label: "REJECTED",
+    };
+  }
+
+  if (value === "CANCELLED") {
+    return {
+      bg: "rgba(107,114,128,0.12)",
+      color: COLORS.gray,
+      label: "CANCELLED",
+    };
+  }
+
+  return {
+    bg: "rgba(245,158,11,0.12)",
+    color: COLORS.warning,
+    label: "PENDING",
+  };
 }
 
 function StatusPill({ status }: { status?: string }) {
-  const color = statusColor(status);
+  const tone = statusTone(status);
 
   return (
-    <View style={[styles.pill, { borderColor: color }]}>
-      <View style={[styles.pillDot, { backgroundColor: color }]} />
-      <Text style={styles.pillText}>{statusLabel(status)}</Text>
+    <View style={[styles.statusPill, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.statusPillText, { color: tone.color }]}>
+        {tone.label}
+      </Text>
     </View>
   );
 }
@@ -83,34 +102,51 @@ function JoinRequestCard({
   busy: boolean;
   onCancel: (item: GroupJoinRequest) => void;
 }) {
-  const isPending = String(item.status || "").toUpperCase() === "PENDING";
+  const isPending = String(item.status || "").toUpperCase().trim() === "PENDING";
+  const groupId = Number(item.group_id ?? 0);
 
   return (
     <Card style={styles.itemCard}>
-      <View style={styles.rowTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>{item.group_name || `Group #${item.group_id}`}</Text>
-          <Text style={styles.sub}>
-            Request #{item.id} • Created {fmtDate(item.created_at)}
+      <View style={styles.cardTopRow}>
+        <View style={styles.groupIconWrap}>
+          <Ionicons
+            name="git-pull-request-outline"
+            size={18}
+            color={COLORS.white}
+          />
+        </View>
+
+        <View style={styles.cardTextWrap}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.group_name || `Group #${item.group_id ?? "—"}`}
+          </Text>
+          <Text style={styles.cardSub}>
+            Sent {fmtDate(item.created_at)}
           </Text>
         </View>
 
         <StatusPill status={item.status} />
       </View>
 
-      {item.note ? <Text style={styles.note}>Note: {item.note}</Text> : null}
-
-      {item.reviewed_at ? (
-        <Text style={styles.meta}>Reviewed: {fmtDate(item.reviewed_at)}</Text>
+      {item.note ? (
+        <Text style={styles.noteText} numberOfLines={2}>
+          {item.note}
+        </Text>
       ) : null}
 
-      <View style={styles.actionsRow}>
+      {item.reviewed_at ? (
+        <Text style={styles.reviewedText}>
+          Reviewed {fmtDate(item.reviewed_at)}
+        </Text>
+      ) : null}
+
+      <View style={styles.cardFooter}>
         <Button
           title="Open Group"
           variant="secondary"
           onPress={() => {
-            if (item.group_id) {
-              router.push(ROUTES.dynamic.groupDetail(item.group_id) as any);
+            if (groupId > 0) {
+              router.push(ROUTES.dynamic.groupDetail(groupId) as any);
             }
           }}
           style={{ flex: 1 }}
@@ -120,7 +156,7 @@ function JoinRequestCard({
           <>
             <View style={{ width: SPACING.sm }} />
             <Button
-              title={busy ? "Cancelling..." : "Cancel"}
+              title={busy ? "Please wait..." : "Cancel"}
               onPress={() => onCancel(item)}
               disabled={busy}
               style={{ flex: 1 }}
@@ -150,14 +186,20 @@ export default function GroupJoinRequestsScreen() {
         listMyGroupJoinRequests(),
       ]);
 
-      const sessionUser =
+      const sessionUserRaw =
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+      const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
 
-      const mergedUser: JoinRequestsUser | null =
-        sessionUser || meUser
-          ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
-          : null;
+      const sessionUser = hasUsefulUserIdentity(sessionUserRaw)
+        ? sessionUserRaw
+        : null;
+      const meUser = hasUsefulUserIdentity(meUserRaw) ? meUserRaw : null;
+
+      const mergedUser: JoinRequestsUser | null = meUser
+        ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
+        : sessionUser
+        ? { ...sessionUser }
+        : null;
 
       setUser(mergedUser);
 
@@ -208,19 +250,19 @@ export default function GroupJoinRequestsScreen() {
 
   const grouped = useMemo(() => {
     const pending = rows.filter(
-      (r) => String(r.status || "").toUpperCase() === "PENDING"
+      (r) => String(r.status || "").toUpperCase().trim() === "PENDING"
     );
-    const reviewed = rows.filter(
-      (r) => String(r.status || "").toUpperCase() !== "PENDING"
+    const history = rows.filter(
+      (r) => String(r.status || "").toUpperCase().trim() !== "PENDING"
     );
-    return { pending, reviewed };
+    return { pending, history };
   }, [rows]);
 
   const handleCancel = useCallback(
     async (item: GroupJoinRequest) => {
       Alert.alert(
         "Cancel Request",
-        `Cancel your join request for ${item.group_name || `Group #${item.group_id}`}?`,
+        `Cancel your request for ${item.group_name || `Group #${item.group_id}`}?`,
         [
           { text: "No", style: "cancel" },
           {
@@ -274,66 +316,54 @@ export default function GroupJoinRequestsScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>My Join Requests</Text>
-          <Text style={styles.hSub}>
-            Track pending and reviewed requests for group membership.
-          </Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTitle}>Join Requests</Text>
+            <Text style={styles.heroSubtitle}>
+              Track your current and past group requests.
+            </Text>
+          </View>
+
+          <View style={styles.heroIconWrap}>
+            <Ionicons
+              name="git-pull-request-outline"
+              size={22}
+              color={COLORS.white}
+            />
+          </View>
         </View>
 
-        <Button
-          variant="ghost"
-          title="Refresh"
-          onPress={onRefresh}
-          leftIcon={
-            <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
-          }
-        />
+        <View style={styles.heroStatsRow}>
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Pending</Text>
+            <Text style={styles.heroStatValue}>{grouped.pending.length}</Text>
+          </View>
+
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>History</Text>
+            <Text style={styles.heroStatValue}>{grouped.history.length}</Text>
+          </View>
+        </View>
       </View>
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Pending</Text>
-          <Text style={styles.summaryValue}>{grouped.pending.length}</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Reviewed</Text>
-          <Text style={styles.summaryValue}>{grouped.reviewed.length}</Text>
-        </View>
-      </View>
-
-      <Section title="Quick Actions">
-        <View style={styles.actionsRow}>
-          <Button
-            title="Browse Groups"
-            onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-            style={{ flex: 1 }}
-          />
-          <View style={{ width: SPACING.sm }} />
-          <Button
-            title="My Memberships"
-            variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-            style={{ flex: 1 }}
-          />
-        </View>
-      </Section>
-
-      <Section title="Pending Requests">
+      <Section title="Pending">
         {grouped.pending.length === 0 ? (
           <EmptyState
             icon="git-pull-request-outline"
             title="No pending requests"
-            subtitle="Any new group join requests you send will appear here."
+            subtitle="New join requests will appear here."
           />
         ) : (
           grouped.pending.map((item) => (
@@ -351,9 +381,9 @@ export default function GroupJoinRequestsScreen() {
         )}
       </Section>
 
-      {grouped.reviewed.length > 0 ? (
-        <Section title="Reviewed Requests">
-          {grouped.reviewed.map((item) => (
+      {grouped.history.length > 0 ? (
+        <Section title="History">
+          {grouped.history.map((item) => (
             <JoinRequestCard
               key={item.id}
               item={item}
@@ -364,14 +394,21 @@ export default function GroupJoinRequestsScreen() {
         </Section>
       ) : null}
 
-      <View style={{ height: 24 }} />
+      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 28,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -380,32 +417,80 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    ...SHADOW.card,
+  },
+
+  heroTop: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  heroIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
-    gap: SPACING.md,
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
-  hTitle: {
+  heroTitle: {
+    fontSize: 22,
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    color: COLORS.white,
   },
 
-  hSub: {
+  heroSubtitle: {
     marginTop: 6,
-    fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: FONT.regular,
+  },
+
+  heroStatsRow: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.lg,
+  },
+
+  heroStatPill: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+
+  heroStatLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: FONT.regular,
+  },
+
+  heroStatValue: {
+    marginTop: 4,
+    fontSize: 16,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
   },
 
   errorCard: {
-    marginBottom: SPACING.md,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    backgroundColor: "rgba(220,53,69,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(220,53,69,0.18)",
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -416,101 +501,78 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
-  summaryGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
-  },
-
   itemCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
-  rowTop: {
+  cardTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: SPACING.md,
+    alignItems: "center",
+    gap: SPACING.sm,
   },
 
-  title: {
+  groupIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+  },
+
+  cardTextWrap: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  cardTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
-  sub: {
-    marginTop: 6,
+  cardSub: {
+    marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
   },
 
-  note: {
-    marginTop: 10,
+  noteText: {
+    marginTop: SPACING.sm,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
     color: COLORS.textMuted,
   },
 
-  meta: {
+  reviewedText: {
     marginTop: 8,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
   },
 
-  actionsRow: {
+  cardFooter: {
     marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
   },
 
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    backgroundColor: COLORS.surface,
+    borderRadius: 999,
   },
 
-  pillDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 8,
-  },
-
-  pillText: {
+  statusPillText: {
     fontSize: 11,
-    color: COLORS.text,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
   },
 });

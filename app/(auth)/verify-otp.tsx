@@ -2,6 +2,7 @@
 
 import { getErrorMessage } from "@/services/api";
 import { resendOtp, verifyOtp } from "@/services/auth";
+import { saveSessionUser } from "@/services/session";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -57,6 +58,47 @@ function parseBackendError(e: any): FieldErrors {
   return { general: pretty || "Verification failed. Please try again." };
 }
 
+function pickUserFromVerifyResponse(data: any) {
+  const src = data?.user ?? data ?? {};
+
+  return {
+    id: src?.id,
+    username: src?.username,
+    phone: src?.phone,
+    email: src?.email ?? null,
+    id_number: src?.id_number ?? null,
+
+    role: src?.role,
+    status: src?.status,
+
+    is_active: typeof src?.is_active === "boolean" ? src.is_active : undefined,
+    is_phone_verified:
+      typeof src?.is_phone_verified === "boolean"
+        ? src.is_phone_verified
+        : true,
+    is_admin:
+      typeof src?.is_admin === "boolean"
+        ? src.is_admin
+        : !!(src?.role === "admin"),
+
+    kyc_status: src?.kyc_status,
+    is_kyc_approved:
+      typeof src?.is_kyc_approved === "boolean"
+        ? src.is_kyc_approved
+        : undefined,
+
+    has_limited_access:
+      typeof src?.has_limited_access === "boolean"
+        ? src.has_limited_access
+        : undefined,
+
+    has_full_access:
+      typeof src?.has_full_access === "boolean"
+        ? src.has_full_access
+        : undefined,
+  };
+}
+
 export default function VerifyOtpScreen() {
   const params = useLocalSearchParams();
 
@@ -69,14 +111,19 @@ export default function VerifyOtpScreen() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
-
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (cooldown <= 0) return;
 
     const t = setInterval(() => {
-      setCooldown((c) => c - 1);
+      setCooldown((c) => {
+        if (c <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return c - 1;
+      });
     }, 1000);
 
     return () => clearInterval(t);
@@ -114,12 +161,19 @@ export default function VerifyOtpScreen() {
         otp,
       });
 
+      const user = pickUserFromVerifyResponse(res);
+      await saveSessionUser(user);
+
       Alert.alert(
         "Success",
-        res?.detail || "Account verified successfully."
+        res?.detail || "Account verified successfully.",
+        [
+          {
+            text: "Continue",
+            onPress: () => router.replace("/(auth)/login"),
+          },
+        ]
       );
-
-      router.replace("/(auth)/login");
     } catch (e: any) {
       const parsed = parseBackendError(e);
       setErrors(parsed);
@@ -229,7 +283,7 @@ export default function VerifyOtpScreen() {
           style={[styles.button, loading && styles.buttonDisabled]}
         >
           {loading ? (
-            <View style={{ flexDirection: "row", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <ActivityIndicator color="#fff" />
               <Text style={styles.buttonText}>Verifying...</Text>
             </View>

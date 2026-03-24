@@ -18,6 +18,7 @@ import {
 type FieldErrors = {
   username?: string;
   phone?: string;
+  id_number?: string;
   password?: string;
   general?: string;
 };
@@ -28,6 +29,10 @@ function normalizePhone(input: string) {
 
 function normalizeName(input: string) {
   return input.trim().replace(/\s+/g, " ");
+}
+
+function normalizeIdNumber(input: string) {
+  return input.replace(/\D/g, "").trim();
 }
 
 function parseBackendError(e: any): FieldErrors {
@@ -56,6 +61,12 @@ function parseBackendError(e: any): FieldErrors {
     errors.phone = data.phone;
   }
 
+  if (Array.isArray(data?.id_number) && data.id_number.length) {
+    errors.id_number = String(data.id_number[0]);
+  } else if (typeof data?.id_number === "string") {
+    errors.id_number = data.id_number;
+  }
+
   if (Array.isArray(data?.password) && data.password.length) {
     errors.password = String(data.password[0]);
   } else if (typeof data?.password === "string") {
@@ -70,6 +81,7 @@ function parseBackendError(e: any): FieldErrors {
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
+  const [idNumber, setIdNumber] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -79,6 +91,7 @@ export default function RegisterScreen() {
 
     const cleanName = normalizeName(username);
     const cleanPhone = normalizePhone(phone);
+    const cleanIdNumber = normalizeIdNumber(idNumber);
 
     if (!cleanName) {
       next.username = "Name is required.";
@@ -91,6 +104,10 @@ export default function RegisterScreen() {
       next.phone = "Phone number is required.";
     } else if (!/^(07|01)\d{8}$/.test(cleanPhone)) {
       next.phone = "Use Kenyan format: 07XXXXXXXX or 01XXXXXXXX.";
+    }
+
+    if (cleanIdNumber && !/^\d{1,9}$/.test(cleanIdNumber)) {
+      next.id_number = "ID number must be numeric and not exceed 9 digits.";
     }
 
     if (!password.trim()) {
@@ -110,6 +127,7 @@ export default function RegisterScreen() {
 
     const cleanName = normalizeName(username);
     const cleanPhone = normalizePhone(phone);
+    const cleanIdNumber = normalizeIdNumber(idNumber);
 
     try {
       setLoading(true);
@@ -117,6 +135,7 @@ export default function RegisterScreen() {
       await registerUser({
         username: cleanName,
         phone: cleanPhone,
+        id_number: cleanIdNumber || undefined,
         password,
       });
 
@@ -197,6 +216,31 @@ export default function RegisterScreen() {
         />
         {errors.phone ? (
           <Text style={styles.fieldError}>{errors.phone}</Text>
+        ) : null}
+
+        <TextInput
+          style={[styles.input, errors.id_number ? styles.inputError : null]}
+          placeholder="ID Number (optional)"
+          placeholderTextColor={COLORS.gray}
+          value={idNumber}
+          onChangeText={(text) => {
+            setIdNumber(normalizeIdNumber(text));
+            if (errors.id_number || errors.general) {
+              setErrors((prev) => ({
+                ...prev,
+                id_number: undefined,
+                general: undefined,
+              }));
+            }
+          }}
+          keyboardType="number-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loading}
+          maxLength={9}
+        />
+        {errors.id_number ? (
+          <Text style={styles.fieldError}>{errors.id_number}</Text>
         ) : null}
 
         <TextInput

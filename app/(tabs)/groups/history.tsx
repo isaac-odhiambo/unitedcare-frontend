@@ -1,17 +1,16 @@
 // app/(tabs)/savings/history.tsx
-// ----------------------------------------------------
-// Shows full savings transaction history (all accounts)
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -22,8 +21,8 @@ import Section from "@/components/ui/Section";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
-    getSavingsHistoryRows,
-    SavingsHistoryRow,
+  getSavingsHistoryRows,
+  SavingsHistoryRow,
 } from "@/services/savings";
 
 function formatKes(value?: string | number) {
@@ -38,7 +37,9 @@ function formatKes(value?: string | number) {
 
 function formatDate(v?: string) {
   if (!v) return "—";
-  return String(v).replace("T", " ").slice(0, 16);
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v).replace("T", " ").slice(0, 16);
+  return d.toLocaleDateString();
 }
 
 function getDisplayType(row: SavingsHistoryRow): "CREDIT" | "DEBIT" {
@@ -46,32 +47,31 @@ function getDisplayType(row: SavingsHistoryRow): "CREDIT" | "DEBIT" {
   const txn = String(row.txn_type || "").toUpperCase();
 
   if (entry === "CREDIT" || entry === "DEBIT") return entry;
-
   if (txn === "DEPOSIT") return "CREDIT";
   return "DEBIT";
 }
 
-function EntryBadge({ type }: { type: "CREDIT" | "DEBIT" }) {
-  const isCredit = type === "CREDIT";
+function typeTone(type: "CREDIT" | "DEBIT") {
+  return type === "CREDIT"
+    ? {
+        bg: "rgba(46,125,50,0.12)",
+        color: COLORS.success,
+        label: "CREDIT",
+      }
+    : {
+        bg: "rgba(220,38,38,0.12)",
+        color: COLORS.danger,
+        label: "DEBIT",
+      };
+}
+
+function TypePill({ type }: { type: "CREDIT" | "DEBIT" }) {
+  const tone = typeTone(type);
 
   return (
-    <View
-      style={[
-        styles.badge,
-        {
-          backgroundColor: isCredit
-            ? "rgba(46,125,50,0.12)"
-            : "rgba(220,38,38,0.12)",
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.badgeText,
-          { color: isCredit ? COLORS.success : COLORS.danger },
-        ]}
-      >
-        {type}
+    <View style={[styles.typePill, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.typePillText, { color: tone.color }]}>
+        {tone.label}
       </Text>
     </View>
   );
@@ -84,30 +84,42 @@ export default function SavingsHistoryScreen() {
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
-
-      // If backend later supports /savings/history/
-      // replace with correct endpoint
       const data = await getSavingsHistoryRows(0);
-
       setRows(Array.isArray(data) ? data : []);
     } catch (e: any) {
       Alert.alert("Savings", getErrorMessage(e));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      let mounted = true;
+
+      const run = async () => {
+        if (!mounted) return;
+        try {
+          setLoading(true);
+          await load();
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      };
+
+      run();
+
+      return () => {
+        mounted = false;
+      };
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      setRefreshing(true);
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   const totals = useMemo(() => {
@@ -116,7 +128,6 @@ export default function SavingsHistoryScreen() {
 
     rows.forEach((r) => {
       const type = getDisplayType(r);
-
       if (type === "CREDIT") credit += Number(r.amount || 0);
       else debit += Number(r.amount || 0);
     });
@@ -124,75 +135,67 @@ export default function SavingsHistoryScreen() {
     return { credit, debit };
   }, [rows]);
 
+  if (loading) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView
-      style={styles.container}
+      style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTitle}>Savings History</Text>
+            <Text style={styles.heroSubtitle}>
+              Deposits and withdrawals across your savings accounts.
+            </Text>
+          </View>
 
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Savings History</Text>
-          <Text style={styles.subtitle}>
-            Deposits and withdrawals across all savings
-          </Text>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="time-outline" size={22} color={COLORS.white} />
+          </View>
         </View>
 
-        <Ionicons
-          name="time-outline"
-          size={22}
-          color={COLORS.primary}
-        />
-      </View>
+        <View style={styles.heroStatsRow}>
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Credits</Text>
+            <Text style={styles.heroStatValue}>{formatKes(totals.credit)}</Text>
+          </View>
 
-      {/* Summary */}
-
-      <View style={styles.summaryGrid}>
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Total Credits</Text>
-          <Text style={styles.summaryValue}>
-            {formatKes(totals.credit)}
-          </Text>
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Debits</Text>
+            <Text style={styles.heroStatValue}>{formatKes(totals.debit)}</Text>
+          </View>
         </View>
 
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Total Debits</Text>
-          <Text style={styles.summaryValue}>
-            {formatKes(totals.debit)}
-          </Text>
+        <View style={styles.heroActionsRow}>
+          <Button
+            title="Deposit"
+            onPress={() => router.push("/(tabs)/payments/deposit" as any)}
+            style={{ flex: 1 }}
+          />
+          <View style={{ width: SPACING.sm }} />
+          <Button
+            title="Savings"
+            variant="secondary"
+            onPress={() => router.push("/(tabs)/savings" as any)}
+            style={{ flex: 1 }}
+          />
         </View>
       </View>
-
-      {/* Actions */}
-
-      <View style={styles.actionBar}>
-        <Button
-          title="Deposit"
-          onPress={() => router.push("/(tabs)/payments/deposit" as any)}
-          style={{ flex: 1 }}
-        />
-
-        <View style={{ width: SPACING.sm }} />
-
-        <Button
-          title="Back to Accounts"
-          variant="secondary"
-          onPress={() => router.push("/(tabs)/savings" as any)}
-          style={{ flex: 1 }}
-        />
-      </View>
-
-      {/* Transactions */}
 
       <Section title="Transactions">
-        {loading ? (
-          <Text style={styles.muted}>Loading…</Text>
-        ) : rows.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState
             icon="time-outline"
             title="No transactions yet"
@@ -205,23 +208,20 @@ export default function SavingsHistoryScreen() {
             return (
               <Card key={r.id} style={styles.rowCard}>
                 <View style={styles.rowTop}>
-                  <EntryBadge type={type} />
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={styles.amount}>{formatKes(r.amount)}</Text>
+                    <Text style={styles.meta}>
+                      {formatDate(r.created_at)}
+                      {r.reference ? ` • Ref: ${r.reference}` : ""}
+                    </Text>
+                  </View>
 
-                  <Text style={styles.amount}>
-                    {formatKes(r.amount)}
-                  </Text>
+                  <TypePill type={type} />
                 </View>
 
-                <Text style={styles.meta}>
-                  {formatDate(r.created_at)}
-                  {r.reference ? ` • Ref: ${r.reference}` : ""}
-                </Text>
-
-                {(r.narration || r.note) && (
-                  <Text style={styles.note}>
-                    {r.narration || r.note}
-                  </Text>
-                )}
+                {r.narration || r.note ? (
+                  <Text style={styles.note}>{r.narration || r.note}</Text>
+                ) : null}
               </Card>
             );
           })
@@ -234,114 +234,142 @@ export default function SavingsHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
 
-  header: {
+  content: {
     padding: SPACING.lg,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
-    flexDirection: "row",
+    paddingBottom: 24,
+  },
+
+  loadingWrap: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.background,
+  },
+
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    ...SHADOW.card,
+  },
+
+  heroTop: {
+    flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
   },
 
-  title: {
+  heroIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+
+  heroTitle: {
+    fontSize: 22,
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    color: COLORS.white,
   },
 
-  subtitle: {
+  heroSubtitle: {
     marginTop: 6,
-    fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: FONT.regular,
   },
 
-  summaryGrid: {
-    marginTop: SPACING.md,
+  heroStatsRow: {
     flexDirection: "row",
     gap: SPACING.sm as any,
+    marginTop: SPACING.lg,
   },
 
-  summaryCard: {
+  heroStatPill: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
   },
 
-  summaryLabel: {
+  heroStatLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
     fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
   },
 
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
+  heroStatValue: {
+    marginTop: 4,
     fontSize: 16,
-    color: COLORS.dark,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
   },
 
-  actionBar: {
+  heroActionsRow: {
     flexDirection: "row",
-    marginTop: SPACING.md,
+    marginTop: SPACING.lg,
     alignItems: "center",
-  },
-
-  muted: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    color: COLORS.gray,
   },
 
   rowCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
   rowTop: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    gap: SPACING.md,
   },
 
   amount: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
   meta: {
-    marginTop: 10,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  note: {
-    marginTop: 6,
+    marginTop: 8,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.textMuted,
     lineHeight: 18,
   },
 
-  badge: {
+  note: {
+    marginTop: 10,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.textMuted,
+    lineHeight: 18,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 10,
+  },
+
+  typePill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
 
-  badgeText: {
+  typePillText: {
     fontFamily: FONT.bold,
     fontSize: 11,
     letterSpacing: 0.3,

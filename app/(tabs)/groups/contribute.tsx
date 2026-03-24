@@ -1,151 +1,174 @@
 // app/(tabs)/groups/contribute.tsx
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
 
-import Button from "@/components/ui/Button";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+
 import Card from "@/components/ui/Card";
+import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import { getGroup } from "@/services/groups";
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getGroup, Group } from "@/services/groups";
 
-function cleanAmount(v: string) {
-  return (v || "").replace(/[^\d.]/g, "");
+type Params = {
+  groupId?: string;
+};
+
+function toSafeAmount(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? String(n) : "";
 }
 
 export default function GroupContributeScreen() {
-  const params = useLocalSearchParams<{ groupId?: string }>();
+  const params = useLocalSearchParams<Params>();
   const groupId = Number(params.groupId ?? 0);
 
-  const [group, setGroup] = useState<any>(null);
-  const [amount, setAmount] = useState("");
+  const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  const cleanAmt = useMemo(() => cleanAmount(amount), [amount]);
+  const redirectedRef = useRef(false);
 
-  const canSubmit = useMemo(() => {
-    return Number(cleanAmt) > 0 && Number.isFinite(groupId) && groupId > 0;
-  }, [cleanAmt, groupId]);
+  const suggestedAmount = useMemo(() => {
+    return toSafeAmount(group?.contribution_amount);
+  }, [group?.contribution_amount]);
 
-  const load = useCallback(async () => {
+  const goToDeposit = useCallback(
+    (loadedGroup?: Group | null) => {
+      if (redirectedRef.current) return;
+      if (!Number.isFinite(groupId) || groupId <= 0) return;
+
+      redirectedRef.current = true;
+
+      const groupName = String(loadedGroup?.name || "Group").trim();
+      const narration = groupName
+        ? `${groupName} contribution`
+        : "Group contribution";
+
+      router.replace({
+        pathname: ROUTES.tabs.paymentsDeposit as any,
+        params: {
+          title: "Group Contribution",
+          purpose: "GROUP_CONTRIBUTION",
+          reference: `grp${groupId}`,
+          narration,
+          amount: suggestedAmount,
+          groupId: String(groupId),
+          returnTo: ROUTES.dynamic.groupDetail(groupId),
+        },
+      });
+    },
+    [groupId, suggestedAmount]
+  );
+
+  const loadAndContinue = useCallback(async () => {
+    if (!Number.isFinite(groupId) || groupId <= 0) {
+      setFailed(true);
+      setLoading(false);
+      return;
+    }
+
     try {
+      setFailed(false);
       setLoading(true);
+
       const data = await getGroup(groupId);
-      setGroup(data);
+      setGroup(data ?? null);
+      goToDeposit(data ?? null);
     } catch {
       setGroup(null);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
-  }, [groupId]);
+  }, [goToDeposit, groupId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      redirectedRef.current = false;
+      loadAndContinue();
+    }, [loadAndContinue])
   );
-
-  const handlePay = () => {
-    if (!canSubmit) return;
-
-    router.push({
-      pathname: ROUTES.tabs.paymentsDeposit as any,
-      params: {
-        title: "Group Contribution",
-        purpose: "GROUP_CONTRIBUTION",
-        reference: `grp${groupId}`,
-        narration: "Group contribution",
-        amount: cleanAmt,
-        groupId: String(groupId),
-        returnTo: ROUTES.dynamic.groupDetail(groupId),
-      },
-    });
-  };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} />
+      <View style={styles.page}>
+        <Card style={styles.loadingCard}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.loadingTitle}>Preparing payment</Text>
+          <Text style={styles.loadingText}>
+            Opening the payment screen for this group contribution.
+          </Text>
+        </Card>
+      </View>
+    );
+  }
+
+  if (failed) {
+    return (
+      <View style={styles.page}>
+        <EmptyState
+          title="Unable to open contribution"
+          subtitle="We could not prepare the payment screen for this group."
+          actionLabel="Back to Group"
+          onAction={() => {
+            if (Number.isFinite(groupId) && groupId > 0) {
+              router.replace(ROUTES.dynamic.groupDetail(groupId) as any);
+            } else {
+              router.back();
+            }
+          }}
+        />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Group Contribution</Text>
-        <Text style={styles.sub}>{group?.name || ""}</Text>
-      </View>
-
-      <Card style={styles.card}>
-        <Text style={styles.label}>Amount</Text>
-
-        <TextInput
-          value={amount}
-          onChangeText={(v) => setAmount(cleanAmount(v))}
-          placeholder="500"
-          keyboardType="numeric"
-          style={styles.input}
-        />
-
-        <View style={{ height: SPACING.lg }} />
-
-        <Button
-          title="Pay"
-          onPress={handlePay}
-          disabled={!canSubmit}
-        />
+    <View style={styles.page}>
+      <Card style={styles.loadingCard}>
+        <ActivityIndicator color={COLORS.primary} />
+        <Text style={styles.loadingTitle}>Preparing payment</Text>
+        <Text style={styles.loadingText}>
+          Opening the payment screen for this group contribution.
+        </Text>
       </Card>
-
-      <View style={{ height: 24 }} />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg },
-
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-
-  header: { marginBottom: SPACING.lg },
-
-  title: {
-    fontSize: 18,
-    fontFamily: FONT.bold,
-    color: COLORS.text,
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    padding: SPACING.lg,
+    justifyContent: "center",
   },
 
-  sub: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-
-  card: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-  },
-
-  label: {
-    fontSize: 12,
-    marginBottom: 8,
-    color: COLORS.textMuted,
-  },
-
-  input: {
+  loadingCard: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: COLORS.card || "#14202f",
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    fontSize: 14,
+    alignItems: "center",
+    ...SHADOW.card,
+  },
+
+  loadingTitle: {
+    marginTop: SPACING.md,
+    fontSize: 16,
+    fontFamily: FONT.bold,
+    color: COLORS.text,
+    textAlign: "center",
+  },
+
+  loadingText: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: COLORS.textMuted,
+    textAlign: "center",
   },
 });

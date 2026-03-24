@@ -33,6 +33,25 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
+const UI = {
+  bg: "#EEF3F6",
+  surface: "#F8FBFC",
+  surfaceAlt: "#F3F7F9",
+  card: "#F9FBFC",
+  border: "#D8E2E8",
+  text: "#344454",
+  textSoft: "#607080",
+  textMuted: "#7B8997",
+  accent: "#5C7383",
+  accentSoft: "#E5EDF2",
+  successBg: "#EAF5EE",
+  successText: "#466B58",
+  warningBg: "#FFF3E6",
+  warningText: "#9A6A33",
+  dangerBg: "#FDEEEF",
+  dangerText: "#A45555",
+};
+
 function toBool(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -52,26 +71,26 @@ function statusTone(bucket?: string) {
   switch ((bucket || "").toLowerCase()) {
     case "overdue":
       return {
-        bg: COLORS.dangerSoft,
-        text: COLORS.danger,
+        bg: UI.dangerBg,
+        text: UI.dangerText,
         label: "Overdue",
       };
     case "current":
       return {
-        bg: COLORS.warningSoft,
-        text: COLORS.warning,
+        bg: UI.warningBg,
+        text: UI.warningText,
         label: "Due now",
       };
     case "future":
       return {
-        bg: COLORS.successSoft,
-        text: COLORS.success,
+        bg: UI.successBg,
+        text: UI.successText,
         label: "Next due",
       };
     default:
       return {
-        bg: COLORS.primarySoft,
-        text: COLORS.primary,
+        bg: UI.accentSoft,
+        text: UI.accent,
         label: "Open",
       };
   }
@@ -81,42 +100,15 @@ function SummaryBox({
   label,
   value,
   icon,
-  tone = "primary",
 }: {
   label: string;
   value: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone?: "primary" | "warning" | "danger" | "success";
 }) {
-  const tones = {
-    primary: {
-      bg: COLORS.primarySoft,
-      icon: COLORS.primary,
-      border: "rgba(14, 94, 111, 0.10)",
-    },
-    warning: {
-      bg: COLORS.warningSoft,
-      icon: COLORS.warning,
-      border: "rgba(245, 158, 11, 0.10)",
-    },
-    danger: {
-      bg: COLORS.dangerSoft,
-      icon: COLORS.danger,
-      border: "rgba(239, 68, 68, 0.10)",
-    },
-    success: {
-      bg: COLORS.successSoft,
-      icon: COLORS.success,
-      border: "rgba(34, 197, 94, 0.10)",
-    },
-  };
-
-  const t = tones[tone];
-
   return (
-    <Card style={[styles.summaryBox, { borderColor: t.border }]} variant="default">
-      <View style={[styles.summaryIconWrap, { backgroundColor: t.bg }]}>
-        <Ionicons name={icon} size={18} color={t.icon} />
+    <Card style={styles.summaryBox} variant="default">
+      <View style={styles.summaryIconWrap}>
+        <Ionicons name={icon} size={18} color={UI.accent} />
       </View>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={styles.summaryValue} numberOfLines={1}>
@@ -158,6 +150,54 @@ function DueLine({
   );
 }
 
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  return (
+    <View style={styles.kvRow}>
+      <Text style={styles.kvLabel}>{label}</Text>
+      <Text style={styles.kvValue}>
+        {value == null || value === "" ? "—" : String(value)}
+      </Text>
+    </View>
+  );
+}
+
+function InfoStrip({
+  icon,
+  text,
+  tone = "neutral",
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  tone?: "neutral" | "warning" | "danger";
+}) {
+  const toneStyle =
+    tone === "warning"
+      ? { bg: UI.warningBg, border: "#F0DEC9", color: UI.warningText }
+      : tone === "danger"
+        ? { bg: UI.dangerBg, border: "#EBCBCF", color: UI.dangerText }
+        : { bg: UI.accentSoft, border: UI.border, color: UI.text };
+
+  return (
+    <View
+      style={[
+        styles.infoStrip,
+        { backgroundColor: toneStyle.bg, borderColor: toneStyle.border },
+      ]}
+    >
+      <Ionicons name={icon} size={16} color={toneStyle.color} />
+      <Text style={[styles.infoStripText, { color: toneStyle.color }]}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
 export default function MerryDetailScreen() {
   const params = useLocalSearchParams<{ id?: string; includeNext?: string }>();
   const merryId = Number(params.id);
@@ -186,13 +226,11 @@ export default function MerryDetailScreen() {
       try {
         setError("");
 
-        const [sessionRes, meRes, detailRes, breakdownRes] =
-          await Promise.allSettled([
-            getSessionUser(),
-            getMe(),
-            getMerryDetail(merryId),
-            getMerryPaymentBreakdown(merryId, includeNextValue),
-          ]);
+        const [sessionRes, meRes, detailRes] = await Promise.allSettled([
+          getSessionUser(),
+          getMe(),
+          getMerryDetail(merryId),
+        ]);
 
         const sessionUser =
           sessionRes.status === "fulfilled" ? sessionRes.value : null;
@@ -208,29 +246,28 @@ export default function MerryDetailScreen() {
 
         setUser(mergedUser);
 
-        let nextError = "";
-
-        if (detailRes.status === "fulfilled") {
-          setDetail(detailRes.value);
-        } else {
+        if (detailRes.status !== "fulfilled") {
           setDetail(null);
-          nextError =
+          setBreakdown(null);
+          setError(
             getApiErrorMessage(detailRes.reason) ||
-            getErrorMessage(detailRes.reason);
+              getErrorMessage(detailRes.reason)
+          );
+          return;
         }
 
-        if (breakdownRes.status === "fulfilled") {
-          setBreakdown(breakdownRes.value);
+        const nextDetail = detailRes.value;
+        setDetail(nextDetail);
+
+        if (nextDetail.is_member) {
+          const breakdownRes = await getMerryPaymentBreakdown(
+            merryId,
+            includeNextValue
+          );
+          setBreakdown(breakdownRes);
         } else {
           setBreakdown(null);
-          if (!nextError) {
-            nextError =
-              getApiErrorMessage(breakdownRes.reason) ||
-              getErrorMessage(breakdownRes.reason);
-          }
         }
-
-        if (nextError) setError(nextError);
       } catch (e: any) {
         setDetail(null);
         setBreakdown(null);
@@ -267,6 +304,7 @@ export default function MerryDetailScreen() {
 
   const onToggleIncludeNext = useCallback(
     async (value: boolean) => {
+      if (!detail?.is_member) return;
       try {
         setToggling(true);
         setIncludeNext(value);
@@ -275,20 +313,25 @@ export default function MerryDetailScreen() {
         setToggling(false);
       }
     },
-    [load]
+    [detail?.is_member, load]
   );
 
+  const isMember = !!detail?.is_member;
+  const joinStatus = detail?.my_join_request?.status || null;
+  const canRequestJoin = !!detail?.can_request_join && !isMember;
+
   const rawSelectedAmount = useMemo(() => {
-    if (!breakdown) return "0.00";
+    if (!isMember || !breakdown) return "0.00";
     return includeNext ? breakdown.pay_with_next : breakdown.required_now;
-  }, [breakdown, includeNext]);
+  }, [breakdown, includeNext, isMember]);
 
   const walletBalance = useMemo(() => {
+    if (!isMember) return 0;
     return Number(breakdown?.wallet_balance || 0) || 0;
-  }, [breakdown]);
+  }, [breakdown, isMember]);
 
   const payableAfterWallet = useMemo(() => {
-    if (!breakdown) return 0;
+    if (!isMember || !breakdown) return 0;
 
     if (!includeNext && breakdown.net_required_now_after_wallet != null) {
       const n = Number(breakdown.net_required_now_after_wallet || 0);
@@ -298,23 +341,41 @@ export default function MerryDetailScreen() {
     const gross = Number(rawSelectedAmount || 0);
     if (!Number.isFinite(gross)) return 0;
     return Math.max(0, gross - walletBalance);
-  }, [breakdown, includeNext, rawSelectedAmount, walletBalance]);
+  }, [breakdown, includeNext, isMember, rawSelectedAmount, walletBalance]);
 
-  const canPaySelected = hasAmount(payableAfterWallet);
+  const canPaySelected = isMember && hasAmount(payableAfterWallet);
 
   const groupedPreview = useMemo(() => {
-    return breakdown?.items?.length ? breakdown.items : [];
-  }, [breakdown]);
+    return isMember && breakdown?.items?.length ? breakdown.items : [];
+  }, [breakdown, isMember]);
 
   const title = breakdown?.merry_name || detail?.name || "Merry";
-  const seatCount = breakdown?.seat_count ?? 0;
-  const seatNumbers = breakdown?.seat_numbers ?? [];
-  const contributionPerSeat = breakdown?.amount_per_seat || detail?.contribution_amount;
+  const seatCount = isMember
+    ? breakdown?.seat_count ?? 0
+    : detail?.members_count ?? 0;
+  const seatNumbers = isMember ? breakdown?.seat_numbers ?? [] : [];
+  const contributionPerSeat =
+    breakdown?.amount_per_seat || detail?.contribution_amount || "0.00";
+
+  const availableSeatText = useMemo(() => {
+    if (detail?.available_seats == null) return "Unlimited seats";
+    return `${detail.available_seats} seat${detail.available_seats === 1 ? "" : "s"} left`;
+  }, [detail?.available_seats]);
+
+  const membershipLabel = useMemo(() => {
+    if (isMember) return "Joined";
+    if (joinStatus === "PENDING") return "Join request pending";
+    if (joinStatus === "APPROVED") return "Approved";
+    if (joinStatus === "REJECTED") return "Request rejected";
+    if (canRequestJoin) return "Open to join";
+    if (detail?.is_open === false) return "Closed";
+    return "View merry";
+  }, [canRequestJoin, detail?.is_open, isMember, joinStatus]);
 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={UI.accent} />
       </View>
     );
   }
@@ -345,7 +406,7 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!detail && !breakdown) {
+  if (!detail) {
     return (
       <View style={styles.container}>
         <EmptyState
@@ -367,65 +428,92 @@ export default function MerryDetailScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <Card style={styles.heroCard} variant="elevated">
+      <Card style={styles.heroCard} variant="default">
         <View style={styles.heroTop}>
           <View style={{ flex: 1, paddingRight: SPACING.md }}>
             <Text style={styles.heroEyebrow}>MERRY</Text>
             <Text style={styles.heroTitle}>{title}</Text>
             <Text style={styles.heroSubtitle}>
-              {seatCount} seat{seatCount === 1 ? "" : "s"}
-              {seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""}
+              {isMember
+                ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""}`
+                : `${detail.payouts_per_period || 1} slot${Number(detail.payouts_per_period || 1) === 1 ? "" : "s"} per period • ${availableSeatText}`}
             </Text>
           </View>
 
           <View style={styles.heroIconWrap}>
-            <Ionicons name="repeat-outline" size={22} color={COLORS.white} />
+            <Ionicons name="people-outline" size={22} color={UI.accent} />
           </View>
         </View>
 
-        <View style={styles.heroAmountBox}>
-          <Text style={styles.heroAmountLabel}>
-            {includeNext ? "Selected total" : "Required now"}
-          </Text>
-          <Text style={styles.heroAmountValue}>{fmtKES(rawSelectedAmount)}</Text>
+        {isMember ? (
+          <>
+            <View style={styles.heroAmountBox}>
+              <Text style={styles.heroAmountLabel}>
+                {includeNext ? "Selected total" : "Required now"}
+              </Text>
+              <Text style={styles.heroAmountValue}>{fmtKES(rawSelectedAmount)}</Text>
 
-          <View style={styles.heroMiniDivider} />
+              <View style={styles.heroMiniDivider} />
 
-          <View style={styles.heroMiniRow}>
-            <Text style={styles.heroMiniLabel}>Wallet balance</Text>
-            <Text style={styles.heroMiniValue}>{fmtKES(walletBalance)}</Text>
-          </View>
+              <View style={styles.heroMiniRow}>
+                <Text style={styles.heroMiniLabel}>Wallet balance</Text>
+                <Text style={styles.heroMiniValue}>{fmtKES(walletBalance)}</Text>
+              </View>
 
-          <View style={styles.heroMiniRow}>
-            <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
-              You pay now
+              <View style={styles.heroMiniRow}>
+                <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
+                  You pay now
+                </Text>
+                <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
+                  {fmtKES(payableAfterWallet)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.heroActions}>
+              <Button
+                title={canPaySelected ? "Contribute" : "Covered by Wallet"}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/merry/contribute" as any,
+                    params: { merryId: String(merryId) },
+                  })
+                }
+                disabled={!canPaySelected}
+                style={{ flex: 1 }}
+              />
+              <View style={{ width: SPACING.sm }} />
+              <Button
+                title="History"
+                variant="secondary"
+                onPress={() => router.push(ROUTES.tabs.merryPayments as any)}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </>
+        ) : (
+          <View style={styles.heroAmountBox}>
+            <Text style={styles.heroAmountLabel}>Contribution per seat</Text>
+            <Text style={styles.heroAmountValue}>
+              {fmtKES(detail.contribution_amount)}
             </Text>
-            <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
-              {fmtKES(payableAfterWallet)}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.heroActions}>
-          <Button
-            title={canPaySelected ? "Contribute" : "Covered by Wallet"}
-            onPress={() =>
-              router.push({
-                pathname: "/(tabs)/merry/contribute" as any,
-                params: { merryId: String(merryId) },
-              })
-            }
-            disabled={!canPaySelected}
-            style={{ flex: 1 }}
-          />
-          <View style={{ width: SPACING.sm }} />
-          <Button
-            title="History"
-            variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.merryPayments as any)}
-            style={{ flex: 1 }}
-          />
-        </View>
+            <View style={styles.heroMiniDivider} />
+
+            <View style={styles.heroMiniRow}>
+              <Text style={styles.heroMiniLabel}>Status</Text>
+              <Text style={styles.heroMiniValue}>{membershipLabel}</Text>
+            </View>
+
+            <View style={styles.heroMiniRow}>
+              <Text style={styles.heroMiniLabel}>Cycle duration</Text>
+              <Text style={styles.heroMiniValue}>
+                {detail.cycle_duration_weeks} week
+                {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
+              </Text>
+            </View>
+          </View>
+        )}
       </Card>
 
       {error ? (
@@ -433,167 +521,238 @@ export default function MerryDetailScreen() {
           <Ionicons
             name="alert-circle-outline"
             size={18}
-            color={COLORS.danger}
+            color={UI.dangerText}
           />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <Section title="Summary">
-        <View style={styles.summaryGrid}>
-          <SummaryBox
-            label="Overdue"
-            value={fmtKES(breakdown?.overdue)}
-            icon="warning-outline"
-            tone="danger"
-          />
-          <View style={{ width: SPACING.sm }} />
-          <SummaryBox
-            label="Due now"
-            value={fmtKES(breakdown?.current_due)}
-            icon="calendar-outline"
-            tone="warning"
-          />
-        </View>
-
-        <View style={{ height: SPACING.sm }} />
-
-        <View style={styles.summaryGrid}>
-          <SummaryBox
-            label="Next due"
-            value={fmtKES(breakdown?.next_due)}
-            icon="arrow-forward-circle-outline"
-            tone="success"
-          />
-          <View style={{ width: SPACING.sm }} />
-          <SummaryBox
-            label="Per seat"
-            value={fmtKES(contributionPerSeat)}
-            icon="grid-outline"
-            tone="primary"
-          />
-        </View>
-
-        <View style={{ height: SPACING.sm }} />
-
-        <View style={styles.summaryGrid}>
-          <SummaryBox
-            label="Wallet"
-            value={fmtKES(walletBalance)}
-            icon="wallet-outline"
-            tone="success"
-          />
-          <View style={{ width: SPACING.sm }} />
-          <SummaryBox
-            label="You pay now"
-            value={fmtKES(payableAfterWallet)}
-            icon="cash-outline"
-            tone={canPaySelected ? "primary" : "success"}
-          />
-        </View>
-      </Section>
-
-      <Section title="Option">
-        <Card style={styles.optionCard} variant="default">
-          <View style={styles.optionTop}>
-            <View style={{ flex: 1, paddingRight: SPACING.md }}>
-              <Text style={styles.optionTitle}>Include next due</Text>
-              <Text style={styles.optionText}>
-                Add the next contribution to this summary.
-              </Text>
+      {isMember ? (
+        <>
+          <Section title="Summary">
+            <View style={styles.summaryGrid}>
+              <SummaryBox
+                label="Overdue"
+                value={fmtKES(breakdown?.overdue)}
+                icon="warning-outline"
+              />
+              <View style={{ width: SPACING.sm }} />
+              <SummaryBox
+                label="Due now"
+                value={fmtKES(breakdown?.current_due)}
+                icon="calendar-outline"
+              />
             </View>
 
-            <Switch
-              value={includeNext}
-              onValueChange={onToggleIncludeNext}
-              disabled={toggling}
-              thumbColor={COLORS.white}
-              trackColor={{
-                false: COLORS.gray300,
-                true: COLORS.primary,
-              }}
-            />
-          </View>
+            <View style={{ height: SPACING.sm }} />
 
-          {breakdown?.next_due_date ? (
-            <Text style={styles.nextDueHint}>
-              Next due date: {breakdown.next_due_date}
-            </Text>
-          ) : null}
+            <View style={styles.summaryGrid}>
+              <SummaryBox
+                label="Next due"
+                value={fmtKES(breakdown?.next_due)}
+                icon="arrow-forward-circle-outline"
+              />
+              <View style={{ width: SPACING.sm }} />
+              <SummaryBox
+                label="Per seat"
+                value={fmtKES(contributionPerSeat)}
+                icon="grid-outline"
+              />
+            </View>
 
-          <View style={styles.optionInfoBox}>
-            <Ionicons
-              name="information-circle-outline"
-              size={18}
-              color={COLORS.primary}
-            />
-            <Text style={styles.optionInfoText}>
-              Your merry wallet is deducted first before new payment is needed.
-            </Text>
-          </View>
-        </Card>
-      </Section>
+            <View style={{ height: SPACING.sm }} />
 
-      <Section title="Included items">
-        {!groupedPreview.length ? (
-          <EmptyState
-            icon="receipt-outline"
-            title="Nothing open now"
-            subtitle="This merry has no payable items at the moment."
-          />
-        ) : (
-          <Card style={styles.listCard} variant="default">
-            {groupedPreview.map((item, index) => (
-              <View key={`due-${item.due_id}`}>
-                <DueLine item={item} />
-                {index < groupedPreview.length - 1 ? (
-                  <View style={styles.lineDivider} />
-                ) : null}
+            <View style={styles.summaryGrid}>
+              <SummaryBox
+                label="Wallet"
+                value={fmtKES(walletBalance)}
+                icon="wallet-outline"
+              />
+              <View style={{ width: SPACING.sm }} />
+              <SummaryBox
+                label="You pay now"
+                value={fmtKES(payableAfterWallet)}
+                icon="cash-outline"
+              />
+            </View>
+          </Section>
+
+          <Section title="Option">
+            <Card style={styles.optionCard} variant="default">
+              <View style={styles.optionTop}>
+                <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                  <Text style={styles.optionTitle}>Include next due</Text>
+                  <Text style={styles.optionText}>
+                    Add the next contribution to this summary.
+                  </Text>
+                </View>
+
+                <Switch
+                  value={includeNext}
+                  onValueChange={onToggleIncludeNext}
+                  disabled={toggling}
+                  thumbColor={COLORS.white}
+                  trackColor={{
+                    false: "#C9D3DA",
+                    true: UI.accent,
+                  }}
+                />
               </View>
-            ))}
-          </Card>
-        )}
-      </Section>
+
+              {breakdown?.next_due_date ? (
+                <Text style={styles.nextDueHint}>
+                  Next due date: {breakdown.next_due_date}
+                </Text>
+              ) : null}
+
+              <View style={styles.optionInfoBox}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={UI.accent}
+                />
+                <Text style={styles.optionInfoText}>
+                  Your merry wallet is deducted first before new payment is
+                  needed.
+                </Text>
+              </View>
+            </Card>
+          </Section>
+
+          <Section title="Included items">
+            {!groupedPreview.length ? (
+              <EmptyState
+                icon="receipt-outline"
+                title="Nothing open now"
+                subtitle="This merry has no payable items at the moment."
+              />
+            ) : (
+              <Card style={styles.listCard} variant="default">
+                {groupedPreview.map((item, index) => (
+                  <View key={`due-${item.due_id}`}>
+                    <DueLine item={item} />
+                    {index < groupedPreview.length - 1 ? (
+                      <View style={styles.lineDivider} />
+                    ) : null}
+                  </View>
+                ))}
+              </Card>
+            )}
+          </Section>
+        </>
+      ) : (
+        <>
+          <Section title="Join">
+            <Card style={styles.ctaCard} variant="default">
+              <Text style={styles.ctaTitle}>Join this merry</Text>
+              <Text style={styles.ctaText}>
+                Request seats and send your request to the admin for approval.
+              </Text>
+
+              <View style={{ height: SPACING.md }} />
+
+              {joinStatus === "PENDING" ? (
+                <Button
+                  title="Request Pending"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: { merryId: String(merryId) },
+                    })
+                  }
+                />
+              ) : canRequestJoin ? (
+                <Button
+                  title="Join Merry"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: { merryId: String(merryId) },
+                    })
+                  }
+                />
+              ) : (
+                <Button
+                  title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
+                  disabled
+                  onPress={() => {}}
+                />
+              )}
+
+              <View style={{ height: SPACING.sm }} />
+
+              <Text style={styles.helperText}>
+                Seats available: {availableSeatText}
+              </Text>
+
+              <Text style={styles.helperText}>
+                Contribution: {fmtKES(detail.contribution_amount)}
+              </Text>
+
+              {joinStatus === "PENDING" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="time-outline"
+                    text="Your join request has already been sent and is waiting for admin approval."
+                    tone="warning"
+                  />
+                </View>
+              ) : null}
+
+              {joinStatus === "REJECTED" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="close-circle-outline"
+                    text="Your previous join request was rejected. You can submit another request if joining is still allowed."
+                    tone="danger"
+                  />
+                </View>
+              ) : null}
+            </Card>
+          </Section>
+        </>
+      )}
 
       <Section title="Details">
         <Card style={styles.detailsCard} variant="default">
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Contribution per seat</Text>
-            <Text style={styles.kvValue}>
-              {fmtKES(detail?.contribution_amount)}
-            </Text>
-          </View>
+          <DetailRow
+            label="Contribution per seat"
+            value={fmtKES(detail?.contribution_amount)}
+          />
+          <DetailRow label="Frequency" value={detail?.payout_frequency} />
+          <DetailRow
+            label="Slots per period"
+            value={detail?.payouts_per_period}
+          />
+          <DetailRow label="Next payout" value={detail?.next_payout_date} />
+          <DetailRow
+            label="Cycle duration"
+            value={`${detail?.cycle_duration_weeks ?? "—"} week${Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"}`}
+          />
+          <DetailRow label="Members" value={detail?.members_count} />
+          <DetailRow label="Seats" value={detail?.seats_count} />
+          {isMember ? (
+            <>
+              <DetailRow label="Wallet balance" value={fmtKES(walletBalance)} />
+              <DetailRow
+                label="Payable after wallet"
+                value={fmtKES(payableAfterWallet)}
+              />
+            </>
+          ) : (
+            <DetailRow label="Available seats" value={availableSeatText} />
+          )}
 
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Frequency</Text>
-            <Text style={styles.kvValue}>
-              {detail?.payout_frequency || "—"}
-            </Text>
-          </View>
-
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Slots per period</Text>
-            <Text style={styles.kvValue}>
-              {detail?.payouts_per_period ?? "—"}
-            </Text>
-          </View>
-
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Next payout</Text>
-            <Text style={styles.kvValue}>
-              {detail?.next_payout_date || "—"}
-            </Text>
-          </View>
-
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Wallet balance</Text>
-            <Text style={styles.kvValue}>{fmtKES(walletBalance)}</Text>
-          </View>
-
-          <View style={styles.kvRow}>
-            <Text style={styles.kvLabel}>Payable after wallet</Text>
-            <Text style={styles.kvValue}>{fmtKES(payableAfterWallet)}</Text>
-          </View>
+          {!isMember &&
+          Array.isArray(detail.available_seat_numbers) &&
+          detail.available_seat_numbers.length > 0 ? (
+            <View style={{ marginTop: SPACING.md }}>
+              <InfoStrip
+                icon="grid-outline"
+                text={`Available seat numbers: ${detail.available_seat_numbers.join(", ")}`}
+              />
+            </View>
+          ) : null}
         </Card>
       </Section>
 
@@ -614,7 +773,7 @@ export default function MerryDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: UI.bg,
   },
 
   content: {
@@ -626,15 +785,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: UI.bg,
   },
 
   heroCard: {
-    backgroundColor: COLORS.primary,
-    borderWidth: 0,
+    backgroundColor: UI.surface,
+    borderWidth: 1,
+    borderColor: UI.border,
     marginBottom: SPACING.lg,
     overflow: "hidden",
-    borderRadius: 28,
+    borderRadius: 24,
   },
 
   heroTop: {
@@ -645,21 +805,21 @@ const styles = StyleSheet.create({
 
   heroEyebrow: {
     ...TYPE.caption,
-    color: "rgba(255,255,255,0.76)",
+    color: UI.textMuted,
     fontWeight: "800",
     letterSpacing: 0.8,
   },
 
   heroTitle: {
     ...TYPE.h2,
-    color: COLORS.white,
+    color: UI.text,
     marginTop: 6,
     fontWeight: "900",
   },
 
   heroSubtitle: {
     ...TYPE.subtext,
-    color: "rgba(255,255,255,0.84)",
+    color: UI.textSoft,
     marginTop: 8,
     lineHeight: 19,
   },
@@ -667,8 +827,8 @@ const styles = StyleSheet.create({
   heroIconWrap: {
     width: 50,
     height: 50,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: 16,
+    backgroundColor: UI.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -677,25 +837,27 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: UI.surfaceAlt,
+    borderWidth: 1,
+    borderColor: UI.border,
   },
 
   heroAmountLabel: {
     ...TYPE.caption,
-    color: "rgba(255,255,255,0.76)",
+    color: UI.textMuted,
     fontWeight: "700",
   },
 
   heroAmountValue: {
     ...(TYPE as any).h1 ? (TYPE as any).h1 : TYPE.h2,
-    color: COLORS.white,
+    color: UI.text,
     marginTop: 6,
     fontWeight: "900",
   },
 
   heroMiniDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: UI.border,
     marginVertical: SPACING.sm,
   },
 
@@ -709,12 +871,12 @@ const styles = StyleSheet.create({
 
   heroMiniLabel: {
     ...TYPE.caption,
-    color: "rgba(255,255,255,0.82)",
+    color: UI.textSoft,
   },
 
   heroMiniValue: {
     ...TYPE.bodyStrong,
-    color: COLORS.white,
+    color: UI.text,
     textAlign: "right",
     flexShrink: 1,
   },
@@ -736,15 +898,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
+    borderColor: "#EAC9CF",
+    backgroundColor: UI.dangerBg,
     borderRadius: RADIUS.xl,
   },
 
   errorText: {
     flex: 1,
     ...TYPE.subtext,
-    color: COLORS.danger,
+    color: UI.dangerText,
   },
 
   summaryGrid: {
@@ -754,9 +916,10 @@ const styles = StyleSheet.create({
 
   summaryBox: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: UI.card,
     borderWidth: 1,
-    borderRadius: 22,
+    borderColor: UI.border,
+    borderRadius: 20,
   },
 
   summaryIconWrap: {
@@ -766,11 +929,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: SPACING.sm,
+    backgroundColor: UI.accentSoft,
   },
 
   summaryLabel: {
     ...TYPE.caption,
-    color: COLORS.textMuted,
+    color: UI.textMuted,
     fontWeight: "700",
   },
 
@@ -778,15 +942,15 @@ const styles = StyleSheet.create({
     ...TYPE.title,
     marginTop: 4,
     fontWeight: "900",
-    color: COLORS.text,
+    color: UI.text,
   },
 
   optionCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: UI.card,
     padding: SPACING.md,
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: UI.border,
   },
 
   optionTop: {
@@ -797,18 +961,18 @@ const styles = StyleSheet.create({
   optionTitle: {
     ...TYPE.title,
     fontWeight: "900",
-    color: COLORS.text,
+    color: UI.text,
   },
 
   optionText: {
     ...TYPE.subtext,
-    color: COLORS.textSoft,
+    color: UI.textSoft,
     marginTop: 4,
   },
 
   nextDueHint: {
     ...TYPE.caption,
-    color: COLORS.primary,
+    color: UI.accent,
     marginTop: SPACING.sm,
     fontWeight: "800",
   },
@@ -817,7 +981,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     padding: SPACING.md,
     borderRadius: 16,
-    backgroundColor: COLORS.primarySoft,
+    backgroundColor: UI.accentSoft,
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 8,
@@ -826,15 +990,15 @@ const styles = StyleSheet.create({
   optionInfoText: {
     flex: 1,
     ...TYPE.subtext,
-    color: COLORS.text,
+    color: UI.text,
   },
 
   listCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: UI.card,
     padding: SPACING.md,
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: UI.border,
   },
 
   dueLine: {
@@ -855,19 +1019,19 @@ const styles = StyleSheet.create({
   dueLineTitle: {
     ...TYPE.bodyStrong,
     fontWeight: "800",
-    color: COLORS.text,
+    color: UI.text,
   },
 
   dueLineSub: {
     ...TYPE.caption,
-    color: COLORS.textMuted,
+    color: UI.textMuted,
     marginTop: 4,
   },
 
   dueLineAmount: {
     ...TYPE.bodyStrong,
     fontWeight: "900",
-    color: COLORS.text,
+    color: UI.text,
   },
 
   dueBadge: {
@@ -883,16 +1047,43 @@ const styles = StyleSheet.create({
 
   lineDivider: {
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: UI.border,
     marginVertical: SPACING.sm,
   },
 
   detailsCard: {
-    backgroundColor: COLORS.white,
+    backgroundColor: UI.card,
     padding: SPACING.md,
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: UI.border,
+  },
+
+  ctaCard: {
+    backgroundColor: UI.card,
+    padding: SPACING.md,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: UI.border,
+  },
+
+  ctaTitle: {
+    ...TYPE.title,
+    color: UI.text,
+    fontWeight: "900",
+  },
+
+  ctaText: {
+    ...TYPE.subtext,
+    color: UI.textSoft,
+    marginTop: 6,
+    lineHeight: 20,
+  },
+
+  helperText: {
+    ...TYPE.caption,
+    color: UI.textMuted,
+    marginTop: 6,
   },
 
   kvRow: {
@@ -905,14 +1096,28 @@ const styles = StyleSheet.create({
 
   kvLabel: {
     ...TYPE.caption,
-    color: COLORS.textMuted,
+    color: UI.textMuted,
   },
 
   kvValue: {
     ...TYPE.bodyStrong,
-    color: COLORS.text,
+    color: UI.text,
     textAlign: "right",
     flexShrink: 1,
+  },
+
+  infoStrip: {
+    padding: SPACING.md,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: 1,
+  },
+
+  infoStripText: {
+    flex: 1,
+    ...TYPE.subtext,
   },
 
   bottomActions: {

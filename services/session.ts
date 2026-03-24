@@ -21,9 +21,16 @@ export type SessionUser = {
   status?: "pending" | "approved" | "blocked" | string;
 
   is_active?: boolean;
+  is_phone_verified?: boolean;
   is_admin?: boolean;
 
-  kyc_status?: "not_submitted" | "submitted" | "approved" | "rejected" | string | null;
+  kyc_status?:
+    | "not_submitted"
+    | "submitted"
+    | "approved"
+    | "rejected"
+    | string
+    | null;
   is_kyc_approved?: boolean | null;
 
   has_limited_access?: boolean | null;
@@ -92,16 +99,26 @@ export async function clearSessionUser() {
 }
 
 /**
- * Optional helper for quick checks
+ * Optional helpers for quick checks
  */
 export async function isAdmin(): Promise<boolean> {
   const u = await getSessionUser();
   return !!u?.is_admin || u?.role === "admin";
 }
 
+export async function isPhoneVerified(): Promise<boolean> {
+  const u = await getSessionUser();
+  return !!u?.is_phone_verified;
+}
+
 export async function isKycApproved(): Promise<boolean> {
   const u = await getSessionUser();
   return u?.kyc_status === "approved" || !!u?.is_kyc_approved;
+}
+
+export async function hasLimitedAccess(): Promise<boolean> {
+  const u = await getSessionUser();
+  return !!u?.has_limited_access;
 }
 
 export async function hasFullAccess(): Promise<boolean> {

@@ -1,13 +1,4 @@
 // app/(tabs)/groups/index.tsx
-// ------------------------------------------------
-// ✅ Updated to match latest groups logic
-// ✅ Added deep debug logs for session/auth issues
-// ✅ Uses listAvailableGroups() instead of old listGroups()
-// ✅ Uses richer Group type fields
-// ✅ Uses join requests flow instead of old add-membership idea
-// ✅ Uses ROUTES consistently
-// ✅ Safer session fallback when getMe() fails
-// ------------------------------------------------
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -29,7 +20,7 @@ import Section from "@/components/ui/Section";
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 
-import { getAccessToken, getErrorMessage } from "@/services/api";
+import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
   Group,
@@ -40,7 +31,6 @@ import {
 import {
   canJoinGroup,
   getMe,
-  isAdminUser,
   isKycComplete,
   MeResponse,
 } from "@/services/profile";
@@ -77,12 +67,7 @@ function toUniqueNumberArray(values: any[]) {
 
 function hasUsefulUserIdentity(user: any) {
   if (!user || typeof user !== "object") return false;
-  return (
-    user.id != null ||
-    !!user.phone ||
-    !!user.username ||
-    !!user.email
-  );
+  return user.id != null || !!user.phone || !!user.username || !!user.email;
 }
 
 function GroupCard({
@@ -98,38 +83,57 @@ function GroupCard({
 
   const contributionRule = group.requires_contributions
     ? `${group.contribution_amount || "0"} ${group.contribution_frequency || ""}`.trim()
-    : "Optional contributions";
+    : "Optional";
 
   return (
-    <Card style={styles.groupCard}>
-      <View style={styles.groupTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.groupTitle}>{group.name}</Text>
+    <Card
+      onPress={() => router.push(ROUTES.dynamic.groupDetail(group.id) as any)}
+      style={styles.groupCard}
+    >
+      <View style={styles.groupTopRow}>
+        <View style={styles.groupIconWrap}>
+          <Ionicons name="people-outline" size={18} color={COLORS.white} />
+        </View>
+
+        <View style={styles.groupTextWrap}>
+          <Text style={styles.groupTitle} numberOfLines={1}>
+            {group.name}
+          </Text>
           <Text style={styles.groupMeta}>
             {getGroupTypeLabel(group)} • {getJoinPolicyLabel(group)}
           </Text>
         </View>
 
-        <Ionicons name="people-outline" size={18} color={COLORS.primary} />
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={COLORS.textMuted || COLORS.gray}
+        />
       </View>
 
       {group.description ? (
-        <Text style={styles.groupDescription}>{group.description}</Text>
+        <Text style={styles.groupDescription} numberOfLines={3}>
+          {group.description}
+        </Text>
       ) : null}
 
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>Members</Text>
-        <Text style={styles.infoValue}>{group.member_count ?? "—"}</Text>
-      </View>
+      <View style={styles.groupInfoBox}>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Members</Text>
+          <Text style={styles.infoValue}>{group.member_count ?? "—"}</Text>
+        </View>
 
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>Contribution</Text>
-        <Text style={styles.infoValue}>{contributionRule}</Text>
-      </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Contribution</Text>
+          <Text style={styles.infoValue} numberOfLines={1}>
+            {contributionRule}
+          </Text>
+        </View>
 
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>Created</Text>
-        <Text style={styles.infoValue}>{fmtDate(group.created_at)}</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Created</Text>
+          <Text style={styles.infoValue}>{fmtDate(group.created_at)}</Text>
+        </View>
       </View>
 
       <View style={styles.badgesRow}>
@@ -144,7 +148,7 @@ function GroupCard({
         {!isMember && hasPendingRequest ? (
           <View style={[styles.badgePill, styles.badgePending]}>
             <Text style={[styles.badgeText, { color: COLORS.warning }]}>
-              REQUEST PENDING
+              PENDING
             </Text>
           </View>
         ) : null}
@@ -158,17 +162,9 @@ function GroupCard({
         ) : null}
       </View>
 
-      <View style={styles.actionsRow}>
-        <Text
-          style={styles.link}
-          onPress={() =>
-            router.push(ROUTES.dynamic.groupDetail(group.id) as any)
-          }
-        >
-          View details
-        </Text>
-
-        <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
+      <View style={styles.cardFooter}>
+        <Text style={styles.cardFooterText}>Open group</Text>
+        <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
       </View>
     </Card>
   );
@@ -177,7 +173,9 @@ function GroupCard({
 export default function GroupsIndexScreen() {
   const [user, setUser] = useState<GroupsUser | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>([]);
+  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>(
+    []
+  );
   const [pendingJoinGroupIds, setPendingJoinGroupIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -185,7 +183,6 @@ export default function GroupsIndexScreen() {
 
   const kycComplete = isKycComplete(user);
   const joinAllowed = canJoinGroup(user);
-  const isAdmin = isAdminUser(user);
 
   const goToKyc = useCallback(() => {
     router.push(ROUTES.tabs.profileKyc as any);
@@ -199,16 +196,6 @@ export default function GroupsIndexScreen() {
     try {
       safeSet(() => setError(""));
 
-      console.log("========================================");
-      console.log("GROUPS DEBUG: START LOAD");
-
-      const token = await getAccessToken();
-      console.log("GROUPS DEBUG: access token exists =", !!token);
-      console.log(
-        "GROUPS DEBUG: access token preview =",
-        token ? `${String(token).slice(0, 18)}...` : null
-      );
-
       const [sessionRes, meRes, groupsRes, membershipsRes, joinReqRes] =
         await Promise.allSettled([
           getSessionUser(),
@@ -218,105 +205,20 @@ export default function GroupsIndexScreen() {
           listMyGroupJoinRequests(),
         ]);
 
-      console.log("GROUPS DEBUG: sessionRes.status =", sessionRes.status);
-      if (sessionRes.status === "fulfilled") {
-        console.log("GROUPS DEBUG: sessionRes.value =", sessionRes.value);
-        console.log(
-          "GROUPS DEBUG: session has useful identity =",
-          hasUsefulUserIdentity(sessionRes.value)
-        );
-      } else {
-        console.log("GROUPS DEBUG: sessionRes.reason =", sessionRes.reason);
-      }
-
-      console.log("GROUPS DEBUG: meRes.status =", meRes.status);
-      if (meRes.status === "fulfilled") {
-        console.log("GROUPS DEBUG: meRes.value =", meRes.value);
-        console.log(
-          "GROUPS DEBUG: me has useful identity =",
-          hasUsefulUserIdentity(meRes.value)
-        );
-      } else {
-        console.log("GROUPS DEBUG: meRes.reason =", meRes.reason);
-        console.log(
-          "GROUPS DEBUG: me error message =",
-          getApiErrorMessage(meRes.reason) || getErrorMessage(meRes.reason)
-        );
-      }
-
-      console.log("GROUPS DEBUG: groupsRes.status =", groupsRes.status);
-      if (groupsRes.status === "fulfilled") {
-        console.log(
-          "GROUPS DEBUG: groups count =",
-          Array.isArray(groupsRes.value) ? groupsRes.value.length : "not-array"
-        );
-      } else {
-        console.log("GROUPS DEBUG: groupsRes.reason =", groupsRes.reason);
-        console.log(
-          "GROUPS DEBUG: groups error =",
-          getApiErrorMessage(groupsRes.reason) || getErrorMessage(groupsRes.reason)
-        );
-      }
-
-      console.log("GROUPS DEBUG: membershipsRes.status =", membershipsRes.status);
-      if (membershipsRes.status === "fulfilled") {
-        console.log(
-          "GROUPS DEBUG: memberships count =",
-          Array.isArray(membershipsRes.value)
-            ? membershipsRes.value.length
-            : "not-array"
-        );
-        console.log("GROUPS DEBUG: memberships raw =", membershipsRes.value);
-      } else {
-        console.log("GROUPS DEBUG: membershipsRes.reason =", membershipsRes.reason);
-        console.log(
-          "GROUPS DEBUG: memberships error =",
-          getApiErrorMessage(membershipsRes.reason) ||
-            getErrorMessage(membershipsRes.reason)
-        );
-      }
-
-      console.log("GROUPS DEBUG: joinReqRes.status =", joinReqRes.status);
-      if (joinReqRes.status === "fulfilled") {
-        console.log(
-          "GROUPS DEBUG: join requests count =",
-          Array.isArray(joinReqRes.value) ? joinReqRes.value.length : "not-array"
-        );
-        console.log("GROUPS DEBUG: join requests raw =", joinReqRes.value);
-      } else {
-        console.log("GROUPS DEBUG: joinReqRes.reason =", joinReqRes.reason);
-        console.log(
-          "GROUPS DEBUG: join requests error =",
-          getApiErrorMessage(joinReqRes.reason) ||
-            getErrorMessage(joinReqRes.reason)
-        );
-      }
-
       const sessionUserRaw =
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
+      const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
 
       const sessionUser = hasUsefulUserIdentity(sessionUserRaw)
         ? sessionUserRaw
         : null;
-
-      const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
-
       const meUser = hasUsefulUserIdentity(meUserRaw) ? meUserRaw : null;
-
-      console.log("GROUPS DEBUG: normalized sessionUser =", sessionUser);
-      console.log("GROUPS DEBUG: normalized meUser =", meUser);
 
       const mergedUser: GroupsUser | null = meUser
         ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
         : sessionUser
         ? { ...sessionUser }
         : null;
-
-      console.log("GROUPS DEBUG: final mergedUser =", mergedUser);
-      console.log(
-        "GROUPS DEBUG: final mergedUser has identity =",
-        hasUsefulUserIdentity(mergedUser)
-      );
 
       const availableGroups =
         groupsRes.status === "fulfilled" && Array.isArray(groupsRes.value)
@@ -350,9 +252,6 @@ export default function GroupsIndexScreen() {
           )
       );
 
-      console.log("GROUPS DEBUG: membershipIds =", membershipIds);
-      console.log("GROUPS DEBUG: pendingIds =", pendingIds);
-
       safeSet(() => {
         setUser(mergedUser);
         setGroups(availableGroups);
@@ -379,21 +278,10 @@ export default function GroupsIndexScreen() {
           getErrorMessage(joinReqRes.reason);
       }
 
-      console.log("GROUPS DEBUG: nextError =", nextError || null);
-
       safeSet(() => {
         if (nextError) setError(nextError);
       });
-
-      console.log("GROUPS DEBUG: END LOAD");
-      console.log("========================================");
     } catch (e: any) {
-      console.log("GROUPS DEBUG: CATCH ERROR =", e);
-      console.log(
-        "GROUPS DEBUG: CATCH MESSAGE =",
-        getApiErrorMessage(e) || getErrorMessage(e)
-      );
-
       safeSet(() => {
         setError(getApiErrorMessage(e) || getErrorMessage(e));
       });
@@ -436,9 +324,8 @@ export default function GroupsIndexScreen() {
     return {
       totalGroups: groups.length,
       myMemberships: myMembershipGroupIds.length,
-      pending: pendingJoinGroupIds.length,
     };
-  }, [groups, myMembershipGroupIds, pendingJoinGroupIds]);
+  }, [groups, myMembershipGroupIds]);
 
   if (loading) {
     return (
@@ -449,9 +336,6 @@ export default function GroupsIndexScreen() {
   }
 
   if (!user) {
-    console.log("GROUPS DEBUG: rendering empty auth state because user is null");
-    console.log("GROUPS DEBUG: current error =", error || null);
-
     return (
       <View style={styles.page}>
         <EmptyState
@@ -473,15 +357,31 @@ export default function GroupsIndexScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>Groups</Text>
-          <Text style={styles.subtitle}>
-            Browse welfare, savings, investment, and community groups.
-          </Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.title}>Groups</Text>
+            <Text style={styles.subtitle}>
+              Join support, savings, welfare, and community groups.
+            </Text>
+          </View>
+
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="people-outline" size={22} color={COLORS.white} />
+          </View>
         </View>
 
-        <Ionicons name="people-outline" size={22} color={COLORS.primary} />
+        <View style={styles.heroStatsRow}>
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Available</Text>
+            <Text style={styles.heroStatValue}>{stats.totalGroups}</Text>
+          </View>
+
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Joined</Text>
+            <Text style={styles.heroStatValue}>{stats.myMemberships}</Text>
+          </View>
+        </View>
       </View>
 
       {error ? (
@@ -496,55 +396,35 @@ export default function GroupsIndexScreen() {
       ) : null}
 
       {!kycComplete ? (
-        <Section title="KYC Required">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeTop}>
+        <Card style={styles.noticeCard}>
+          <View style={styles.noticeTop}>
+            <View style={styles.noticeIconWrap}>
               <Ionicons
                 name="shield-checkmark-outline"
                 size={18}
                 color={COLORS.warning}
               />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.noticeTitle}>Complete KYC to join</Text>
               <Text style={styles.noticeText}>
-                You can browse groups, but joining a group requires completed KYC.
+                You can browse groups now. KYC is required before joining.
               </Text>
             </View>
+          </View>
 
-            <View style={{ marginTop: SPACING.sm }}>
-              <Button
-                title="Complete KYC"
-                variant="secondary"
-                onPress={goToKyc}
-              />
-            </View>
-          </Card>
-        </Section>
+          <View style={{ marginTop: SPACING.md }}>
+            <Button
+              title="Complete KYC"
+              variant="secondary"
+              onPress={goToKyc}
+            />
+          </View>
+        </Card>
       ) : null}
 
-      <View style={styles.summaryGrid}>
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Available Groups</Text>
-          <Text style={styles.summaryValue}>{stats.totalGroups}</Text>
-        </View>
-
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>My Memberships</Text>
-          <Text style={styles.summaryValue}>{stats.myMemberships}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Pending Requests</Text>
-          <Text style={styles.summaryValue}>{stats.pending}</Text>
-        </View>
-
-        <View style={[styles.summaryCard, SHADOW.card]}>
-          <Text style={styles.summaryLabel}>Admin Status</Text>
-          <Text style={styles.summaryValue}>{isAdmin ? "Yes" : "No"}</Text>
-        </View>
-      </View>
-
-      <Section title="Quick Actions">
+      <Section title="Actions">
         <View style={styles.actionsGrid}>
           <Card
             onPress={() =>
@@ -552,63 +432,23 @@ export default function GroupsIndexScreen() {
                 ? router.push(ROUTES.tabs.groupsAvailable as any)
                 : goToKyc()
             }
-            style={styles.actionCard}
+            style={styles.primaryActionCard}
           >
-            <Ionicons name="search-outline" size={22} color={COLORS.white} />
-            <Text style={styles.actionTitle}>
-              {joinAllowed ? "Browse Groups" : "Complete KYC"}
-            </Text>
+            <View style={styles.actionIconCircle}>
+              <Ionicons name="search-outline" size={20} color={COLORS.white} />
+            </View>
+            <Text style={styles.primaryActionTitle}>Browse Groups</Text>
           </Card>
 
           <Card
             onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-            style={styles.actionCard}
+            style={styles.primaryActionCardAlt}
           >
-            <Ionicons name="people-outline" size={22} color={COLORS.white} />
-            <Text style={styles.actionTitle}>My Memberships</Text>
+            <View style={styles.actionIconCircleAlt}>
+              <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+            </View>
+            <Text style={styles.primaryActionTitleAlt}>My Groups</Text>
           </Card>
-        </View>
-
-        <View style={[styles.actionsGrid, { marginTop: SPACING.md }]}>
-          <Card
-            onPress={() => router.push(ROUTES.tabs.groupsJoinRequests as any)}
-            style={styles.secondaryActionCard}
-          >
-            <Ionicons
-              name="git-pull-request-outline"
-              size={22}
-              color={COLORS.primary}
-            />
-            <Text style={styles.secondaryActionTitle}>My Join Requests</Text>
-          </Card>
-
-          {isAdmin ? (
-            <Card
-              onPress={() =>
-                router.push(ROUTES.tabs.groupsAdminJoinRequests as any)
-              }
-              style={styles.secondaryActionCard}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={22}
-                color={COLORS.primary}
-              />
-              <Text style={styles.secondaryActionTitle}>Admin Requests</Text>
-            </Card>
-          ) : (
-            <Card
-              onPress={() => router.push(ROUTES.tabs.groupsMySavings as any)}
-              style={styles.secondaryActionCard}
-            >
-              <Ionicons
-                name="wallet-outline"
-                size={22}
-                color={COLORS.primary}
-              />
-              <Text style={styles.secondaryActionTitle}>My Group Savings</Text>
-            </Card>
-          )}
         </View>
       </Section>
 
@@ -617,7 +457,7 @@ export default function GroupsIndexScreen() {
           <EmptyState
             icon="people-outline"
             title="No groups found"
-            subtitle="Available groups will appear here once created by admin."
+            subtitle="Available groups will appear here once created."
           />
         ) : (
           groups.map((g) => (
@@ -631,14 +471,21 @@ export default function GroupsIndexScreen() {
         )}
       </Section>
 
-      <View style={{ height: 24 }} />
+      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 28,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -647,24 +494,68 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    ...SHADOW.card,
+  },
+
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  heroIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
   title: {
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: FONT.bold,
-    color: COLORS.text,
+    color: COLORS.white,
   },
 
   subtitle: {
     marginTop: 6,
     fontSize: 12,
-    color: COLORS.textMuted,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.85)",
     fontFamily: FONT.regular,
+  },
+
+  heroStatsRow: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.lg,
+  },
+
+  heroStatPill: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+
+  heroStatLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: FONT.regular,
+  },
+
+  heroStatValue: {
+    marginTop: 4,
+    fontSize: 16,
+    color: COLORS.white,
+    fontFamily: FONT.bold,
   },
 
   errorCard: {
@@ -673,6 +564,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
+    backgroundColor: "rgba(220,53,69,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(220,53,69,0.18)",
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -680,10 +575,16 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontFamily: FONT.regular,
     fontSize: 12,
+    lineHeight: 18,
   },
 
   noticeCard: {
     padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
@@ -693,39 +594,27 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
 
+  noticeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(245,158,11,0.12)",
+  },
+
+  noticeTitle: {
+    fontSize: 13,
+    color: COLORS.text,
+    fontFamily: FONT.bold,
+    marginBottom: 4,
+  },
+
   noticeText: {
-    flex: 1,
     fontSize: 12,
     color: COLORS.textMuted,
     fontFamily: FONT.regular,
     lineHeight: 18,
-  },
-
-  summaryGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
   },
 
   actionsGrid: {
@@ -733,60 +622,90 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
-  actionCard: {
+  primaryActionCard: {
     flex: 1,
     padding: SPACING.md,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.primary,
     borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.primary,
     ...SHADOW.card,
   },
 
-  actionTitle: {
-    color: COLORS.white,
-    fontFamily: FONT.bold,
-    textAlign: "center",
-    fontSize: 13,
-  },
-
-  secondaryActionCard: {
+  primaryActionCardAlt: {
     flex: 1,
     padding: SPACING.md,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: COLORS.white,
     borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.card || "#14202f",
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
-  secondaryActionTitle: {
-    color: COLORS.primary,
+  actionIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  actionIconCircleAlt: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(37,99,235,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  primaryActionTitle: {
+    color: COLORS.white,
     fontFamily: FONT.bold,
-    textAlign: "center",
-    fontSize: 13,
+    fontSize: 14,
+  },
+
+  primaryActionTitleAlt: {
+    color: COLORS.text,
+    fontFamily: FONT.bold,
+    fontSize: 14,
   },
 
   groupCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
-  groupTop: {
+  groupTopRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+  },
+
+  groupIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    marginRight: 12,
+  },
+
+  groupTextWrap: {
+    flex: 1,
+    paddingRight: 10,
   },
 
   groupTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
   groupMeta: {
@@ -800,12 +719,19 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
     fontFamily: FONT.regular,
   },
 
+  groupInfoBox: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.sm,
+  },
+
   infoRow: {
-    marginTop: 10,
+    paddingVertical: 8,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -823,7 +749,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
   badgesRow: {
@@ -856,15 +782,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  actionsRow: {
+  cardFooter: {
     marginTop: SPACING.md,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
   },
 
-  link: {
+  cardFooterText: {
     color: COLORS.primary,
     fontFamily: FONT.bold,
+    fontSize: 12,
   },
 });

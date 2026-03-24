@@ -27,12 +27,15 @@ function normalizePhone(input: string) {
 
 function mapMessageToField(msg: string): FieldErrors {
   const lower = msg.toLowerCase();
+
   if (lower.includes("phone")) return { phone: msg };
   if (lower.includes("password")) return { password: msg };
   if (lower.includes("otp")) return { general: msg };
   if (lower.includes("locked")) return { general: msg };
   if (lower.includes("blocked")) return { general: msg };
+  if (lower.includes("verified")) return { general: msg };
   if (lower.includes("activated")) return { general: msg };
+
   return { general: msg };
 }
 
@@ -47,8 +50,12 @@ function parseBackendError(e: any): FieldErrors {
   }
 
   const errors: FieldErrors = {};
-  if (Array.isArray(data?.phone) && data.phone.length) errors.phone = data.phone[0];
-  if (Array.isArray(data?.password) && data.password.length) errors.password = data.password[0];
+  if (Array.isArray(data?.phone) && data.phone.length) {
+    errors.phone = data.phone[0];
+  }
+  if (Array.isArray(data?.password) && data.password.length) {
+    errors.password = data.password[0];
+  }
 
   if (Object.keys(errors).length) return errors;
 
@@ -69,6 +76,10 @@ function pickUserFromLoginResponse(data: any) {
     status: src?.status,
 
     is_active: typeof src?.is_active === "boolean" ? src.is_active : undefined,
+    is_phone_verified:
+      typeof src?.is_phone_verified === "boolean"
+        ? src.is_phone_verified
+        : undefined,
     is_admin:
       typeof src?.is_admin === "boolean"
         ? src.is_admin
@@ -130,6 +141,16 @@ export default function LoginScreen() {
         return;
       }
 
+      if (account?.is_active === false) {
+        setErrors({ general: "Your account is disabled. Contact support." });
+        return;
+      }
+
+      if (account?.is_phone_verified === false) {
+        setErrors({ general: "Account not verified. Verify OTP first." });
+        return;
+      }
+
       await saveSessionUser(account);
 
       router.replace("/(tabs)/dashboard");
@@ -158,7 +179,9 @@ export default function LoginScreen() {
         <Text style={styles.title}>Login</Text>
         <Text style={styles.subtitle}>Welcome back</Text>
 
-        {errors.general ? <Text style={styles.generalError}>{errors.general}</Text> : null}
+        {errors.general ? (
+          <Text style={styles.generalError}>{errors.general}</Text>
+        ) : null}
 
         <TextInput
           style={[styles.input, errors.phone && styles.inputError]}
@@ -192,7 +215,9 @@ export default function LoginScreen() {
           autoCorrect={false}
           editable={!loading}
         />
-        {errors.password ? <Text style={styles.fieldError}>{errors.password}</Text> : null}
+        {errors.password ? (
+          <Text style={styles.fieldError}>{errors.password}</Text>
+        ) : null}
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
@@ -210,11 +235,17 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/(auth)/forgot-password")} disabled={loading}>
+        <TouchableOpacity
+          onPress={() => router.push("/(auth)/forgot-password")}
+          disabled={loading}
+        >
           <Text style={styles.link}>Forgot password?</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push("/(auth)/register")} disabled={loading}>
+        <TouchableOpacity
+          onPress={() => router.push("/(auth)/register")}
+          disabled={loading}
+        >
           <Text style={styles.link}>Create account</Text>
         </TouchableOpacity>
       </View>

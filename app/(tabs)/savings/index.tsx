@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -34,7 +35,7 @@ import {
 
 type SavingsUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const SURFACE = "#F4F6F8";
+const SURFACE = "#F8FAFC";
 const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
 const TEXT_MAIN = "#0F172A";
 const TEXT_MUTED = "#64748B";
@@ -66,10 +67,6 @@ function formatDisplayName(user?: SavingsUser | null) {
     (typeof user?.phone === "string" ? user.phone : "") ||
     "Member"
   );
-}
-
-function formatStatus(user?: SavingsUser | null) {
-  return String((user as any)?.status || "ACTIVE").replaceAll("_", " ");
 }
 
 function getPrimaryAccount(accounts: SavingsAccount[]) {
@@ -107,75 +104,62 @@ function canWithdrawFromAccountNow(account?: SavingsAccount | null) {
   return true;
 }
 
-function getWalletDescription(account?: SavingsAccount | null) {
-  if (!account) return "No main wallet available.";
-
-  const type = String(account.account_type || "").toUpperCase();
-
-  if (type === "FLEXIBLE") {
-    return "Your main wallet for normal deposits, balances, and withdrawals.";
-  }
-
-  if (type === "FIXED" && account.locked_until) {
-    return `This wallet is fixed and locked until ${account.locked_until}.`;
-  }
-
-  if (type === "TARGET" && account.target_amount && account.target_deadline) {
-    return `Target wallet set for ${formatKes(account.target_amount)} by ${account.target_deadline}.`;
-  }
-
-  if (type === "TARGET" && account.target_deadline) {
-    return `Target wallet deadline is ${account.target_deadline}.`;
-  }
-
-  return "This is your current main wallet.";
-}
-
-function InfoRow({
+function SummaryTile({
   label,
   value,
-  valueColor,
+  tone = "default",
 }: {
   label: string;
   value: string;
-  valueColor?: string;
+  tone?: "default" | "success" | "warning";
 }) {
+  const valueColor =
+    tone === "success"
+      ? COLORS.success
+      : tone === "warning"
+      ? COLORS.warning
+      : TEXT_MAIN;
+
   return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
-        {value}
-      </Text>
+    <View style={styles.summaryTile}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, { color: valueColor }]}>{value}</Text>
     </View>
   );
 }
 
-function QuickAction({
+function ActionRow({
   title,
   subtitle,
   icon,
-  tone,
+  iconBg,
+  iconColor,
   onPress,
 }: {
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone: string;
+  iconBg: string;
+  iconColor: string;
   onPress: () => void;
 }) {
   return (
-    <Card onPress={onPress} style={styles.quickActionCard} variant="default">
-      <View style={[styles.quickActionIcon, { backgroundColor: `${tone}18` }]}>
-        <Ionicons name={icon} size={18} color={tone} />
+    <TouchableOpacity
+      activeOpacity={0.86}
+      onPress={onPress}
+      style={styles.actionRow}
+    >
+      <View style={[styles.actionIconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={icon} size={18} color={iconColor} />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.quickActionTitle}>{title}</Text>
-        <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
 
       <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
-    </Card>
+    </TouchableOpacity>
   );
 }
 
@@ -191,6 +175,10 @@ export default function SavingsIndexScreen() {
 
   const goToKyc = useCallback(() => {
     router.push(ROUTES.tabs.profileKyc as any);
+  }, []);
+
+  const goToSave = useCallback(() => {
+    router.push(ROUTES.tabs.savingsSave as any);
   }, []);
 
   const load = useCallback(async () => {
@@ -266,7 +254,6 @@ export default function SavingsIndexScreen() {
   }, [load]);
 
   const displayName = useMemo(() => formatDisplayName(user), [user]);
-  const memberStatus = useMemo(() => formatStatus(user), [user]);
   const primaryAccount = useMemo(() => getPrimaryAccount(accounts), [accounts]);
 
   const canWithdrawThisAccount = useMemo(
@@ -276,6 +263,10 @@ export default function SavingsIndexScreen() {
 
   const finalWithdrawalAllowed =
     Boolean(withdrawAllowedByProfile) && Boolean(canWithdrawThisAccount);
+
+  const balance = formatKes(primaryAccount?.balance);
+  const available = formatKes(primaryAccount?.available_balance);
+  const reserved = formatKes(primaryAccount?.reserved_amount);
 
   if (loading) {
     return (
@@ -310,28 +301,15 @@ export default function SavingsIndexScreen() {
       >
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
-            <View style={styles.heroAvatar}>
+            <View style={styles.heroIcon}>
               <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroEyebrow}>MAIN WALLET</Text>
+              <Text style={styles.heroEyebrow}>SAVINGS</Text>
               <Text style={styles.heroTitle}>{displayName}</Text>
               <Text style={styles.heroSubtitle}>
-                Create your one main savings wallet to start saving and tracking
-                your balance.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.heroMetaWrap}>
-            <View style={styles.heroPill}>
-              <Text style={styles.heroPillText}>{memberStatus}</Text>
-            </View>
-
-            <View style={styles.heroPill}>
-              <Text style={styles.heroPillText}>
-                {kycComplete ? "KYC Complete" : "KYC Pending"}
+                Start with one main wallet for your personal savings.
               </Text>
             </View>
           </View>
@@ -343,33 +321,30 @@ export default function SavingsIndexScreen() {
           </Card>
         ) : null}
 
-        <Section title="Main Wallet" subtitle="You only need one savings wallet.">
-          <Card style={styles.emptyStartCard} variant="default">
-            <View style={styles.emptyStartIcon}>
-              <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
-            </View>
+        <Card style={styles.emptyCard} variant="default">
+          <View style={styles.emptyIcon}>
+            <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
+          </View>
 
-            <Text style={styles.emptyStartTitle}>No main wallet yet</Text>
-            <Text style={styles.emptyStartText}>
-              Create your main wallet first. All personal savings deposits and
-              withdrawals will use this wallet.
-            </Text>
+          <Text style={styles.emptyTitle}>No wallet yet</Text>
+          <Text style={styles.emptyText}>
+            Create your main savings wallet to start saving.
+          </Text>
 
-            <View style={{ marginTop: SPACING.md }}>
-              <Button
-                title="Create Main Wallet"
-                onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
-                leftIcon={
-                  <Ionicons
-                    name="add-circle-outline"
-                    size={18}
-                    color={COLORS.white}
-                  />
-                }
-              />
-            </View>
-          </Card>
-        </Section>
+          <View style={{ marginTop: SPACING.md }}>
+            <Button
+              title="Create Wallet"
+              onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
+              leftIcon={
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={COLORS.white}
+                />
+              }
+            />
+          </View>
+        </Card>
       </ScrollView>
     );
   }
@@ -385,7 +360,7 @@ export default function SavingsIndexScreen() {
     >
       <View style={styles.heroCard}>
         <View style={styles.heroTop}>
-          <View style={styles.heroAvatar}>
+          <View style={styles.heroIcon}>
             <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
           </View>
 
@@ -393,28 +368,28 @@ export default function SavingsIndexScreen() {
             <Text style={styles.heroEyebrow}>MAIN WALLET</Text>
             <Text style={styles.heroTitle}>{displayName}</Text>
             <Text style={styles.heroSubtitle}>
-              One simple wallet for deposits, balances, reserved funds, and
-              withdrawals.
+              Save, track your balance, and manage your wallet.
             </Text>
           </View>
         </View>
 
-        <View style={styles.heroMetaWrap}>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>{memberStatus}</Text>
-          </View>
+        <View style={styles.heroBalanceBox}>
+          <Text style={styles.heroBalanceLabel}>Available Balance</Text>
+          <Text style={styles.heroBalanceValue}>{available}</Text>
+        </View>
 
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>
-              {kycComplete ? "KYC Complete" : "KYC Pending"}
-            </Text>
-          </View>
-
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>
-              {primaryAccount.is_active ? "Wallet Active" : "Wallet Inactive"}
-            </Text>
-          </View>
+        <View style={{ marginTop: SPACING.md }}>
+          <Button
+            title="Save Money"
+            onPress={goToSave}
+            leftIcon={
+              <Ionicons
+                name="arrow-down-circle-outline"
+                size={18}
+                color={COLORS.white}
+              />
+            }
+          />
         </View>
       </View>
 
@@ -425,91 +400,51 @@ export default function SavingsIndexScreen() {
       ) : null}
 
       {!kycComplete ? (
-        <Section title="Verification" subtitle="Withdrawals need completed KYC.">
-          <Card style={styles.noticeCard} variant="default" onPress={goToKyc}>
-            <View style={styles.noticeIcon}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color={COLORS.info}
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Complete account verification</Text>
-              <Text style={styles.noticeText}>
-                Deposits are available now, but withdrawals need completed KYC.
-              </Text>
-            </View>
-
-            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
-          </Card>
-        </Section>
-      ) : null}
-
-      <Section title="Wallet Overview" subtitle="Your personal savings at a glance.">
-        <Card style={styles.mainAccountCard} variant="default">
-          <Text style={styles.mainAccountTitle}>
-            {primaryAccount.name || "Main Wallet"}
-          </Text>
-          <Text style={styles.mainAccountSubtitle}>
-            {getWalletDescription(primaryAccount)}
-          </Text>
-
-          <View style={styles.divider} />
-
-          <InfoRow label="Balance" value={formatKes(primaryAccount.balance)} />
-          <InfoRow
-            label="Reserved"
-            value={formatKes(primaryAccount.reserved_amount)}
-            valueColor={
-              toNumber(primaryAccount.reserved_amount) > 0
-                ? COLORS.warning
-                : TEXT_MAIN
-            }
-          />
-          <InfoRow
-            label="Available"
-            value={formatKes(primaryAccount.available_balance)}
-            valueColor={COLORS.success}
-          />
-          <InfoRow
-            label="Status"
-            value={primaryAccount.is_active ? "Active" : "Inactive"}
-            valueColor={primaryAccount.is_active ? COLORS.success : COLORS.danger}
-          />
-
-          <View style={{ marginTop: SPACING.md }}>
-            <Button
-              title="Save Money"
-              onPress={() => router.push(ROUTES.tabs.savingsSave as any)}
-              leftIcon={
-                <Ionicons
-                  name="arrow-down-circle-outline"
-                  size={18}
-                  color={COLORS.white}
-                />
-              }
+        <Card style={styles.noticeCard} variant="default" onPress={goToKyc}>
+          <View style={styles.noticeIcon}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={18}
+              color={COLORS.info}
             />
           </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.noticeTitle}>Complete KYC</Text>
+            <Text style={styles.noticeText}>
+              You can save now, but withdrawals need verification.
+            </Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
         </Card>
+      ) : null}
+
+      <Section title="Overview">
+        <View style={styles.summaryGrid}>
+          <SummaryTile label="Balance" value={balance} />
+          <SummaryTile label="Available" value={available} tone="success" />
+          <SummaryTile label="Reserved" value={reserved} tone="warning" />
+        </View>
       </Section>
 
-      <Section title="Quick Actions" subtitle="Simple actions for your main wallet.">
-        <View style={styles.quickActionList}>
-          <QuickAction
+      <Section title="Actions">
+        <View style={styles.actionList}>
+          <ActionRow
             title="Save Money"
-            subtitle="Open the central payment flow for savings."
-            icon="wallet-outline"
-            tone={COLORS.primary}
-            onPress={() => router.push(ROUTES.tabs.savingsSave as any)}
+            subtitle="Add money to your savings wallet."
+            icon="arrow-down-circle-outline"
+            iconBg={`${COLORS.primary}16`}
+            iconColor={COLORS.primary}
+            onPress={goToSave}
           />
 
-          <QuickAction
+          <ActionRow
             title="History"
-            subtitle="See your wallet deposits and withdrawals."
+            subtitle="View your savings transactions."
             icon="time-outline"
-            tone={COLORS.warning}
+            iconBg={`${COLORS.warning}18`}
+            iconColor={COLORS.warning}
             onPress={() =>
               router.push(
                 ROUTES.dynamic.savingsAccountHistory(primaryAccount.id) as any
@@ -517,21 +452,26 @@ export default function SavingsIndexScreen() {
             }
           />
 
-          <QuickAction
+          <ActionRow
             title={finalWithdrawalAllowed ? "Withdraw" : "Withdrawal Info"}
             subtitle={
               finalWithdrawalAllowed
                 ? "Request a withdrawal from your wallet."
                 : !kycComplete
                 ? "Complete KYC before withdrawing."
-                : "See wallet details and status."
+                : "Check your wallet withdrawal status."
             }
             icon={
               finalWithdrawalAllowed
                 ? "arrow-up-circle-outline"
                 : "information-circle-outline"
             }
-            tone={finalWithdrawalAllowed ? COLORS.success : COLORS.info}
+            iconBg={
+              finalWithdrawalAllowed
+                ? `${COLORS.success}16`
+                : `${COLORS.info}16`
+            }
+            iconColor={finalWithdrawalAllowed ? COLORS.success : COLORS.info}
             onPress={() =>
               finalWithdrawalAllowed
                 ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
@@ -545,7 +485,7 @@ export default function SavingsIndexScreen() {
         </View>
       </Section>
 
-      <View style={{ height: 24 }} />
+      <View style={{ height: 20 }} />
     </ScrollView>
   );
 }
@@ -570,7 +510,7 @@ const styles = StyleSheet.create({
 
   heroCard: {
     backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl,
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     ...SHADOW.strong,
@@ -582,15 +522,15 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
-  heroAvatar: {
+  heroIcon: {
     width: 56,
     height: 56,
-    borderRadius: 999,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.20)",
   },
 
   heroEyebrow: {
@@ -609,31 +549,32 @@ const styles = StyleSheet.create({
   },
 
   heroSubtitle: {
-    marginTop: 7,
+    marginTop: 6,
     color: "rgba(255,255,255,0.86)",
     fontFamily: FONT.regular,
     fontSize: 13,
     lineHeight: 19,
   },
 
-  heroMetaWrap: {
+  heroBalanceBox: {
     marginTop: SPACING.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-  },
-
-  heroPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
     backgroundColor: "rgba(255,255,255,0.12)",
   },
 
-  heroPillText: {
+  heroBalanceLabel: {
+    color: "rgba(255,255,255,0.82)",
+    fontFamily: FONT.regular,
+    fontSize: 12,
+  },
+
+  heroBalanceValue: {
+    marginTop: 6,
     color: COLORS.white,
     fontFamily: FONT.bold,
-    fontSize: 11,
+    fontSize: 28,
+    lineHeight: 34,
   },
 
   errorCard: {
@@ -661,12 +602,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
+    marginBottom: SPACING.lg,
   },
 
   noticeIcon: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.md,
+    borderRadius: 14,
     backgroundColor: `${COLORS.info}18`,
     alignItems: "center",
     justifyContent: "center",
@@ -686,95 +628,71 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  emptyStartCard: {
+  emptyCard: {
     backgroundColor: SURFACE,
-    borderRadius: RADIUS.xl,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: CARD_BORDER,
-    padding: SPACING.md,
+    padding: SPACING.lg,
   },
 
-  emptyStartIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: `${COLORS.primary}16`,
     marginBottom: SPACING.md,
   },
 
-  emptyStartTitle: {
+  emptyTitle: {
     color: TEXT_MAIN,
     fontFamily: FONT.bold,
-    fontSize: 16,
+    fontSize: 18,
   },
 
-  emptyStartText: {
+  emptyText: {
     marginTop: 6,
     color: TEXT_MUTED,
     fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 20,
   },
 
-  mainAccountCard: {
-    backgroundColor: SURFACE,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-  },
-
-  mainAccountTitle: {
-    color: TEXT_MAIN,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-  },
-
-  mainAccountSubtitle: {
-    marginTop: 5,
-    color: TEXT_MUTED,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "#D9E1EA",
-    marginVertical: SPACING.md,
-  },
-
-  infoRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  infoLabel: {
-    color: TEXT_MUTED,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-  },
-
-  infoValue: {
-    flexShrink: 1,
-    textAlign: "right",
-    color: TEXT_MAIN,
-    fontFamily: FONT.bold,
-    fontSize: 12,
-  },
-
-  quickActionList: {
+  summaryGrid: {
     gap: SPACING.sm,
   },
 
-  quickActionCard: {
+  summaryTile: {
     backgroundColor: SURFACE,
-    borderRadius: RADIUS.xl,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: SPACING.md,
+  },
+
+  summaryLabel: {
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+  },
+
+  summaryValue: {
+    marginTop: 6,
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+
+  actionList: {
+    gap: SPACING.sm,
+  },
+
+  actionRow: {
+    backgroundColor: SURFACE,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: CARD_BORDER,
     padding: SPACING.md,
@@ -783,21 +701,21 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
-  quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
+  actionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  quickActionTitle: {
+  actionTitle: {
     color: TEXT_MAIN,
     fontFamily: FONT.bold,
     fontSize: 14,
   },
 
-  quickActionSubtitle: {
+  actionSubtitle: {
     marginTop: 4,
     color: TEXT_MUTED,
     fontFamily: FONT.regular,

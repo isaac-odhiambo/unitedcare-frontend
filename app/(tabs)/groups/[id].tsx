@@ -1,16 +1,8 @@
 // app/(tabs)/groups/[id].tsx
-// ------------------------------------------------
-// ✅ Updated to match latest services/groups.ts
-// ✅ Uses getGroup() for real group details
-// ✅ Uses getMyGroupContributions()
-// ✅ Uses getMyGroupSavingsSummary() to show my share/fund view
-// ✅ Uses source / note fields instead of old method / mpesa_receipt_number
-// ✅ Uses ROUTES for navigation
-// ------------------------------------------------
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -27,96 +19,76 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+
 import {
+  createGroupJoinRequest,
   getApiErrorMessage,
   getGroup,
   getMyGroupContributions,
-  getMyGroupSavingsSummary,
   Group,
   GroupContribution,
-  MyGroupSavingsRow,
 } from "@/services/groups";
 
-/* ------------------------------------------------
-Helpers
------------------------------------------------- */
+import { canJoinGroup, getMe, isKycComplete } from "@/services/profile";
+import { getSessionUser } from "@/services/session";
+
+/* ----------------------------------------------- */
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "KES 0.00";
-
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return `KES ${n.toLocaleString("en-KE")}`;
 }
 
 function fmtDate(s?: string | null) {
   if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return String(s).replace("T", " ").slice(0, 16);
-  return d.toLocaleString();
-}
-
-function getSourceLabel(source?: string | null) {
-  const v = String(source || "").toUpperCase();
-  if (!v) return "—";
-  if (v === "MPESA") return "M-Pesa";
-  return v.replaceAll("_", " ");
+  return new Date(s).toLocaleDateString();
 }
 
 function getJoinPolicyLabel(value?: string | null) {
-  const v = String(value || "").toUpperCase();
+  const v = String(value || "").toUpperCase().trim();
   if (!v) return "—";
   return v.replaceAll("_", " ");
 }
 
-function getGroupTypeLabel(group?: Group | null) {
-  return group?.group_type_display || group?.group_type || "—";
-}
-
-/* ------------------------------------------------
-Screen
------------------------------------------------- */
+/* ----------------------------------------------- */
 
 export default function GroupDetailScreen() {
   const params = useLocalSearchParams();
   const groupId = Number(params.id);
 
   const [group, setGroup] = useState<Group | null>(null);
-  const [mySummary, setMySummary] = useState<MyGroupSavingsRow | null>(null);
   const [rows, setRows] = useState<GroupContribution[]>([]);
+  const [joined, setJoined] = useState(false);
+  const [pending, setPending] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  const [user, setUser] = useState<any>(null);
+
+  /* ----------------------------------------------- */
+  /* LOAD DATA */
+  /* ----------------------------------------------- */
 
   const load = useCallback(async () => {
-    if (!groupId || Number.isNaN(groupId)) {
-      Alert.alert("Group", "Invalid group id.");
-      return;
-    }
-
     try {
-      const [groupRes, contributionsRes, savingsRes] = await Promise.all([
+      const [session, me, groupRes, contributions] = await Promise.all([
+        getSessionUser(),
+        getMe(),
         getGroup(groupId),
         getMyGroupContributions(groupId),
-        getMyGroupSavingsSummary(),
       ]);
 
-      setGroup(groupRes ?? null);
-      setRows(Array.isArray(contributionsRes) ? contributionsRes : []);
+      setUser({ ...session, ...me });
+      setGroup(groupRes);
+      setRows(Array.isArray(contributions) ? contributions : []);
 
-      const mine =
-        Array.isArray(savingsRes)
-          ? savingsRes.find((r) => Number(r?.group?.id) === groupId) || null
-          : null;
-
-      setMySummary(mine);
+      // simple membership check (based on contributions presence)
+      setJoined(Array.isArray(contributions) && contributions.length > 0);
     } catch (e: any) {
       Alert.alert("Group", getApiErrorMessage(e));
-      setGroup(null);
-      setRows([]);
-      setMySummary(null);
     }
   }, [groupId]);
 
@@ -126,46 +98,95 @@ export default function GroupDetailScreen() {
 
       const run = async () => {
         if (!mounted) return;
-        try {
-          setLoading(true);
-          await load();
-        } finally {
-          if (mounted) setLoading(false);
-        }
+        setLoading(true);
+        await load();
+        if (mounted) setLoading(false);
       };
 
       run();
-
       return () => {
         mounted = false;
       };
     }, [load])
   );
 
-  const onRefresh = useCallback(async () => {
-    try {
-      setRefreshing(true);
-      await load();
-    } finally {
-      setRefreshing(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  /* ----------------------------------------------- */
+  /* JOIN LOGIC */
+  /* ----------------------------------------------- */
+
+  const kycComplete = isKycComplete(user);
+  const joinAllowed = canJoinGroup(user);
+
+  const joinPolicy = String(group?.join_policy || "").toUpperCase();
+
+  const isClosed = joinPolicy === "CLOSED";
+  const isOpen = joinPolicy === "OPEN";
+  const isApproval = joinPolicy === "APPROVAL";
+
+  const joinLabel = isOpen ? "Join Group" : "Request to Join";
+
+  const handleJoin = () => {
+    if (!group) return;
+
+    if (!kycComplete) {
+      Alert.alert("Complete KYC", "You must complete KYC first.");
+      return;
     }
-  }, [load]);
 
-  const total = useMemo(() => {
-    return rows.reduce((acc, r) => acc + Number(r.amount || 0), 0);
-  }, [rows]);
+    if (isClosed) {
+      Alert.alert("Group Closed", "This group is not accepting members.");
+      return;
+    }
 
-  const myRole = mySummary?.my_role || group?.my_membership?.role || "—";
-  const myShare = mySummary?.my_share;
-  const fund = mySummary?.fund;
+    Alert.alert(
+      "Join Group",
+      `Proceed to ${isOpen ? "join" : "request to join"} ${group.name}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          onPress: async () => {
+            try {
+              setJoining(true);
+
+              const res = await createGroupJoinRequest({
+                group_id: groupId,
+              });
+
+              Alert.alert("Success", res?.message || "Done");
+              await load();
+            } catch (e: any) {
+              Alert.alert("Error", getApiErrorMessage(e));
+            } finally {
+              setJoining(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* ----------------------------------------------- */
+  /* UI STATES */
+  /* ----------------------------------------------- */
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
+      <View style={styles.center}>
         <ActivityIndicator color={COLORS.primary} />
       </View>
     );
   }
+
+  /* ----------------------------------------------- */
+  /* UI */
+  /* ----------------------------------------------- */
 
   return (
     <ScrollView
@@ -174,355 +195,145 @@ export default function GroupDetailScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
-      showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
+      {/* HERO */}
+      <View style={styles.hero}>
+        <Text style={styles.title}>{group?.name}</Text>
+        <Text style={styles.sub}>
+          {group?.group_type_display} • {getJoinPolicyLabel(group?.join_policy)}
+        </Text>
+      </View>
 
-      <View style={styles.headerCard}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.hTitle}>{group?.name || `Group #${groupId}`}</Text>
-            <Text style={styles.hSub}>
-              {getGroupTypeLabel(group)} • {getJoinPolicyLabel(group?.join_policy)}
-            </Text>
-          </View>
-
+      {/* JOIN BUTTON */}
+      {!joined && !pending && (
+        <View style={styles.section}>
           <Button
-            variant="ghost"
-            title="Back"
-            onPress={() => router.back()}
+            title={joinLabel}
+            onPress={handleJoin}
+            disabled={!joinAllowed || isClosed || joining}
+          />
+        </View>
+      )}
+
+      {pending && (
+        <Card style={styles.infoCard}>
+          <Text style={styles.infoText}>Join request pending</Text>
+        </Card>
+      )}
+
+      {/* CONTRIBUTION */}
+      {joined && (
+        <View style={styles.section}>
+          <Button
+            title="Contribute"
+            onPress={() =>
+              router.push(ROUTES.dynamic.groupContribute(groupId) as any)
+            }
             leftIcon={
-              <Ionicons name="chevron-back" size={16} color={COLORS.primary} />
+              <Ionicons name="cash-outline" size={18} color="white" />
             }
           />
         </View>
+      )}
 
-        {group?.description ? (
-          <Text style={styles.description}>{group.description}</Text>
-        ) : null}
-
-        <View style={styles.metaGrid}>
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Members</Text>
-            <Text style={styles.metaValue}>{group?.member_count ?? "—"}</Text>
-          </View>
-
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>My Role</Text>
-            <Text style={styles.metaValue}>{String(myRole)}</Text>
-          </View>
-        </View>
-
-        <View style={[styles.metaGrid, { marginTop: SPACING.sm }]}>
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Contribution Rule</Text>
-            <Text style={styles.metaValue}>
-              {group?.requires_contributions
-                ? formatKes(group?.contribution_amount)
-                : "Optional"}
-            </Text>
-          </View>
-
-          <View style={styles.metaBox}>
-            <Text style={styles.metaLabel}>Frequency</Text>
-            <Text style={styles.metaValue}>
-              {group?.contribution_frequency || "—"}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* My Summary */}
-
-      <Section title="My Group Summary">
-        <View style={styles.summaryGrid}>
-          <View style={[styles.summaryCard, SHADOW.card]}>
-            <Text style={styles.summaryLabel}>My Total Contribution</Text>
-            <Text style={styles.summaryValue}>
-              {formatKes(myShare?.total_contributed ?? total)}
-            </Text>
-          </View>
-
-          <View style={[styles.summaryCard, SHADOW.card]}>
-            <Text style={styles.summaryLabel}>Available Share</Text>
-            <Text style={styles.summaryValue}>
-              {formatKes(myShare?.available_share ?? "0")}
-            </Text>
-          </View>
-        </View>
-
-        <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-          <View style={[styles.summaryCard, SHADOW.card]}>
-            <Text style={styles.summaryLabel}>Reserved Share</Text>
-            <Text style={styles.summaryValue}>
-              {formatKes(myShare?.reserved_share ?? "0")}
-            </Text>
-          </View>
-
-          <View style={[styles.summaryCard, SHADOW.card]}>
-            <Text style={styles.summaryLabel}>Group Fund</Text>
-            <Text style={styles.summaryValue}>
-              {fund?.balance == null ? "Admins only" : formatKes(fund.balance)}
-            </Text>
-          </View>
-        </View>
-      </Section>
-
-      {/* Actions */}
-
-      <View style={styles.actionBar}>
-        <Button
-          title="Contribute"
-          onPress={() =>
-            router.push(ROUTES.dynamic.groupContribute(groupId) as any)
-          }
-          style={{ flex: 1 }}
-          leftIcon={
-            <Ionicons name="cash-outline" size={18} color={COLORS.white} />
-          }
-        />
-        <View style={{ width: SPACING.sm }} />
-        <Button
-          title="My Memberships"
-          variant="secondary"
-          onPress={() =>
-            router.push(ROUTES.dynamic.groupMemberships(groupId) as any)
-          }
-          style={{ flex: 1 }}
-          leftIcon={
-            <Ionicons name="people-outline" size={18} color={COLORS.primary} />
-          }
-        />
-      </View>
-
-      {/* Fund Notice */}
-
-      {fund?.balance == null ? (
-        <Card style={styles.noticeCard}>
-          <View style={styles.noticeTop}>
-            <Ionicons
-              name="information-circle-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              Group fund totals are visible to group admins only. You can still
-              see your own contribution share above.
-            </Text>
-          </View>
-        </Card>
-      ) : null}
-
-      {/* Contribution History */}
-
-      <Section title="My Contribution History">
+      {/* ACTIVITY */}
+      <Section title="Activity">
         {rows.length === 0 ? (
           <EmptyState
             icon="time-outline"
-            title="No contributions yet"
-            subtitle="Your group contributions will appear here."
+            title="No activity"
+            subtitle="Contributions will appear here"
           />
         ) : (
-          rows.map((r, index) => {
-            return (
-              <Card key={r.id ?? index} style={styles.rowCard}>
-                <View style={styles.rowTop}>
-                  <Text style={styles.amount}>{formatKes(r.amount)}</Text>
-                  <Text style={styles.sourcePill}>{getSourceLabel(r.source)}</Text>
-                </View>
-
-                <Text style={styles.meta}>
-                  {fmtDate(r.created_at)}
-                  {r.reference ? ` • Ref: ${r.reference}` : ""}
-                </Text>
-
-                {r.note ? <Text style={styles.narration}>{r.note}</Text> : null}
-              </Card>
-            );
-          })
+          rows.map((r, i) => (
+            <Card key={i} style={styles.row}>
+              <Text style={styles.amount}>{formatKes(r.amount)}</Text>
+              <Text style={styles.meta}>{fmtDate(r.created_at)}</Text>
+            </Card>
+          ))
         )}
       </Section>
+
+      {/* ABOUT */}
+      {!joined && (
+        <Section title="About">
+          <Card style={styles.about}>
+            <Text style={styles.meta}>
+              Members: {group?.member_count ?? "—"}
+            </Text>
+
+            {group?.requires_contributions && (
+              <Text style={styles.meta}>
+                Contribution: {formatKes(group?.contribution_amount)}
+              </Text>
+            )}
+          </Card>
+        </Section>
+      )}
 
       <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
-/* ------------------------------------------------
-Styles
------------------------------------------------- */
+/* ----------------------------------------------- */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  content: { padding: SPACING.lg },
 
-  content: {
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  hero: {
+    backgroundColor: COLORS.primary,
     padding: SPACING.lg,
-    paddingBottom: 24,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.lg,
   },
 
-  loadingWrap: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  headerCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  headerTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-
-  hTitle: {
-    fontFamily: FONT.bold,
+  title: {
+    color: COLORS.white,
     fontSize: 18,
-    color: COLORS.dark,
-  },
-
-  hSub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  description: {
-    marginTop: SPACING.md,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
-  },
-
-  metaGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-    marginTop: SPACING.md,
-  },
-
-  metaBox: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  metaLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  metaValue: {
-    marginTop: 8,
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
   },
 
-  summaryGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
+  sub: {
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 4,
     fontSize: 12,
-    color: COLORS.gray,
   },
 
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
+  section: {
+    marginBottom: SPACING.lg,
   },
 
-  actionBar: {
-    flexDirection: "row",
-    marginTop: SPACING.md,
-    marginBottom: SPACING.md,
-    alignItems: "center",
-  },
-
-  noticeCard: {
+  infoCard: {
     padding: SPACING.md,
     marginBottom: SPACING.md,
   },
 
-  noticeTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  noticeText: {
-    flex: 1,
-    fontFamily: FONT.regular,
+  infoText: {
     fontSize: 12,
-    color: COLORS.gray,
-    lineHeight: 18,
+    color: COLORS.text,
   },
 
-  rowCard: {
-    marginBottom: SPACING.md,
+  row: {
     padding: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
+    marginBottom: SPACING.sm,
   },
 
   amount: {
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-
-  sourcePill: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
-    color: COLORS.primary,
+    color: COLORS.text,
   },
 
   meta: {
-    marginTop: 10,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  narration: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.textMuted,
-    lineHeight: 18,
+    marginTop: 4,
+  },
+
+  about: {
+    padding: SPACING.md,
   },
 });

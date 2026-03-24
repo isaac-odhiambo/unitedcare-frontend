@@ -1,76 +1,65 @@
+// app/(tabs)/notifications/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 import { COLORS, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import useNotifications from "@/hooks/useNotifications";
 import {
-    deleteNotification,
-    getMyNotifications,
-    markAllNotificationsRead,
-    markNotificationRead,
+  AppNotification,
+  NotificationType,
 } from "@/services/notifications";
 
-type NotificationType =
-  | "INFO"
-  | "SUCCESS"
-  | "WARNING"
-  | "ERROR"
-  | "ACTION"
-  | string;
-
-type AppNotification = {
-  id: number;
-  title: string;
-  message: string;
-  notification_type: NotificationType;
-  action_url?: string | null;
-  loan_id?: number | null;
-  merry_id?: number | null;
-  group_id?: number | null;
-  is_read: boolean;
-  is_deleted?: boolean;
-  sender_name?: string;
-  created_at: string;
-  read_at?: string | null;
-};
-
 function formatWhen(value?: string | null) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString();
+  if (!value) return "Just now";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Just now";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.max(1, Math.floor(diffMs / 1000));
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffSec < 60) return "Just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffHr < 24) return `${diffHr} hr${diffHr === 1 ? "" : "s"} ago`;
+  if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+
+  return date.toLocaleDateString();
 }
 
 function getTypeColor(type: NotificationType) {
-  switch (type) {
+  switch (String(type || "").toUpperCase()) {
     case "SUCCESS":
-      return "#15803D";
+      return COLORS.secondary;
     case "WARNING":
       return "#D97706";
     case "ERROR":
-      return "#DC2626";
+      return COLORS.error || "#DC2626";
     case "ACTION":
-      return "#2563EB";
+      return COLORS.info || "#2563EB";
     default:
       return COLORS.primary;
   }
 }
 
 function getTypeIcon(type: NotificationType) {
-  switch (type) {
+  switch (String(type || "").toUpperCase()) {
     case "SUCCESS":
       return "checkmark-circle";
     case "WARNING":
@@ -97,127 +86,119 @@ function resolveRoute(actionUrl?: string | null) {
     case "/savings":
       return "/(tabs)/savings";
     case "/profile/kyc":
-      return "/profile/kyc";
+      return "/(tabs)/profile/kyc";
+    case "/notifications":
+      return "/(tabs)/notifications";
     default:
-      return null;
+      return actionUrl.startsWith("/") ? (actionUrl as any) : null;
   }
 }
 
 export default function NotificationsScreen() {
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    notifications,
+    unreadCount,
+    loading,
+    refreshing,
+    error,
+    load,
+    refresh,
+    markOneRead,
+    markAllRead,
+    removeOne,
+  } = useNotifications({
+    autoLoad: true,
+    poll: true,
+    pollIntervalMs: 10000,
+    autoToastNew: false,
+  });
+
   const [busyId, setBusyId] = useState<number | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
 
-  const unreadCount = useMemo(
-    () => items.filter((item) => !item.is_read).length,
-    [items]
-  );
-
-  const loadNotifications = useCallback(async () => {
-    try {
-      const rows = await getMyNotifications();
-      setItems(Array.isArray(rows) ? rows : []);
-    } catch (error: any) {
-      Alert.alert(
-        "Notifications",
-        error?.message || "Failed to load notifications."
-      );
-      setItems([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      loadNotifications();
-    }, [loadNotifications])
+      load(true);
+    }, [load])
   );
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadNotifications();
-  }, [loadNotifications]);
+  const items = useMemo(
+    () => (Array.isArray(notifications) ? notifications : []),
+    [notifications]
+  );
 
-  const handleOpen = useCallback(async (item: AppNotification) => {
+  const onRefresh = useCallback(async () => {
     try {
-      if (!item.is_read) {
+      await refresh();
+    } catch (err: any) {
+      Alert.alert(
+        "Notifications",
+        err?.message || "Failed to refresh notifications."
+      );
+    }
+  }, [refresh]);
+
+  const handleOpen = useCallback(
+    async (item: AppNotification) => {
+      try {
         setBusyId(item.id);
-        await markNotificationRead(item.id);
 
-        setItems((prev) =>
-          prev.map((row) =>
-            row.id === item.id
-              ? {
-                  ...row,
-                  is_read: true,
-                  read_at: row.read_at ?? new Date().toISOString(),
-                }
-              : row
-          )
+        if (!item.is_read) {
+          await markOneRead(item.id);
+        }
+
+        const route = resolveRoute(item.action_url);
+        if (route) {
+          router.push(route as any);
+        }
+      } catch (err: any) {
+        Alert.alert(
+          "Notifications",
+          err?.message || "Failed to open notification."
         );
+      } finally {
+        setBusyId(null);
       }
+    },
+    [markOneRead]
+  );
 
-      const route = resolveRoute(item.action_url);
-      if (route) {
-        router.push(route as any);
+  const handleDelete = useCallback(
+    async (item: AppNotification) => {
+      try {
+        setBusyId(item.id);
+        await removeOne(item.id);
+      } catch (err: any) {
+        Alert.alert(
+          "Notifications",
+          err?.message || "Failed to delete notification."
+        );
+      } finally {
+        setBusyId(null);
       }
-    } catch (error: any) {
-      Alert.alert(
-        "Notifications",
-        error?.message || "Failed to open notification."
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }, []);
-
-  const handleDelete = useCallback(async (item: AppNotification) => {
-    try {
-      setBusyId(item.id);
-      await deleteNotification(item.id);
-      setItems((prev) => prev.filter((row) => row.id !== item.id));
-    } catch (error: any) {
-      Alert.alert(
-        "Notifications",
-        error?.message || "Failed to delete notification."
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }, []);
+    },
+    [removeOne]
+  );
 
   const handleMarkAllRead = useCallback(async () => {
     try {
       setMarkingAll(true);
-      await markAllNotificationsRead();
-
-      setItems((prev) =>
-        prev.map((row) => ({
-          ...row,
-          is_read: true,
-          read_at: row.read_at ?? new Date().toISOString(),
-        }))
-      );
-    } catch (error: any) {
+      await markAllRead();
+    } catch (err: any) {
       Alert.alert(
         "Notifications",
-        error?.message || "Failed to mark all notifications as read."
+        err?.message || "Failed to mark all notifications as read."
       );
     } finally {
       setMarkingAll(false);
     }
-  }, []);
+  }, [markAllRead]);
 
   if (loading) {
     return (
       <View style={styles.loaderWrap}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loaderText}>Loading notifications...</Text>
+        <Text style={styles.loaderText}>Loading notifications.</Text>
       </View>
     );
   }
@@ -239,6 +220,7 @@ export default function NotificationsScreen() {
                 ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
                 : "You are all caught up"}
             </Text>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </View>
 
           <TouchableOpacity
@@ -279,10 +261,7 @@ export default function NotificationsScreen() {
               return (
                 <Card
                   key={item.id}
-                  style={[
-                    styles.card,
-                    !item.is_read ? styles.cardUnread : null,
-                  ]}
+                  style={[styles.card, !item.is_read ? styles.cardUnread : null]}
                 >
                   <TouchableOpacity
                     activeOpacity={0.9}
@@ -335,7 +314,7 @@ export default function NotificationsScreen() {
                             <Text
                               style={[styles.typePillText, { color: typeColor }]}
                             >
-                              {item.notification_type}
+                              {String(item.notification_type || "INFO")}
                             </Text>
                           </View>
 
@@ -395,7 +374,7 @@ const styles = StyleSheet.create({
   loaderText: {
     marginTop: 10,
     fontSize: 14,
-    color: COLORS.gray || "#64748B",
+    color: COLORS.gray || COLORS.textMuted || "#64748B",
   },
 
   content: {
@@ -419,8 +398,14 @@ const styles = StyleSheet.create({
 
   subtitle: {
     marginTop: 4,
-    color: COLORS.gray || "#64748B",
+    color: COLORS.gray || COLORS.textMuted || "#64748B",
     fontSize: 13,
+  },
+
+  errorText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: COLORS.error || "#DC2626",
   },
 
   readAllButton: {
@@ -448,7 +433,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS?.xl || 18,
     padding: 0,
     overflow: "hidden",
-    ...SHADOW,
+    ...((SHADOW as any)?.soft || (SHADOW as any) || {}),
   },
 
   cardUnread: {
@@ -465,9 +450,9 @@ const styles = StyleSheet.create({
   },
 
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -478,62 +463,64 @@ const styles = StyleSheet.create({
 
   cardTitleRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: SPACING.sm,
   },
 
   cardTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "800",
     color: COLORS.text || "#0F172A",
   },
 
   newBadge: {
-    backgroundColor: "#DBEAFE",
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
+    backgroundColor: "#DBEAFE",
   },
 
   newBadgeText: {
-    color: "#1D4ED8",
     fontSize: 11,
     fontWeight: "800",
+    color: "#1D4ED8",
   },
 
   cardMessage: {
     marginTop: 8,
-    color: "#334155",
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
+    color: COLORS.textMuted || "#64748B",
   },
 
   metaRow: {
-    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
+    marginTop: 10,
     flexWrap: "wrap",
   },
 
   metaText: {
     fontSize: 12,
-    color: COLORS.gray || "#64748B",
+    color: COLORS.gray || COLORS.textMuted || "#64748B",
   },
 
   metaDot: {
-    marginHorizontal: 6,
     fontSize: 12,
-    color: COLORS.gray || "#64748B",
+    color: COLORS.gray || COLORS.textMuted || "#64748B",
   },
 
   bottomRow: {
-    marginTop: 14,
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.sm,
+    flexWrap: "wrap",
   },
 
   typePill: {
@@ -541,37 +528,44 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    alignSelf: "flex-start",
+    backgroundColor: COLORS.white || "#FFFFFF",
   },
 
   typePillText: {
     fontSize: 11,
     fontWeight: "800",
+    textTransform: "uppercase",
   },
 
   actionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
   },
 
   openBtn: {
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.primarySoft || "rgba(14, 94, 111, 0.10)",
   },
 
   openBtnText: {
     color: COLORS.primary,
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
   },
 
   deleteBtn: {
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(220, 38, 38, 0.10)",
   },
 
   deleteBtnText: {
-    color: "#DC2626",
+    color: COLORS.error || "#DC2626",
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
   },
 });

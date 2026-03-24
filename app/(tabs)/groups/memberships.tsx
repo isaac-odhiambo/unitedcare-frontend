@@ -1,13 +1,4 @@
 // app/(tabs)/groups/memberships.tsx
-// ------------------------------------------------
-// ✅ Updated to match latest groups flow
-// ✅ Uses listGroupMemberships() only for my memberships
-// ✅ Uses listAvailableGroups() instead of old listGroups()
-// ✅ Removes old "Add Membership" direct flow
-// ✅ Uses browse/join-request flow
-// ✅ Uses richer Group type
-// ✅ Uses ROUTES consistently
-// ------------------------------------------------
 
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
@@ -18,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -32,18 +23,10 @@ import {
   getApiErrorMessage,
   getGroupIdFromMembership,
   getGroupNameFromMembership,
-  Group,
   GroupMembership,
-  listAvailableGroups,
   listGroupMemberships,
 } from "@/services/groups";
-import {
-  canJoinGroup,
-  getMe,
-  isAdminUser,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
+import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type MembershipsUser = Partial<MeResponse> & Partial<SessionUser>;
@@ -55,35 +38,71 @@ function fmtDate(value?: string | null) {
   return d.toLocaleDateString();
 }
 
-function statusColor(active: boolean) {
-  return active ? COLORS.success : COLORS.gray;
+function hasUsefulUserIdentity(user: any) {
+  if (!user || typeof user !== "object") return false;
+  return user.id != null || !!user.phone || !!user.username || !!user.email;
 }
 
-function roleColor(role: string) {
-  const r = String(role || "").toUpperCase();
-  if (r === "ADMIN") return COLORS.info;
-  if (r === "TREASURER") return COLORS.warning;
-  if (r === "SECRETARY") return COLORS.primary;
-  if (r === "MEMBER") return COLORS.primary;
-  return COLORS.gray;
+function roleTone(role?: string) {
+  const value = String(role || "").toUpperCase().trim();
+
+  if (value === "ADMIN") {
+    return {
+      bg: "rgba(59,130,246,0.12)",
+      color: COLORS.info || COLORS.primary,
+      label: "ADMIN",
+    };
+  }
+
+  if (value === "TREASURER") {
+    return {
+      bg: "rgba(245,158,11,0.12)",
+      color: COLORS.warning,
+      label: "TREASURER",
+    };
+  }
+
+  if (value === "SECRETARY") {
+    return {
+      bg: "rgba(37,99,235,0.12)",
+      color: COLORS.primary,
+      label: "SECRETARY",
+    };
+  }
+
+  return {
+    bg: "rgba(37,99,235,0.12)",
+    color: COLORS.primary,
+    label: "MEMBER",
+  };
 }
 
-function roleText(role?: string) {
-  const r = String(role || "").toUpperCase();
-  return r ? r.replaceAll("_", " ") : "—";
+function statusTone(active: boolean) {
+  return active
+    ? {
+        bg: "rgba(46,125,50,0.12)",
+        color: COLORS.success,
+        label: "ACTIVE",
+      }
+    : {
+        bg: "rgba(107,114,128,0.12)",
+        color: COLORS.gray,
+        label: "INACTIVE",
+      };
 }
 
-function Pill({
+function StatusPill({
   label,
+  bg,
   color,
 }: {
   label: string;
+  bg: string;
   color: string;
 }) {
   return (
-    <View style={[styles.pill, { borderColor: color }]}>
-      <View style={[styles.pillDot, { backgroundColor: color }]} />
-      <Text style={styles.pillText}>{label}</Text>
+    <View style={[styles.statusPill, { backgroundColor: bg }]}>
+      <Text style={[styles.statusPillText, { color }]}>{label}</Text>
     </View>
   );
 }
@@ -96,30 +115,34 @@ function MembershipCard({
   const groupName = getGroupNameFromMembership(membership);
   const groupId = getGroupIdFromMembership(membership);
 
+  const role = roleTone(String(membership.role));
+  const status = statusTone(!!membership.is_active);
+
   return (
     <Card style={styles.membershipCard}>
-      <View style={styles.rowTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>{groupName}</Text>
-          <Text style={styles.sub}>
-            Group ID: {groupId ?? "—"}
-            {membership.joined_at ? ` • Joined ${fmtDate(membership.joined_at)}` : ""}
-          </Text>
+      <View style={styles.cardTopRow}>
+        <View style={styles.groupIconWrap}>
+          <Ionicons name="people-outline" size={18} color={COLORS.white} />
         </View>
 
-        <View style={{ gap: 8, alignItems: "flex-end" }}>
-          <Pill
-            label={roleText(membership.role).toUpperCase()}
-            color={roleColor(String(membership.role))}
-          />
-          <Pill
-            label={membership.is_active ? "ACTIVE" : "INACTIVE"}
-            color={statusColor(!!membership.is_active)}
-          />
+        <View style={styles.cardTextWrap}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {groupName}
+          </Text>
+          <Text style={styles.cardSub}>
+            {membership.joined_at
+              ? `Joined ${fmtDate(membership.joined_at)}`
+              : "Membership record"}
+          </Text>
         </View>
       </View>
 
-      <View style={styles.actionsRow}>
+      <View style={styles.badgesRow}>
+        <StatusPill label={role.label} bg={role.bg} color={role.color} />
+        <StatusPill label={status.label} bg={status.bg} color={status.color} />
+      </View>
+
+      <View style={styles.cardFooter}>
         <Button
           title="Open Group"
           variant="secondary"
@@ -128,7 +151,6 @@ function MembershipCard({
               router.push(ROUTES.dynamic.groupDetail(groupId) as any);
             }
           }}
-          style={{ flex: 1 }}
         />
       </View>
     </Card>
@@ -138,38 +160,34 @@ function MembershipCard({
 export default function GroupMembershipsScreen() {
   const [user, setUser] = useState<MembershipsUser | null>(null);
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-
-  const isAdmin = isAdminUser(user);
-  const kycComplete = isKycComplete(user);
-  const joinAllowed = canJoinGroup(user);
 
   const load = useCallback(async () => {
     try {
       setError("");
 
-      const [sessionRes, meRes, membershipsRes, groupsRes] =
-        await Promise.allSettled([
-          getSessionUser(),
-          getMe(),
-          listGroupMemberships(),
-          listAvailableGroups(),
-        ]);
+      const [sessionRes, meRes, membershipsRes] = await Promise.allSettled([
+        getSessionUser(),
+        getMe(),
+        listGroupMemberships(),
+      ]);
 
-      const sessionUser =
+      const sessionUserRaw =
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+      const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
 
-      const mergedUser: MembershipsUser | null =
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null;
+      const sessionUser = hasUsefulUserIdentity(sessionUserRaw)
+        ? sessionUserRaw
+        : null;
+      const meUser = hasUsefulUserIdentity(meUserRaw) ? meUserRaw : null;
+
+      const mergedUser: MembershipsUser | null = meUser
+        ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
+        : sessionUser
+        ? { ...sessionUser }
+        : null;
 
       setUser(mergedUser);
 
@@ -179,16 +197,8 @@ export default function GroupMembershipsScreen() {
           : []
       );
 
-      setGroups(
-        groupsRes.status === "fulfilled" && Array.isArray(groupsRes.value)
-          ? groupsRes.value
-          : []
-      );
-
       if (membershipsRes.status === "rejected") {
         setError(getApiErrorMessage(membershipsRes.reason));
-      } else if (groupsRes.status === "rejected") {
-        setError(getApiErrorMessage(groupsRes.reason));
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
@@ -232,18 +242,6 @@ export default function GroupMembershipsScreen() {
     return { active, inactive };
   }, [memberships]);
 
-  const joinedGroupIds = useMemo(() => {
-    return new Set(
-      memberships
-        .map((m) => getGroupIdFromMembership(m))
-        .filter((id): id is number => typeof id === "number")
-    );
-  }, [memberships]);
-
-  const availableGroupsCount = useMemo(() => {
-    return groups.filter((g) => !joinedGroupIds.has(g.id)).length;
-  }, [groups, joinedGroupIds]);
-
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -257,7 +255,7 @@ export default function GroupMembershipsScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to access memberships."
+          subtitle="Please login to view your groups."
           actionLabel="Go to Login"
           onAction={() => router.replace(ROUTES.auth.login as any)}
         />
@@ -274,137 +272,86 @@ export default function GroupMembershipsScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>My Group Memberships</Text>
-          <Text style={styles.hSub}>
-            {isAdmin
-              ? "View your memberships and open groups you manage"
-              : "View the groups you have joined"}
-          </Text>
-        </View>
-
-        <Button
-          variant="ghost"
-          title="Refresh"
-          onPress={onRefresh}
-          leftIcon={
-            <Ionicons name="refresh-outline" size={16} color={COLORS.primary} />
-          }
-        />
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      {!kycComplete ? (
-        <Section title="KYC Notice">
-          <Card style={styles.noticeCard}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              You can view your memberships, but joining a new group requires completed KYC.
+      <View style={styles.heroCard}>
+        <View style={styles.heroTop}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTitle}>My Groups</Text>
+            <Text style={styles.heroSubtitle}>
+              Open the groups you belong to and continue from there.
             </Text>
-            <View style={{ height: SPACING.sm }} />
-            <Button
-              title="Complete KYC"
-              variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-            />
-          </Card>
-        </Section>
-      ) : null}
+          </View>
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Active</Text>
-          <Text style={styles.summaryValue}>{grouped.active.length}</Text>
+          <View style={styles.heroIconWrap}>
+            <Ionicons name="people-outline" size={22} color={COLORS.white} />
+          </View>
         </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Inactive</Text>
-          <Text style={styles.summaryValue}>{grouped.inactive.length}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>All Memberships</Text>
-          <Text style={styles.summaryValue}>{memberships.length}</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Available Groups</Text>
-          <Text style={styles.summaryValue}>{availableGroupsCount}</Text>
-        </View>
-      </View>
-
-      <Section title="Quick Actions">
-        <View style={styles.actionsRow}>
+        <View style={styles.heroActionsRow}>
           <Button
-            title={joinAllowed ? "Browse Groups" : "Complete KYC"}
-            onPress={() =>
-              joinAllowed
-                ? router.push(ROUTES.tabs.groupsAvailable as any)
-                : router.push(ROUTES.tabs.profileKyc as any)
-            }
+            title="Browse Groups"
+            onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
             style={{ flex: 1 }}
           />
           <View style={{ width: SPACING.sm }} />
           <Button
-            title="My Join Requests"
+            title="Join Requests"
             variant="secondary"
             onPress={() => router.push(ROUTES.tabs.groupsJoinRequests as any)}
             style={{ flex: 1 }}
           />
         </View>
-      </Section>
+      </View>
 
-      <Section title="Active Memberships">
+      {error ? (
+        <Card style={styles.errorCard}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
+          <Text style={styles.errorText}>{error}</Text>
+        </Card>
+      ) : null}
+
+      <Section title="Active Groups">
         {grouped.active.length === 0 ? (
           <EmptyState
             icon="people-outline"
-            title="No active memberships"
-            subtitle={
-              joinAllowed
-                ? "Browse available groups and send a join request."
-                : "Complete KYC before joining a group."
-            }
-            actionLabel={joinAllowed ? "Browse Groups" : "Complete KYC"}
-            onAction={() =>
-              joinAllowed
-                ? router.push(ROUTES.tabs.groupsAvailable as any)
-                : router.push(ROUTES.tabs.profileKyc as any)
-            }
+            title="No active groups"
+            subtitle="Browse available groups to join one."
+            actionLabel="Browse Groups"
+            onAction={() => router.push(ROUTES.tabs.groupsAvailable as any)}
           />
         ) : (
-          grouped.active.map((m) => <MembershipCard key={m.id} membership={m} />)
+          grouped.active.map((membership) => (
+            <MembershipCard key={membership.id} membership={membership} />
+          ))
         )}
       </Section>
 
       {grouped.inactive.length > 0 ? (
-        <Section title="Inactive Memberships">
-          {grouped.inactive.map((m) => (
-            <MembershipCard key={m.id} membership={m} />
+        <Section title="Inactive Groups">
+          {grouped.inactive.map((membership) => (
+            <MembershipCard key={membership.id} membership={membership} />
           ))}
         </Section>
       ) : null}
 
-      <View style={{ height: 24 }} />
+      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 28,
+  },
 
   loadingWrap: {
     flex: 1,
@@ -413,24 +360,47 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  header: {
+  heroCard: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    ...SHADOW.card,
+  },
+
+  heroTop: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  heroIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
-    gap: SPACING.md,
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
-  hTitle: {
+  heroTitle: {
+    fontSize: 22,
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    color: COLORS.white,
   },
 
-  hSub: {
+  heroSubtitle: {
     marginTop: 6,
-    fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: FONT.regular,
+  },
+
+  heroActionsRow: {
+    flexDirection: "row",
+    marginTop: SPACING.lg,
+    alignItems: "center",
   },
 
   errorCard: {
@@ -439,6 +409,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+    backgroundColor: "rgba(220,53,69,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(220,53,69,0.18)",
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -449,97 +423,68 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
-  noticeCard: {
-    padding: SPACING.md,
-  },
-
-  noticeText: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.textMuted,
-    fontFamily: FONT.regular,
-  },
-
-  summaryGrid: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
-  },
-
   membershipCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: RADIUS.xl || RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     ...SHADOW.card,
   },
 
-  rowTop: {
+  cardTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+    alignItems: "center",
   },
 
-  title: {
+  groupIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    marginRight: 12,
+  },
+
+  cardTextWrap: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  cardTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: COLORS.text,
   },
 
-  sub: {
-    marginTop: 6,
+  cardSub: {
+    marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: COLORS.textMuted,
   },
 
-  actionsRow: {
+  badgesRow: {
     marginTop: SPACING.md,
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
   },
 
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    backgroundColor: COLORS.surface,
+    borderRadius: 999,
   },
 
-  pillDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 8,
-  },
-
-  pillText: {
+  statusPillText: {
     fontSize: 11,
-    color: COLORS.text,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
+  },
+
+  cardFooter: {
+    marginTop: SPACING.md,
   },
 });

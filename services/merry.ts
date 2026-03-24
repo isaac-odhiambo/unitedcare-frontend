@@ -53,6 +53,21 @@ export type MyMerriesResponse = {
   memberships: MerrySummaryMembership[];
 };
 
+export type JoinRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED"
+  | string;
+
+export type JoinRequestSummary = {
+  id: number;
+  status: JoinRequestStatus;
+  requested_seats: number;
+  created_at?: string;
+  reviewed_at?: string | null;
+} | null;
+
 export type AvailableMerryRow = {
   id: number;
   name: string;
@@ -67,15 +82,11 @@ export type AvailableMerryRow = {
   available_seats: number | null;
   available_seat_numbers?: number[] | null;
   can_request_join?: boolean;
+  is_member?: boolean;
+  my_member_id?: number | null;
   members_count: number;
   seats_count: number;
-  my_join_request?: {
-    id: number;
-    status: JoinRequestStatus;
-    requested_seats: number;
-    created_at: string;
-    reviewed_at?: string | null;
-  } | null;
+  my_join_request?: JoinRequestSummary;
   created_at: string;
 };
 
@@ -106,12 +117,17 @@ export type MerryDetail = {
   is_open?: boolean;
   max_seats?: number;
   available_seats?: number | null;
+  available_seat_numbers?: number[] | null;
   members_count?: number;
   seats_count?: number;
   total_pool_per_slot?: string;
   total_pool_per_period?: string;
   created_by?: number;
   created_at?: string;
+  is_member?: boolean;
+  my_member_id?: number | null;
+  my_join_request?: JoinRequestSummary;
+  can_request_join?: boolean;
 };
 
 export type MerryMemberRow = {
@@ -139,13 +155,6 @@ export type SlotConfigRow = {
   weekday: number;
   weekday_name?: string;
 };
-
-export type JoinRequestStatus =
-  | "PENDING"
-  | "APPROVED"
-  | "REJECTED"
-  | "CANCELLED"
-  | string;
 
 export type JoinRequestRow = {
   id: number;
@@ -470,6 +479,10 @@ export type AdminUserMerryWalletResponse = {
   transactions: MerryWalletTransactionRow[];
 };
 
+/* =========================================================
+   Friendly helpers
+========================================================= */
+
 export function fmtKES(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
@@ -478,6 +491,28 @@ export function fmtKES(value?: string | number | null) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+export function sumMoney(
+  values: Array<string | number | null | undefined>
+): string {
+  const total = values.reduce<number>((acc, value) => {
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? acc + n : acc;
+  }, 0);
+
+  return total.toFixed(2);
+}
+
+export function hasAmount(value?: string | number | null): boolean {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0;
+}
+
+function listFrom<T>(data: any): T[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  return [];
 }
 
 /* =========================================================
@@ -491,7 +526,7 @@ export async function getMyMerries(): Promise<MyMerriesResponse> {
 
 export async function getAvailableMerries(): Promise<AvailableMerryRow[]> {
   const res = await api.get(ENDPOINTS.merry.available);
-  return res.data;
+  return listFrom<AvailableMerryRow>(res.data);
 }
 
 export async function createMerry(payload: {
@@ -518,21 +553,21 @@ export async function getMerryMembers(
   merryId: number
 ): Promise<MerryMemberRow[]> {
   const res = await api.get(ENDPOINTS.merry.members(merryId));
-  return res.data;
+  return listFrom<MerryMemberRow>(res.data);
 }
 
 export async function getMerrySeats(
   merryId: number
 ): Promise<MerrySeatRow[]> {
   const res = await api.get(ENDPOINTS.merry.seats(merryId));
-  return res.data;
+  return listFrom<MerrySeatRow>(res.data);
 }
 
 export async function getSlotConfig(
   merryId: number
 ): Promise<SlotConfigRow[]> {
   const res = await api.get(ENDPOINTS.merry.slots(merryId));
-  return res.data;
+  return listFrom<SlotConfigRow>(res.data);
 }
 
 export async function saveSlotConfig(
@@ -560,7 +595,7 @@ export async function cancelJoinRequest(
 
 export async function getMyJoinRequests(): Promise<JoinRequestRow[]> {
   const res = await api.get(ENDPOINTS.merry.myJoinRequests);
-  return res.data;
+  return listFrom<JoinRequestRow>(res.data);
 }
 
 export async function adminListJoinRequests(
@@ -570,7 +605,7 @@ export async function adminListJoinRequests(
   const res = await api.get(ENDPOINTS.merry.adminJoinRequests(merryId), {
     params: statusFilter ? { status: statusFilter } : undefined,
   });
-  return res.data;
+  return listFrom<JoinRequestRow>(res.data);
 }
 
 export async function adminApproveJoinRequest(
@@ -669,7 +704,7 @@ export async function createMerryPaymentIntent(
 
 export async function getMyMerryPayments(): Promise<MerryPaymentRow[]> {
   const res = await api.get(ENDPOINTS.merry.myPayments);
-  return res.data;
+  return listFrom<MerryPaymentRow>(res.data);
 }
 
 export async function adminConfirmMerryPayment(
@@ -740,26 +775,6 @@ export async function stkPayMerryContribution(params: {
 }
 
 /* =========================================================
-   Friendly helpers
-========================================================= */
-
-export function sumMoney(
-  values: Array<string | number | null | undefined>
-): string {
-  const total = values.reduce<number>((acc, value) => {
-    const n = Number(value ?? 0);
-    return Number.isFinite(n) ? acc + n : acc;
-  }, 0);
-
-  return total.toFixed(2);
-}
-
-export function hasAmount(value?: string | number | null): boolean {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) && n > 0;
-}
-
-/* =========================================================
    Friendly Error Message
 ========================================================= */
 
@@ -769,6 +784,8 @@ export function getApiErrorMessage(error: any): string {
   if (!data) return "Something went wrong.";
   if (typeof data === "string") return data;
   if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.message === "string") return data.message;
+  if (typeof data?.error === "string") return data.error;
 
   if (typeof data === "object") {
     const firstKey = Object.keys(data)[0];

@@ -1,4 +1,4 @@
-// app/(tabs)/merry/admin-join-requests.tsx
+// app/(tabs)/merry/join-request.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -16,22 +16,16 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
-import Section from "@/components/ui/Section";
 
+import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import {
-  adminApproveJoinRequest,
-  adminListJoinRequests,
-  adminRejectJoinRequest,
+  AvailableMerryRow,
   fmtKES,
   getApiErrorMessage,
-  getMerryDetail,
-  JoinRequestRow,
-  MerryDetail,
+  getAvailableMerries,
+  requestToJoinMerry,
 } from "@/services/merry";
-import { getSessionUser, SessionUser } from "@/services/session";
-
-type FilterType = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "ALL";
 
 function statusColor(status: string) {
   const s = String(status || "").toUpperCase();
@@ -41,64 +35,68 @@ function statusColor(status: string) {
   return COLORS.gray;
 }
 
-function StatusPill({ status }: { status: string }) {
-  const color = statusColor(status);
+function StatusPill({ label }: { label: string }) {
+  const color = statusColor(label);
+
   return (
-    <View style={[styles.statusPill, { borderColor: color }]}>
+    <View
+      style={[
+        styles.statusPill,
+        { borderColor: color, backgroundColor: `${color}12` },
+      ]}
+    >
       <View style={[styles.statusDot, { backgroundColor: color }]} />
-      <Text style={styles.statusText}>{String(status || "—").toUpperCase()}</Text>
+      <Text style={styles.statusText}>{String(label || "—").toUpperCase()}</Text>
     </View>
   );
 }
 
-function parseSeatNumbers(input: string): number[] {
-  const clean = String(input || "").trim();
-  if (!clean) return [];
+function InfoBox({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.infoBox}>
+      <View style={styles.infoIconWrap}>
+        <Ionicons name={icon} size={16} color={COLORS.primary} />
+      </View>
 
-  const parts = clean
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const nums = parts.map((p) => Number(p));
-
-  if (nums.some((n) => !Number.isInteger(n) || n < 1)) {
-    throw new Error("Seat numbers must be positive integers separated by commas.");
-  }
-
-  const unique = Array.from(new Set(nums));
-  if (unique.length !== nums.length) {
-    throw new Error("Seat numbers must not contain duplicates.");
-  }
-
-  return unique;
+      <View style={{ flex: 1 }}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+    </View>
+  );
 }
 
-export default function AdminJoinRequestsScreen() {
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
+export default function MerryJoinRequestScreen() {
   const params = useLocalSearchParams<{ merryId?: string; id?: string }>();
   const merryId = useMemo(
     () => Number(params.merryId || params.id || 0),
     [params.merryId, params.id]
   );
 
-  const [me, setMe] = useState<SessionUser | null>(null);
-  const [merry, setMerry] = useState<MerryDetail | null>(null);
-  const [requests, setRequests] = useState<JoinRequestRow[]>([]);
-  const [filter, setFilter] = useState<FilterType>("PENDING");
+  const [merry, setMerry] = useState<AvailableMerryRow | null>(null);
+  const [requestedSeats, setRequestedSeats] = useState("1");
+  const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  const [approvingId, setApprovingId] = useState<number | null>(null);
-  const [rejectingId, setRejectingId] = useState<number | null>(null);
-
-  const [manualSeatMode, setManualSeatMode] = useState<Record<number, boolean>>({});
-  const [seatInputByRequest, setSeatInputByRequest] = useState<Record<number, string>>({});
-  const [rejectNoteByRequest, setRejectNoteByRequest] = useState<Record<number, string>>({});
-
-  const isAdmin = useMemo(() => {
-    return !!me?.is_admin || String((me as any)?.role || "").toLowerCase() === "admin";
-  }, [me]);
 
   const load = useCallback(async () => {
     if (!merryId || !Number.isFinite(merryId)) {
@@ -112,38 +110,38 @@ export default function AdminJoinRequestsScreen() {
       setLoading(true);
       setError("");
 
-      const [sessionRes, merryRes, requestsRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMerryDetail(merryId),
-        adminListJoinRequests(merryId, filter === "ALL" ? undefined : filter),
-      ]);
+      const rows = await getAvailableMerries();
+      const row = Array.isArray(rows)
+        ? rows.find((r) => Number(r.id) === merryId) || null
+        : null;
 
-      if (sessionRes.status === "fulfilled") {
-        setMe(sessionRes.value);
-      } else {
-        setMe(null);
-      }
+      setMerry(row);
 
-      if (merryRes.status === "fulfilled") {
-        setMerry(merryRes.value);
+      if (!row) {
+        setError("This merry is not available to join.");
       } else {
-        setMerry(null);
-      }
+        const maxSeatsAllowed =
+          row.available_seats == null
+            ? 50
+            : Math.max(1, Math.min(Number(row.available_seats || 1), 50));
 
-      if (requestsRes.status === "fulfilled") {
-        setRequests(Array.isArray(requestsRes.value) ? requestsRes.value : []);
-      } else {
-        setRequests([]);
-        setError(getApiErrorMessage(requestsRes.reason));
+        setRequestedSeats((prev) => {
+          const n = Number(prev || 1);
+          if (!Number.isFinite(n) || n < 1) return "1";
+          if (row.available_seats != null && n > maxSeatsAllowed) {
+            return String(maxSeatsAllowed);
+          }
+          return String(n);
+        });
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
-      setRequests([]);
+      setMerry(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [merryId, filter]);
+  }, [merryId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -156,81 +154,165 @@ export default function AdminJoinRequestsScreen() {
     await load();
   }, [load]);
 
-  const toggleManualSeatMode = useCallback((requestId: number) => {
-    setManualSeatMode((prev) => ({ ...prev, [requestId]: !prev[requestId] }));
-  }, []);
+  const parsedRequestedSeats = useMemo(() => {
+    const n = Number(requestedSeats || 0);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+  }, [requestedSeats]);
 
-  const onApprove = useCallback(
-    async (row: JoinRequestRow) => {
-      try {
-        setApprovingId(row.id);
+  const alreadyPending =
+    String(merry?.my_join_request?.status || "").toUpperCase() === "PENDING";
 
-        const useManual = !!manualSeatMode[row.id];
-        const seatInput = seatInputByRequest[row.id] || "";
+  const alreadyApproved =
+    String(merry?.my_join_request?.status || "").toUpperCase() === "APPROVED";
 
-        if (useManual) {
-          const seatNumbers = parseSeatNumbers(seatInput);
+  const isClosed = merry?.is_open === false;
+  const noSeatsLeft = merry?.available_seats === 0;
 
-          if (seatNumbers.length !== Number(row.requested_seats || 0)) {
-            throw new Error(
-              `You must enter exactly ${row.requested_seats} seat number(s).`
-            );
-          }
+  const maxRequestableSeats = useMemo(() => {
+    if (!merry) return 0;
+    if (merry.available_seats == null) return 50;
+    return Math.max(0, Math.min(Number(merry.available_seats || 0), 50));
+  }, [merry]);
 
-          await adminApproveJoinRequest(row.id, {
-            assigned_seat_numbers: seatNumbers,
-          });
+  const canSubmit = useMemo(() => {
+    if (!merry) return false;
+    if (alreadyPending) return false;
+    if (alreadyApproved) return false;
+    if (isClosed) return false;
+    if (noSeatsLeft) return false;
+    if (!parsedRequestedSeats || parsedRequestedSeats < 1) return false;
+    if (parsedRequestedSeats > maxRequestableSeats) return false;
+    if (merry.can_request_join === false) return false;
+    return true;
+  }, [
+    merry,
+    alreadyPending,
+    alreadyApproved,
+    isClosed,
+    noSeatsLeft,
+    parsedRequestedSeats,
+    maxRequestableSeats,
+  ]);
 
-          Alert.alert(
-            "Approved",
-            `Join request approved with seat numbers: ${seatNumbers.join(", ")}`
-          );
-        } else {
-          await adminApproveJoinRequest(row.id);
-          Alert.alert("Approved", "Join request approved successfully.");
-        }
+  const seatNumbersText = useMemo(() => {
+    if (!merry?.available_seat_numbers?.length) return "";
+    return merry.available_seat_numbers.join(", ");
+  }, [merry?.available_seat_numbers]);
 
-        setSeatInputByRequest((prev) => ({ ...prev, [row.id]: "" }));
-        setManualSeatMode((prev) => ({ ...prev, [row.id]: false }));
-        await load();
-      } catch (e: any) {
-        Alert.alert("Approve request", e?.message || getApiErrorMessage(e));
-      } finally {
-        setApprovingId(null);
+  const helperMessage = useMemo(() => {
+    if (!merry) return "";
+    if (alreadyPending) return "You already have a pending join request for this merry.";
+    if (alreadyApproved) return "Your join request has already been approved.";
+    if (isClosed) return "This merry is currently closed for new join requests.";
+    if (noSeatsLeft) return "There are no seats available at the moment.";
+    if (merry.available_seats == null) {
+      return "Choose how many seats you need and leave a short note for the admin.";
+    }
+    return `You can request up to ${maxRequestableSeats} seat(s).`;
+  }, [
+    merry,
+    alreadyPending,
+    alreadyApproved,
+    isClosed,
+    noSeatsLeft,
+    maxRequestableSeats,
+  ]);
+
+  const doSubmit = useCallback(async () => {
+    if (!merry) {
+      Alert.alert("Join request", "This merry could not be found.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const finalNote =
+        note.trim() || `Requesting ${parsedRequestedSeats} seat(s).`;
+
+      const res = await requestToJoinMerry(merry.id, {
+        requested_seats: parsedRequestedSeats,
+        note: finalNote,
+      });
+
+      Alert.alert(
+        "Request submitted",
+        `Your request for ${res.requested_seats} seat(s) has been sent to the admin.`,
+        [
+          {
+            text: "OK",
+            onPress: () => router.replace(ROUTES.tabs.merry as any),
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert("Join request", getApiErrorMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [merry, note, parsedRequestedSeats]);
+
+  const openConfirmPopup = useCallback(() => {
+    if (!merry) {
+      Alert.alert("Join request", "This merry could not be found.");
+      return;
+    }
+
+    if (!canSubmit) {
+      let msg = "This request cannot be submitted.";
+
+      if (alreadyPending) {
+        msg = "You already have a pending join request.";
+      } else if (alreadyApproved) {
+        msg = "This join request has already been approved.";
+      } else if (isClosed) {
+        msg = "This merry is currently closed for joining.";
+      } else if (noSeatsLeft) {
+        msg = "No seats are currently available.";
+      } else if (!parsedRequestedSeats || parsedRequestedSeats < 1) {
+        msg = "Requested seats must be at least 1.";
+      } else if (parsedRequestedSeats > maxRequestableSeats) {
+        msg = `You can request up to ${maxRequestableSeats} seat(s).`;
       }
-    },
-    [load, manualSeatMode, seatInputByRequest]
-  );
 
-  const onReject = useCallback(
-    async (row: JoinRequestRow) => {
-      try {
-        setRejectingId(row.id);
-        const note = (rejectNoteByRequest[row.id] || "").trim();
+      Alert.alert("Join request", msg);
+      return;
+    }
 
-        await adminRejectJoinRequest(row.id, note ? { note } : {});
-        Alert.alert("Rejected", "Join request rejected.");
+    const finalNote =
+      note.trim() || `Requesting ${parsedRequestedSeats} seat(s).`;
 
-        setRejectNoteByRequest((prev) => ({ ...prev, [row.id]: "" }));
-        await load();
-      } catch (e: any) {
-        Alert.alert("Reject request", getApiErrorMessage(e));
-      } finally {
-        setRejectingId(null);
-      }
-    },
-    [load, rejectNoteByRequest]
-  );
-
-  const pendingCount = useMemo(
-    () => requests.filter((r) => String(r.status).toUpperCase() === "PENDING").length,
-    [requests]
-  );
+    Alert.alert(
+      "Confirm join request",
+      `Merry: ${merry.name}\n\nSeats requested: ${parsedRequestedSeats}\n\nNote: ${finalNote}\n\nDo you want to send this request?`,
+      [
+        {
+          text: "Edit",
+          style: "cancel",
+        },
+        {
+          text: "Confirm",
+          onPress: doSubmit,
+        },
+      ]
+    );
+  }, [
+    merry,
+    canSubmit,
+    note,
+    parsedRequestedSeats,
+    maxRequestableSeats,
+    alreadyPending,
+    alreadyApproved,
+    isClosed,
+    noSeatsLeft,
+    doSubmit,
+  ]);
 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
@@ -241,21 +323,21 @@ export default function AdminJoinRequestsScreen() {
         <EmptyState
           title="Invalid merry"
           subtitle="No merry was selected."
-          actionLabel="Go Back"
+          actionLabel="Back"
           onAction={() => router.back()}
         />
       </View>
     );
   }
 
-  if (!isAdmin) {
+  if (!merry) {
     return (
       <View style={styles.page}>
         <EmptyState
-          title="Admin only"
-          subtitle="You do not have permission to manage join requests."
-          actionLabel="Back"
-          onAction={() => router.back()}
+          title="Merry not available"
+          subtitle={error || "This merry is not available for joining."}
+          actionLabel="Back to Merry"
+          onAction={() => router.replace(ROUTES.tabs.merry as any)}
         />
       </View>
     );
@@ -265,265 +347,354 @@ export default function AdminJoinRequestsScreen() {
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Join Requests</Text>
-          <Text style={styles.hSub}>
-            {merry?.name || "Merry"} • Pending {pendingCount}
-          </Text>
-        </View>
-
+      <View style={styles.topBar}>
         <Button
-          variant="ghost"
           title="Back"
+          variant="ghost"
           onPress={() => router.back()}
-          leftIcon={<Ionicons name="arrow-back-outline" size={16} color={COLORS.primary} />}
+          leftIcon={
+            <Ionicons
+              name="arrow-back-outline"
+              size={16}
+              color={COLORS.primary}
+            />
+          }
         />
       </View>
 
+      <Card style={styles.summaryCard}>
+        <View style={styles.summaryTop}>
+          <View style={styles.summaryIconWrap}>
+            <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.summaryTitle}>{merry.name}</Text>
+            <Text style={styles.summarySubtitle}>
+              Send a simple join request to the admin.
+            </Text>
+          </View>
+
+          {merry.my_join_request?.status ? (
+            <StatusPill label={merry.my_join_request.status} />
+          ) : null}
+        </View>
+
+        <View style={styles.infoGrid}>
+          <InfoBox
+            icon="cash-outline"
+            label="Contribution"
+            value={fmtKES(merry.contribution_amount)}
+          />
+          <InfoBox
+            icon="grid-outline"
+            label="Available Seats"
+            value={
+              merry.available_seats == null
+                ? "Open"
+                : String(merry.available_seats)
+            }
+          />
+        </View>
+      </Card>
+
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
-      <Section title="Overview">
-        <Card style={styles.sectionCard}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Contribution / Seat</Text>
-            <Text style={styles.summaryValue}>
-              {fmtKES(merry?.contribution_amount || 0)}
-            </Text>
-          </View>
+      <Card style={styles.formCard}>
+        <Text style={styles.formTitle}>Request details</Text>
+        <Text style={styles.formSubtitle}>{helperMessage}</Text>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Open for Joining</Text>
-            <Text style={styles.summaryValue}>
-              {merry?.is_open === false ? "No" : "Yes"}
-            </Text>
-          </View>
+        <View style={{ height: SPACING.md }} />
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Available Seats</Text>
-            <Text style={styles.summaryValue}>
-              {merry?.available_seats == null ? "Unlimited" : String(merry.available_seats)}
-            </Text>
-          </View>
+        <Input
+          label="Number of seats"
+          placeholder="Enter seats"
+          keyboardType="number-pad"
+          value={requestedSeats}
+          onChangeText={(text: string) =>
+            setRequestedSeats(text.replace(/[^\d]/g, ""))
+          }
+        />
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Members</Text>
-            <Text style={styles.summaryValue}>{String(merry?.members_count ?? "—")}</Text>
-          </View>
+        <View style={{ height: SPACING.md }} />
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Seats</Text>
-            <Text style={styles.summaryValue}>{String(merry?.seats_count ?? "—")}</Text>
-          </View>
-        </Card>
-      </Section>
+        <Input
+          label="Note to admin"
+          placeholder="Example: I need 2 seats. If possible I prefer seat 3 and 4."
+          value={note}
+          onChangeText={setNote}
+          multiline
+        />
 
-      <Section title="Filter">
-        <View style={styles.filterRow}>
-          {(["PENDING", "APPROVED", "REJECTED", "CANCELLED", "ALL"] as FilterType[]).map(
-            (item) => {
-              const active = filter === item;
-              return (
-                <Button
-                  key={item}
-                  title={item}
-                  variant={active ? "primary" : "secondary"}
-                  onPress={() => setFilter(item)}
-                />
-              );
-            }
-          )}
-        </View>
-      </Section>
-
-      <Section title="Requests">
-        {requests.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No join requests"
-            subtitle="There are no join requests for this filter."
+        <View style={styles.tipBox}>
+          <Ionicons
+            name="information-circle-outline"
+            size={16}
+            color={COLORS.primary}
           />
-        ) : (
-          requests.map((row) => {
-            const isPending = String(row.status).toUpperCase() === "PENDING";
-            const isApproving = approvingId === row.id;
-            const isRejecting = rejectingId === row.id;
-            const useManual = !!manualSeatMode[row.id];
+          <Text style={styles.tipText}>
+            After tapping submit, you will first see a popup summary to confirm
+            exactly what is being sent.
+          </Text>
+        </View>
 
-            return (
-              <Card key={row.id} style={styles.requestCard}>
-                <View style={styles.requestTop}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.requestTitle}>
-                      {row.username || `User #${row.user_id ?? "—"}`}
-                    </Text>
-                    <Text style={styles.requestMeta}>
-                      {row.phone ? `Phone: ${row.phone}` : "Phone: —"}
-                    </Text>
-                    <Text style={styles.requestMeta}>
-                      Requested Seats: {row.requested_seats}
-                    </Text>
-                    <Text style={styles.requestMeta}>
-                      Created: {row.created_at || "—"}
-                    </Text>
-                    {row.reviewed_at ? (
-                      <Text style={styles.requestMeta}>Reviewed: {row.reviewed_at}</Text>
-                    ) : null}
-                    {row.note ? (
-                      <Text style={styles.noteText}>Note: {row.note}</Text>
-                    ) : null}
-                  </View>
+        <View style={{ height: SPACING.lg }} />
 
-                  <StatusPill status={row.status} />
-                </View>
+        <Button
+          title={
+            submitting
+              ? "Submitting..."
+              : alreadyPending
+                ? "Request Pending"
+                : alreadyApproved
+                  ? "Already Approved"
+                  : "Submit Join Request"
+          }
+          onPress={openConfirmPopup}
+          disabled={!canSubmit || submitting}
+          leftIcon={
+            !submitting ? (
+              <Ionicons
+                name="paper-plane-outline"
+                size={18}
+                color={COLORS.white}
+              />
+            ) : undefined
+          }
+        />
+      </Card>
 
-                {isPending ? (
-                  <>
-                    <View style={styles.divider} />
+      {(seatNumbersText ||
+        merry.next_payout_date ||
+        merry.members_count != null ||
+        merry.seats_count != null) && (
+        <Card style={styles.bottomCard}>
+          <Text style={styles.bottomTitle}>Merry summary</Text>
 
-                    <View style={styles.inlineRow}>
-                      <Button
-                        title={useManual ? "Auto Assign Seats" : "Manual Seat Assign"}
-                        variant="secondary"
-                        onPress={() => toggleManualSeatMode(row.id)}
-                      />
-                    </View>
+          <View style={{ marginTop: SPACING.sm }}>
+            <DetailRow
+              label="Contribution"
+              value={fmtKES(merry.contribution_amount)}
+            />
+            <DetailRow
+              label="Frequency"
+              value={String(merry.payout_frequency || "—")}
+            />
+            <DetailRow
+              label="Next payout"
+              value={merry.next_payout_date || "—"}
+            />
+            <DetailRow
+              label="Members"
+              value={String(merry.members_count ?? 0)}
+            />
+            <DetailRow
+              label="Seats"
+              value={String(merry.seats_count ?? 0)}
+            />
+            <DetailRow
+              label="Available seats"
+              value={
+                merry.available_seats == null
+                  ? "Open"
+                  : String(merry.available_seats)
+              }
+            />
+          </View>
 
-                    {useManual ? (
-                      <View style={{ marginTop: SPACING.md }}>
-                        <Input
-                          label={`Seat numbers (${row.requested_seats} needed)`}
-                          placeholder="Example: 2,5,19"
-                          value={seatInputByRequest[row.id] || ""}
-                          onChangeText={(text: string) =>
-                            setSeatInputByRequest((prev) => ({
-                              ...prev,
-                              [row.id]: text,
-                            }))
-                          }
-                        />
-                        <Text style={styles.helpText}>
-                          Enter exactly {row.requested_seats} unique seat number(s), comma-separated.
-                        </Text>
-                      </View>
-                    ) : null}
+          {seatNumbersText ? (
+            <View style={styles.availableSeatsWrap}>
+              <Text style={styles.availableSeatsLabel}>
+                Available seat numbers
+              </Text>
+              <Text style={styles.availableSeatsValue}>{seatNumbersText}</Text>
+            </View>
+          ) : null}
+        </Card>
+      )}
 
-                    <View style={{ marginTop: SPACING.md }}>
-                      <Input
-                        label="Reject note (optional)"
-                        placeholder="Reason for rejection"
-                        value={rejectNoteByRequest[row.id] || ""}
-                        onChangeText={(text: string) =>
-                          setRejectNoteByRequest((prev) => ({
-                            ...prev,
-                            [row.id]: text,
-                          }))
-                        }
-                      />
-                    </View>
-
-                    <View style={styles.actionsRow}>
-                      <Button
-                        title={isApproving ? "Approving..." : "Approve"}
-                        onPress={() => onApprove(row)}
-                        disabled={isApproving || isRejecting}
-                        leftIcon={
-                          !isApproving ? (
-                            <Ionicons
-                              name="checkmark-circle-outline"
-                              size={18}
-                              color={COLORS.white}
-                            />
-                          ) : undefined
-                        }
-                      />
-
-                      <Button
-                        title={isRejecting ? "Rejecting..." : "Reject"}
-                        variant="secondary"
-                        onPress={() => onReject(row)}
-                        disabled={isApproving || isRejecting}
-                        leftIcon={
-                          !isRejecting ? (
-                            <Ionicons
-                              name="close-circle-outline"
-                              size={18}
-                              color={COLORS.dark}
-                            />
-                          ) : undefined
-                        }
-                      />
-                    </View>
-                  </>
-                ) : null}
-              </Card>
-            );
-          })
-        )}
-      </Section>
-
-      <View style={{ height: 24 }} />
+      <View style={{ height: 20 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: "#F5F7FB",
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 28,
+  },
 
   loadingWrap: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    alignItems: "center",
+    backgroundColor: "#F5F7FB",
   },
 
-  header: {
-    marginBottom: SPACING.lg,
+  topBar: {
+    marginBottom: SPACING.sm,
+    alignItems: "flex-start",
+  },
+
+  summaryCard: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  summaryTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
   },
 
-  hTitle: {
+  summaryIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}12`,
+  },
+
+  summaryTitle: {
     fontFamily: FONT.bold,
-    fontSize: 18,
+    fontSize: 17,
     color: COLORS.dark,
   },
 
-  hSub: {
+  summarySubtitle: {
+    marginTop: 4,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+  },
+
+  infoGrid: {
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: "#F8FAFF",
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  infoIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}12`,
+  },
+
+  infoLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: COLORS.gray,
+    marginBottom: 2,
+  },
+
+  infoValue: {
+    fontFamily: FONT.semiBold,
+    fontSize: 13,
+    color: COLORS.dark,
+  },
+
+  formCard: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  formTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 16,
+    color: COLORS.dark,
+  },
+
+  formSubtitle: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
+    lineHeight: 18,
   },
 
-  sectionCard: {
+  tipBox: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: `${COLORS.primary}10`,
   },
 
-  summaryRow: {
+  tipText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.dark,
+    lineHeight: 18,
+  },
+
+  bottomCard: {
+    padding: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    ...SHADOW.card,
+  },
+
+  bottomTitle: {
+    fontFamily: FONT.bold,
+    fontSize: 15,
+    color: COLORS.dark,
+  },
+
+  detailRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
     gap: SPACING.md,
+    paddingVertical: 8,
   },
 
-  summaryLabel: {
+  detailLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
   },
 
-  summaryValue: {
+  detailValue: {
     flexShrink: 1,
     textAlign: "right",
     fontFamily: FONT.semiBold,
@@ -531,105 +702,63 @@ const styles = StyleSheet.create({
     color: COLORS.dark,
   },
 
-  filterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm as any,
+  availableSeatsWrap: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: "#F8FAFF",
   },
 
-  requestCard: {
+  availableSeatsLabel: {
+    fontFamily: FONT.semiBold,
+    fontSize: 12,
+    color: COLORS.dark,
+    marginBottom: 6,
+  },
+
+  availableSeatsValue: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
+    lineHeight: 18,
+  },
+
+  errorCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
-  },
-
-  requestTop: {
+    borderRadius: RADIUS.lg,
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-
-  requestTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-
-  requestMeta: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  noteText: {
-    marginTop: 8,
-    fontFamily: FONT.medium,
-    fontSize: 12,
-    color: COLORS.text,
-  },
-
-  helpText: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: COLORS.gray,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: SPACING.md,
-  },
-
-  inlineRow: {
-    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.sm,
+    backgroundColor: "#FFF4F4",
   },
 
-  actionsRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    gap: SPACING.sm as any,
+  errorText: {
+    flex: 1,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.danger,
   },
 
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
-    borderWidth: 1,
-    backgroundColor: COLORS.surface,
   },
 
   statusDot: {
     width: 8,
     height: 8,
-    borderRadius: 8,
+    borderRadius: 4,
   },
 
   statusText: {
+    fontFamily: FONT.semiBold,
     fontSize: 11,
-    fontFamily: FONT.medium,
-    color: COLORS.text,
-  },
-
-  errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-    ...SHADOW.card,
-  },
-
-  errorText: {
-    flex: 1,
-    color: COLORS.danger,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
+    color: COLORS.dark,
   },
 });

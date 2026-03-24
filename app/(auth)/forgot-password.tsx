@@ -2,14 +2,28 @@ import { getErrorMessage } from "@/services/api";
 import { forgotPassword } from "@/services/auth";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+function normalizePhone(input: string) {
+  return (input || "").replace(/\s+/g, "").trim();
+}
 
 export default function ForgotPasswordScreen() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleRequestOtp = async () => {
-    const cleanPhone = phone.trim();
+    const cleanPhone = normalizePhone(phone);
 
     if (!cleanPhone) {
       Alert.alert("Missing phone", "Enter your phone number.");
@@ -27,9 +41,12 @@ export default function ForgotPasswordScreen() {
     try {
       setLoading(true);
 
-      await forgotPassword({ phone: cleanPhone });
+      const res = await forgotPassword({ phone: cleanPhone });
 
-      Alert.alert("OTP Sent", "Password reset OTP sent to your phone.");
+      Alert.alert(
+        "OTP Sent",
+        res?.detail || "Password reset OTP sent to your phone."
+      );
 
       router.push({
         pathname: "/(auth)/reset-password",
@@ -43,34 +60,103 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <View style={{ padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700" }}>Forgot Password</Text>
-
-      <TextInput
-        placeholder="Phone (07XXXXXXXX)"
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-      />
-
-      <TouchableOpacity
-        onPress={handleRequestOtp}
-        disabled={loading}
-        style={{
-          backgroundColor: "black",
-          padding: 14,
-          borderRadius: 10,
-          alignItems: "center",
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        <Text style={{ color: "white", fontWeight: "700" }}>
-          {loading ? "Sending..." : "Send OTP"}
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={styles.container}>
+        <Text style={styles.title}>Forgot Password</Text>
+        <Text style={styles.subtitle}>
+          Enter your phone number to receive a reset OTP
         </Text>
-      </TouchableOpacity>
-    </View>
+
+        <TextInput
+          placeholder="Phone (07XXXXXXXX)"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loading}
+          style={styles.input}
+        />
+
+        <TouchableOpacity
+          onPress={handleRequestOtp}
+          disabled={loading}
+          style={[styles.button, loading && styles.buttonDisabled]}
+        >
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color="#fff" />
+              <Text style={styles.buttonText}>Sending...</Text>
+            </View>
+          ) : (
+            <Text style={styles.buttonText}>Send OTP</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/login")}
+          disabled={loading}
+        >
+          <Text style={styles.link}>Back to Login</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    padding: 20,
+    gap: 12,
+    backgroundColor: "#fff",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#111",
+  },
+  subtitle: {
+    color: "#666",
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    padding: 12,
+    borderRadius: 10,
+    color: "#111",
+  },
+  button: {
+    backgroundColor: "black",
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  buttonText: {
+    color: "white",
+    fontWeight: "700",
+  },
+  link: {
+    marginTop: 6,
+    textAlign: "center",
+    color: "#111",
+    fontWeight: "600",
+  },
+});

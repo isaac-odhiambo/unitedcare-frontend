@@ -20,7 +20,7 @@ export const ROUTES = {
        Savings
     ----------------------------- */
     savings: "/(tabs)/savings",
-    savingsSave: "/(tabs)/savings/save", // ✅ ADDED
+    savingsSave: "/(tabs)/savings/save",
     savingsCreate: "/(tabs)/savings/create",
     savingsHistory: "/(tabs)/savings/history",
 
@@ -48,7 +48,7 @@ export const ROUTES = {
     merry: "/(tabs)/merry",
     merryContribute: "/(tabs)/merry/contribute",
     merryHistory: "/(tabs)/merry/history",
-    merryJoinRequests: "/(tabs)/merry/join-requests",
+    merryJoinRequest: "/(tabs)/merry/join-request",
     merryPayments: "/(tabs)/merry/contributions",
     merryCreate: "/(tabs)/merry/create",
     merryMembers: "/(tabs)/merry/members",
@@ -123,8 +123,8 @@ export const ROUTES = {
     merryMembers: (merryId: number | string) =>
       `/(tabs)/merry/members?merryId=${merryId}`,
 
-    merryJoinRequests: (merryId: number | string) =>
-      `/(tabs)/merry/join-requests?merryId=${merryId}`,
+    merryJoinRequest: (merryId: number | string) =>
+      `/(tabs)/merry/join-request?merryId=${merryId}`,
 
     merryAdminJoinRequests: (merryId: number | string) =>
       `/(tabs)/merry/admin-join-requests?merryId=${merryId}`,

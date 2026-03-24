@@ -56,6 +56,9 @@ export const COLORS = {
   white: "#FFFFFF",
   black: "#000000",
 
+  error: "#DC2626",
+  errorSoft: "rgba(220, 38, 38, 0.10)",
+
   dark: "#111827",
   darkSoft: "#1F2937",
 

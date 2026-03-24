@@ -47,6 +47,15 @@ function normalizeAuthPhone(phone: string): string {
   return String(phone || "").replace(/\s+/g, "").trim();
 }
 
+async function persistTokensFromResponse(data?: AuthResponse) {
+  const access = data?.access;
+  const refresh = data?.refresh;
+
+  if (typeof access === "string" && access.split(".").length === 3) {
+    await saveAuthTokens(access, refresh);
+  }
+}
+
 export async function registerUser(
   payload: RegisterPayload
 ): Promise<AuthResponse> {
@@ -54,6 +63,7 @@ export async function registerUser(
     ...payload,
     phone: normalizeAuthPhone(payload.phone),
   });
+
   return res.data;
 }
 
@@ -63,7 +73,9 @@ export async function verifyOtp(
   const res = await api.post<AuthResponse>(ENDPOINTS.accounts.verifyOtp, {
     ...payload,
     phone: normalizeAuthPhone(payload.phone),
+    otp: String(payload.otp || "").trim(),
   });
+
   return res.data;
 }
 
@@ -75,12 +87,7 @@ export async function loginUser(
     phone: normalizeAuthPhone(payload.phone),
   });
 
-  const access = res.data?.access;
-  const refresh = res.data?.refresh;
-
-  if (typeof access === "string" && access.split(".").length === 3) {
-    await saveAuthTokens(access, refresh);
-  }
+  await persistTokensFromResponse(res.data);
 
   return res.data;
 }
@@ -95,6 +102,7 @@ export async function forgotPassword(
       phone: normalizeAuthPhone(payload.phone),
     }
   );
+
   return res.data;
 }
 
@@ -106,15 +114,11 @@ export async function resetPassword(
     {
       ...payload,
       phone: normalizeAuthPhone(payload.phone),
+      otp: String(payload.otp || "").trim(),
     }
   );
 
-  const access = res.data?.access;
-  const refresh = res.data?.refresh;
-
-  if (typeof access === "string" && access.split(".").length === 3) {
-    await saveAuthTokens(access, refresh);
-  }
+  await persistTokensFromResponse(res.data);
 
   return res.data;
 }
@@ -126,5 +130,6 @@ export async function resendOtp(
     ...payload,
     phone: normalizeAuthPhone(payload.phone),
   });
+
   return res.data;
 }

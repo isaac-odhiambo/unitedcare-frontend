@@ -253,8 +253,7 @@ export async function listGroups(params?: {
 }
 
 export async function listAvailableGroups(): Promise<Group[]> {
-  const endpoint =
-    ENDPOINTS.groups.available || ENDPOINTS.groups.groups;
+  const endpoint = ENDPOINTS.groups.available || ENDPOINTS.groups.groups;
 
   const res = await api.get(endpoint);
   return asArray<Group>(res.data);
@@ -434,6 +433,8 @@ export async function postGroupContribution(
 export async function getMyGroupContributions(
   groupId: number
 ): Promise<GroupContribution[]> {
+  if (!groupId || Number.isNaN(Number(groupId))) return [];
+
   const res = await api.get(ENDPOINTS.groups.myContributions(groupId));
   return asArray<GroupContribution>(res.data);
 }

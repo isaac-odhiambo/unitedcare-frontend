@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -48,7 +49,10 @@ import {
 import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
 import { getSessionUser, SessionUser } from "@/services/session";
 
-type DashboardUser = Partial<MeResponse> & Partial<SessionUser>;
+type DashboardUser = Partial<MeResponse> &
+  Partial<SessionUser> & {
+    member_number?: string | number;
+  };
 
 type NoticeItem = {
   id: string;
@@ -108,9 +112,33 @@ function getPrimarySavingsAccount(accounts: SavingsAccount[]) {
   return accounts[0];
 }
 
+function getActiveLoan(loansData: Loan[]) {
+  if (!Array.isArray(loansData) || loansData.length === 0) return null;
+
+  return (
+    loansData.find((loan) => {
+      const status = String(loan?.status || "").toUpperCase();
+      return (
+        ["APPROVED", "ACTIVE", "DISBURSED"].includes(status) &&
+        hasAmount(loan?.outstanding_balance)
+      );
+    }) || null
+  );
+}
+
 function formatUserStatus(status?: string) {
   const value = String(status || "ACTIVE").replaceAll("_", " ").trim();
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function getMemberIdentity(user: DashboardUser | null) {
+  return (
+    user?.full_name ||
+    user?.name ||
+    user?.username ||
+    (typeof user?.phone === "string" ? user.phone : "") ||
+    "Member"
+  );
 }
 
 function getToneColors(
@@ -122,24 +150,28 @@ function getToneColors(
       icon: COLORS.primary,
       border: "rgba(14, 94, 111, 0.10)",
       accent: COLORS.primary,
+      amountBg: COLORS.primarySoft,
     },
     success: {
       iconBg: "rgba(22, 163, 74, 0.10)",
       icon: COLORS.secondary,
       border: "rgba(22, 163, 74, 0.10)",
       accent: COLORS.secondary,
+      amountBg: COLORS.secondarySoft,
     },
     warning: {
       iconBg: "rgba(245, 158, 11, 0.12)",
       icon: COLORS.warning,
       border: "rgba(245, 158, 11, 0.10)",
       accent: COLORS.warning,
+      amountBg: COLORS.warningSoft,
     },
     info: {
       iconBg: "rgba(37, 99, 235, 0.10)",
       icon: COLORS.info,
       border: "rgba(37, 99, 235, 0.10)",
       accent: COLORS.info,
+      amountBg: COLORS.infoSoft,
     },
   };
 
@@ -157,27 +189,32 @@ function StatPill({
   icon: keyof typeof Ionicons.glyphMap;
   onPress?: () => void;
 }) {
-  const Wrapper = onPress ? TouchableOpacity : View;
-
   return (
-    <Wrapper
-      onPress={onPress}
+    <TouchableOpacity
       activeOpacity={0.86}
+      onPress={onPress}
+      disabled={!onPress}
       style={styles.statPill}
     >
       <View style={styles.statPillIcon}>
         <Ionicons name={icon} size={15} color={COLORS.primary} />
       </View>
+
       <View style={{ flex: 1 }}>
         <Text style={styles.statPillLabel}>{label}</Text>
         <Text style={styles.statPillValue} numberOfLines={1}>
           {value}
         </Text>
       </View>
+
       {onPress ? (
-        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.9)" />
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color="rgba(255,255,255,0.88)"
+        />
       ) : null}
-    </Wrapper>
+    </TouchableOpacity>
   );
 }
 
@@ -215,7 +252,9 @@ function ActionCard({
       variant="default"
     >
       <View style={styles.actionTop}>
-        <View style={[styles.actionIconWrap, { backgroundColor: colors.iconBg }]}>
+        <View
+          style={[styles.actionIconWrap, { backgroundColor: colors.iconBg }]}
+        >
           <Ionicons name={icon} size={20} color={colors.icon} />
         </View>
 
@@ -226,7 +265,12 @@ function ActionCard({
       </View>
 
       {amount ? (
-        <View style={styles.actionAmountBox}>
+        <View
+          style={[
+            styles.actionAmountBox,
+            { backgroundColor: colors.amountBg },
+          ]}
+        >
           <Text style={styles.actionAmountLabel}>Amount</Text>
           <Text style={[styles.actionAmountValue, { color: colors.accent }]}>
             {amount}
@@ -311,6 +355,9 @@ function SmallLink({
 }
 
 export default function DashboardScreen() {
+  const { width } = useWindowDimensions();
+  const isWideScreen = width >= 760;
+
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -318,7 +365,9 @@ export default function DashboardScreen() {
   const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
   const [heroSavings, setHeroSavings] = useState("—");
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
+  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>(
+    []
+  );
   const [merrySummary, setMerrySummary] =
     useState<MyAllMerryDueSummaryResponse | null>(null);
 
@@ -355,20 +404,39 @@ export default function DashboardScreen() {
     });
   }, [merrySummary]);
 
-  const openSavingsDeposit = useCallback(
-    (account?: SavingsAccount | null) => {
-      router.push({
-        pathname: "/(tabs)/payments/deposit" as any,
-        params: {
-          source: "savings",
-          savingsId: account?.id ? String(account.id) : "",
-          amount: "",
-          editableAmount: "true",
-        },
-      });
-    },
-    []
-  );
+  const openSavingsFlow = useCallback((account?: SavingsAccount | null) => {
+    if (!account) {
+      router.push(ROUTES.tabs.savings as any);
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/payments/deposit" as any,
+      params: {
+        source: "savings",
+        savingsId: String(account.id),
+        amount: "",
+        editableAmount: "true",
+      },
+    });
+  }, []);
+
+  const openLoanPaymentFlow = useCallback((loan?: Loan | null) => {
+    if (!loan) {
+      router.push(ROUTES.tabs.loans as any);
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/payments/deposit" as any,
+      params: {
+        source: "loan",
+        loanId: String(loan.id),
+        amount: "",
+        editableAmount: "true",
+      },
+    });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -414,7 +482,9 @@ export default function DashboardScreen() {
         guaranteeResult.status === "fulfilled" ? guaranteeResult.value : []
       );
       setMerrySummary(
-        merrySummaryResult.status === "fulfilled" ? merrySummaryResult.value : null
+        merrySummaryResult.status === "fulfilled"
+          ? merrySummaryResult.value
+          : null
       );
     } finally {
       setLoading(false);
@@ -436,20 +506,33 @@ export default function DashboardScreen() {
     }
   }, [load]);
 
-  const greetingName = useMemo(() => {
-    return (
-      user?.username ||
-      (typeof user?.phone === "string" ? user.phone : "") ||
-      "Member"
-    );
-  }, [user]);
-
+  const memberName = useMemo(() => getMemberIdentity(user), [user]);
   const greetingText = useMemo(() => getGreetingByTime(), []);
   const totalOutstandingLoans = useMemo(() => getLoansTotal(loans), [loans]);
   const primarySavingsAccount = useMemo(
     () => getPrimarySavingsAccount(savingsAccounts),
     [savingsAccounts]
   );
+  const activeLoan = useMemo(() => getActiveLoan(loans), [loans]);
+
+  const hasActiveMerry = useMemo(() => {
+    if (hasAmount(merrySummary?.total_required_now)) return true;
+
+    const items = merrySummary?.items ?? [];
+    return items.some(
+      (item) => hasAmount(item.required_now) || hasAmount(item.pay_with_next)
+    );
+  }, [merrySummary]);
+
+  const memberPhone = useMemo(() => {
+    return typeof user?.phone === "string" ? user.phone : "";
+  }, [user]);
+
+  const memberNumber = useMemo(() => {
+    const raw = user?.member_number;
+    if (raw === undefined || raw === null || raw === "") return "";
+    return String(raw);
+  }, [user]);
 
   const noticeItems = useMemo<NoticeItem[]>(() => {
     const items: NoticeItem[] = [];
@@ -488,6 +571,7 @@ export default function DashboardScreen() {
       items.push({
         id: "loan-approved",
         title: "Loan approved",
+        subtitle: "Open to view your loan details.",
         icon: "checkmark-circle-outline",
         tone: "success",
         actionLabel: "Open",
@@ -541,6 +625,7 @@ export default function DashboardScreen() {
               color={COLORS.white}
             />
           </View>
+
           <View style={{ flex: 1 }}>
             <Text style={styles.brandTitle}>United Care</Text>
             <Text style={styles.brandSubtitle}>Self Help Group</Text>
@@ -565,12 +650,15 @@ export default function DashboardScreen() {
           <View style={styles.heroDecorTwo} />
 
           <View style={styles.heroHeaderRow}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.heroTag}>
                 {isAdmin ? "COMMUNITY LEAD" : "MEMBER"}
               </Text>
               <Text style={styles.heroTitle}>
-                {greetingText}, {greetingName}
+                {greetingText}, {memberName}
+              </Text>
+              <Text style={styles.heroCaption}>
+                Together in saving and support
               </Text>
             </View>
 
@@ -579,14 +667,29 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.heroMetaRow}>
+          <View style={styles.heroIdentityRow}>
             <View style={styles.heroMetaPill}>
               <Ionicons name="ellipse" size={8} color="#8CF0C7" />
               <Text style={styles.heroMetaText}>
                 {formatUserStatus(user?.status)}
               </Text>
             </View>
+
+            {memberNumber ? (
+              <View style={styles.heroMetaPill}>
+                <Ionicons
+                  name="card-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.92)"
+                />
+                <Text style={styles.heroMetaText}>#{memberNumber}</Text>
+              </View>
+            ) : null}
           </View>
+
+          {memberPhone ? (
+            <Text style={styles.heroPhone}>{memberPhone}</Text>
+          ) : null}
 
           <View style={styles.heroStatsWrap}>
             <StatPill
@@ -595,73 +698,113 @@ export default function DashboardScreen() {
               icon="wallet-outline"
               onPress={() => router.push(ROUTES.tabs.savings as any)}
             />
-            <StatPill
-              label="Merry Due"
-              value={fmtKES(merrySummary?.total_required_now)}
-              icon="repeat-outline"
-              onPress={() => {
-                if (!merryAllowed) {
-                  goToKyc();
-                  return;
-                }
-                openFirstMerryFlow();
-              }}
-            />
-            <StatPill
-              label="Groups"
-              value={String(merrySummary?.active_merries ?? 0)}
-              icon="people-outline"
-              onPress={() => router.push(ROUTES.tabs.groups as any)}
-            />
+
+            {hasActiveMerry ? (
+              <StatPill
+                label="Merry Due"
+                value={fmtKES(merrySummary?.total_required_now)}
+                icon="repeat-outline"
+                onPress={() => {
+                  if (!merryAllowed) {
+                    goToKyc();
+                    return;
+                  }
+                  openFirstMerryFlow();
+                }}
+              />
+            ) : null}
           </View>
         </Card>
       </TouchableOpacity>
 
       <Section title="Quick Actions">
-        <View style={styles.actionsWrap}>
-          <ActionCard
-            title="Save"
-            subtitle="Add money to your savings account."
-            amount={heroSavings}
-            icon="wallet-outline"
-            tone="primary"
-            primaryLabel="Save Now"
-            secondaryLabel="Open"
-            onPrimary={() => {
-              if (!kycComplete) {
-                goToKyc();
-                return;
+        <View
+          style={[styles.actionsWrap, isWideScreen && styles.actionsWrapWide]}
+        >
+          <View
+            style={[styles.actionItem, isWideScreen && styles.actionItemWide]}
+          >
+            <ActionCard
+              title="Save"
+              subtitle={
+                primarySavingsAccount
+                  ? "Add money to your savings account."
+                  : "Open savings to create or manage your account."
               }
-              openSavingsDeposit(primarySavingsAccount);
-            }}
-            onSecondary={() => router.push(ROUTES.tabs.savings as any)}
-          />
+              amount={heroSavings}
+              icon="wallet-outline"
+              tone="primary"
+              primaryLabel="Save Now"
+              secondaryLabel={primarySavingsAccount ? "History" : "Open"}
+              onPrimary={() => {
+                if (!kycComplete) {
+                  goToKyc();
+                  return;
+                }
+                openSavingsFlow(primarySavingsAccount);
+              }}
+              onSecondary={() => router.push(ROUTES.tabs.savings as any)}
+            />
+          </View>
 
-          <ActionCard
-            title="Merry"
-            subtitle="Continue your contribution."
-            amount={fmtKES(merrySummary?.total_required_now)}
-            icon="repeat-outline"
-            tone="success"
-            primaryLabel={
-              hasAmount(merrySummary?.total_required_now) ? "Contribute" : "Open"
-            }
-            secondaryLabel="Summary"
-            onPrimary={() => {
-              if (!merryAllowed) {
-                goToKyc();
-                return;
-              }
-              openFirstMerryFlow();
-            }}
-            onSecondary={() => {
-              if (!merryAllowed) {
-                goToKyc();
-                return;
-              }
-              router.push(ROUTES.tabs.merry as any);
-            }}
-          />
+          {hasActiveMerry ? (
+            <View
+              style={[styles.actionItem, isWideScreen && styles.actionItemWide]}
+            >
+              <ActionCard
+                title="Merry"
+                subtitle="Continue your contribution."
+                amount={fmtKES(merrySummary?.total_required_now)}
+                icon="repeat-outline"
+                tone="success"
+                primaryLabel="Contribute"
+                secondaryLabel="Summary"
+                onPrimary={() => {
+                  if (!merryAllowed) {
+                    goToKyc();
+                    return;
+                  }
+                  openFirstMerryFlow();
+                }}
+                onSecondary={() => {
+                  if (!merryAllowed) {
+                    goToKyc();
+                    return;
+                  }
+                  router.push(ROUTES.tabs.merry as any);
+                }}
+              />
+            </View>
+          ) : null}
+
+          {activeLoan ? (
+            <View
+              style={[styles.actionItem, isWideScreen && styles.actionItemWide]}
+            >
+              <ActionCard
+                title="Active Loan"
+                subtitle="Pay installment or enter any amount you want to pay."
+                amount={formatKes(totalOutstandingLoans)}
+                icon="cash-outline"
+                tone="warning"
+                primaryLabel="Pay Loan"
+                secondaryLabel="Details"
+                onPrimary={() => {
+                  if (!loanAllowed) {
+                    goToKyc();
+                    return;
+                  }
+                  openLoanPaymentFlow(activeLoan);
+                }}
+                onSecondary={() =>
+                  router.push({
+                    pathname: "/(tabs)/loans/[id]" as any,
+                    params: { id: String(activeLoan.id) },
+                  })
+                }
+              />
+            </View>
+          ) : null}
         </View>
       </Section>
 
@@ -697,15 +840,19 @@ export default function DashboardScreen() {
             onPress={() => router.push("/(tabs)/notifications" as any)}
           />
 
-          <SmallLink
-            title="Loans"
-            icon={loanAllowed ? "document-text-outline" : "lock-closed-outline"}
-            onPress={() =>
-              loanAllowed
-                ? router.push(ROUTES.tabs.loans as any)
-                : goToKyc()
-            }
-          />
+          {!activeLoan ? (
+            <SmallLink
+              title="Loans"
+              icon={
+                loanAllowed ? "document-text-outline" : "lock-closed-outline"
+              }
+              onPress={() =>
+                loanAllowed
+                  ? router.push(ROUTES.tabs.loans as any)
+                  : goToKyc()
+              }
+            />
+          ) : null}
 
           {isAdmin ? (
             <SmallLink
@@ -716,14 +863,6 @@ export default function DashboardScreen() {
           ) : null}
         </View>
       </Section>
-
-      {hasAmount(totalOutstandingLoans) ? (
-        <View style={styles.loanStrip}>
-          <Text style={styles.loanStripText}>
-            Active loan balance: {formatKes(totalOutstandingLoans)}
-          </Text>
-        </View>
-      ) : null}
 
       <View style={{ height: 12 }} />
     </ScrollView>
@@ -802,6 +941,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.lg,
     paddingBottom: SPACING.md,
+    minHeight: 220,
   },
 
   heroDecorOne: {
@@ -845,6 +985,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
+  heroCaption: {
+    ...TYPE.subtext,
+    color: "rgba(255,255,255,0.88)",
+    marginTop: 6,
+    fontWeight: "700",
+  },
+
   heroArrow: {
     width: 34,
     height: 34,
@@ -855,8 +1002,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  heroMetaRow: {
+  heroIdentityRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
     marginTop: SPACING.md,
   },
 
@@ -876,12 +1025,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  heroPhone: {
+    ...TYPE.caption,
+    color: "rgba(255,255,255,0.88)",
+    marginTop: SPACING.sm,
+    fontWeight: "700",
+  },
+
   heroStatsWrap: {
     marginTop: SPACING.md,
     gap: SPACING.sm,
   },
 
   statPill: {
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
@@ -916,11 +1073,27 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
+  actionsWrapWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    flexWrap: "wrap",
+  },
+
+  actionItem: {
+    width: "100%",
+  },
+
+  actionItemWide: {
+    flex: 1,
+    minWidth: 280,
+  },
+
   actionCard: {
     padding: SPACING.md,
     borderRadius: 24,
     borderWidth: 1,
     backgroundColor: COLORS.white,
+    height: "100%",
   },
 
   actionTop: {
@@ -954,7 +1127,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.primarySoft,
   },
 
   actionAmountLabel: {
@@ -1021,6 +1193,7 @@ const styles = StyleSheet.create({
   },
 
   smallLink: {
+    minHeight: 52,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: 18,
@@ -1051,23 +1224,6 @@ const styles = StyleSheet.create({
   smallLinkText: {
     ...TYPE.bodyStrong,
     color: COLORS.text,
-    fontWeight: "700",
-  },
-
-  loanStrip: {
-    marginTop: SPACING.sm,
-    paddingVertical: 10,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 16,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
-  },
-
-  loanStripText: {
-    ...TYPE.caption,
-    color: COLORS.textMuted,
-    textAlign: "center",
     fontWeight: "700",
   },
 });
