@@ -14,31 +14,28 @@ import {
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
-import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
+import { getMe, isKycComplete } from "@/services/profile";
 import {
-  canWithdraw,
-  getMe,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
-import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
-import {
-  getSessionUser,
-  saveSessionUser,
-  SessionUser,
-} from "@/services/session";
-
-type SavingsUser = Partial<MeResponse> & Partial<SessionUser>;
+  buildSavingsReference,
+  getOrCreateDefaultSavingsAccount,
+  SavingsAccount,
+} from "@/services/savings";
+import { saveSessionUser } from "@/services/session";
 
 const SURFACE = "#F8FAFC";
 const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
 const TEXT_MAIN = "#0F172A";
 const TEXT_MUTED = "#64748B";
+const HERO_TOP = "#0F766E";
+const HERO_BOTTOM = "#1D4ED8";
+const SOFT_GREEN = "#ECFDF5";
+const SOFT_BLUE = "#EFF6FF";
+const SOFT_AMBER = "#FFF7ED";
 
 function formatKes(value?: string | number) {
   const n = Number(value ?? 0);
@@ -49,70 +46,17 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value === "string") {
-    const n = Number(value.replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
-
-function formatDisplayName(user?: SavingsUser | null) {
-  if (!user) return "Member";
-  return (
-    (user as any)?.full_name ||
-    (user as any)?.name ||
-    user?.username ||
-    (typeof user?.phone === "string" ? user.phone : "") ||
-    "Member"
-  );
-}
-
-function getPrimaryAccount(accounts: SavingsAccount[]) {
-  if (!accounts.length) return null;
-
-  const activeAccounts = accounts.filter((a) => a.is_active);
-  const source = activeAccounts.length ? activeAccounts : accounts;
-
-  return (
-    source.find(
-      (a) => String(a.account_type || "").toUpperCase() === "FLEXIBLE"
-    ) || source[0]
-  );
-}
-
-function canWithdrawFromAccountNow(account?: SavingsAccount | null) {
-  if (!account) return false;
-  if (!account.is_active) return false;
-
-  const type = String(account.account_type || "").toUpperCase();
-
-  if (type === "FIXED" && account.locked_until) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const lockedUntil = new Date(account.locked_until);
-    if (!Number.isNaN(lockedUntil.getTime())) {
-      lockedUntil.setHours(0, 0, 0, 0);
-      return today >= lockedUntil;
-    }
-
-    return false;
-  }
-
-  return true;
-}
+type SummaryTileProps = {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "warning";
+};
 
 function SummaryTile({
   label,
   value,
   tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "success" | "warning";
-}) {
+}: SummaryTileProps) {
   const valueColor =
     tone === "success"
       ? COLORS.success
@@ -120,13 +64,29 @@ function SummaryTile({
       ? COLORS.warning
       : TEXT_MAIN;
 
+  const bgColor =
+    tone === "success"
+      ? SOFT_GREEN
+      : tone === "warning"
+      ? SOFT_AMBER
+      : SURFACE;
+
   return (
-    <View style={styles.summaryTile}>
+    <View style={[styles.summaryTile, { backgroundColor: bgColor }]}>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={[styles.summaryValue, { color: valueColor }]}>{value}</Text>
     </View>
   );
 }
+
+type ActionRowProps = {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  onPress: () => void;
+};
 
 function ActionRow({
   title,
@@ -135,14 +95,7 @@ function ActionRow({
   iconBg,
   iconColor,
   onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  iconBg: string;
-  iconColor: string;
-  onPress: () => void;
-}) {
+}: ActionRowProps) {
   return (
     <TouchableOpacity
       activeOpacity={0.86}
@@ -153,7 +106,7 @@ function ActionRow({
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={styles.actionBody}>
         <Text style={styles.actionTitle}>{title}</Text>
         <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
@@ -164,68 +117,74 @@ function ActionRow({
 }
 
 export default function SavingsIndexScreen() {
-  const [user, setUser] = useState<SavingsUser | null>(null);
-  const [accounts, setAccounts] = useState<SavingsAccount[]>([]);
+  const [user, setUser] = useState<any>(null);
+  const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
   const kycComplete = isKycComplete(user);
-  const withdrawAllowedByProfile = canWithdraw(user);
 
   const goToKyc = useCallback(() => {
     router.push(ROUTES.tabs.profileKyc as any);
   }, []);
 
-  const goToSave = useCallback(() => {
-    router.push(ROUTES.tabs.savingsSave as any);
-  }, []);
+  const goToDeposit = useCallback(() => {
+    if (!account?.id) return;
+
+    router.push({
+      pathname: ROUTES.tabs.paymentsDeposit as any,
+      params: {
+        category: "SAVINGS",
+        purpose: "SAVINGS_DEPOSIT",
+        accountId: String(account.id),
+        reference: buildSavingsReference(account.id),
+        title: account.name || "Savings",
+      },
+    });
+  }, [account]);
+
+  const goToWithdraw = useCallback(() => {
+    if (!account?.id) return;
+
+    if (!kycComplete) {
+      goToKyc();
+      return;
+    }
+
+    router.push({
+      pathname: ROUTES.tabs.paymentsWithdrawals as any,
+      params: {
+        category: "SAVINGS",
+        purpose: "SAVINGS_WITHDRAWAL",
+        accountId: String(account.id),
+        reference: buildSavingsReference(account.id),
+        title: account.name || "Savings",
+      },
+    });
+  }, [account, kycComplete, goToKyc]);
+
+  const goToHistory = useCallback(() => {
+    if (!account?.id) return;
+    router.push(ROUTES.dynamic.savingsAccountHistory(account.id) as any);
+  }, [account]);
 
   const load = useCallback(async () => {
     try {
       setError("");
 
-      const [sessionRes, meRes, accountsRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-        listMySavingsAccounts(),
-      ]);
+      const me = await getMe();
+      setUser(me);
 
-      const sessionUser =
-        sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
-
-      const mergedUser: SavingsUser | null =
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null;
-
-      setUser(mergedUser);
-
-      if (mergedUser) {
-        await saveSessionUser(mergedUser);
+      if (me) {
+        await saveSessionUser(me);
       }
 
-      setAccounts(
-        accountsRes.status === "fulfilled" && Array.isArray(accountsRes.value)
-          ? accountsRes.value
-          : []
-      );
-
-      let nextError = "";
-
-      if (meRes.status === "rejected") {
-        nextError = getErrorMessage(meRes.reason);
-      } else if (accountsRes.status === "rejected") {
-        nextError = getErrorMessage(accountsRes.reason);
-      }
-
-      setError(nextError);
+      const wallet = await getOrCreateDefaultSavingsAccount();
+      setAccount(wallet);
     } catch (e: any) {
       setError(getErrorMessage(e));
+      setAccount(null);
     }
   }, []);
 
@@ -245,33 +204,29 @@ export default function SavingsIndexScreen() {
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     try {
+      setRefreshing(true);
       await load();
     } finally {
       setRefreshing(false);
     }
   }, [load]);
 
-  const displayName = useMemo(() => formatDisplayName(user), [user]);
-  const primaryAccount = useMemo(() => getPrimaryAccount(accounts), [accounts]);
-
-  const canWithdrawThisAccount = useMemo(
-    () => canWithdrawFromAccountNow(primaryAccount),
-    [primaryAccount]
+  const balance = useMemo(() => formatKes(account?.balance), [account]);
+  const available = useMemo(
+    () => formatKes(account?.available_balance),
+    [account]
   );
-
-  const finalWithdrawalAllowed =
-    Boolean(withdrawAllowedByProfile) && Boolean(canWithdrawThisAccount);
-
-  const balance = formatKes(primaryAccount?.balance);
-  const available = formatKes(primaryAccount?.available_balance);
-  const reserved = formatKes(primaryAccount?.reserved_amount);
+  const reserved = useMemo(
+    () => formatKes(account?.reserved_amount),
+    [account]
+  );
 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading your community savings...</Text>
       </View>
     );
   }
@@ -279,73 +234,22 @@ export default function SavingsIndexScreen() {
   if (!user) {
     return (
       <View style={styles.container}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to access savings."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
+        <Card style={styles.errorCard}>
+          <Text style={styles.errorText}>Please login to access your savings.</Text>
+        </Card>
       </View>
     );
   }
 
-  if (!primaryAccount) {
+  if (!account) {
     return (
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.heroEyebrow}>SAVINGS</Text>
-              <Text style={styles.heroTitle}>{displayName}</Text>
-              <Text style={styles.heroSubtitle}>
-                Start with one main wallet for your personal savings.
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {error ? (
-          <Card style={styles.errorCard} variant="default">
-            <Text style={styles.errorText}>{error}</Text>
-          </Card>
-        ) : null}
-
-        <Card style={styles.emptyCard} variant="default">
-          <View style={styles.emptyIcon}>
-            <Ionicons name="wallet-outline" size={22} color={COLORS.primary} />
-          </View>
-
-          <Text style={styles.emptyTitle}>No wallet yet</Text>
-          <Text style={styles.emptyText}>
-            Create your main savings wallet to start saving.
+      <View style={styles.container}>
+        <Card style={styles.errorCard}>
+          <Text style={styles.errorText}>
+            {error || "Unable to load your savings right now."}
           </Text>
-
-          <View style={{ marginTop: SPACING.md }}>
-            <Button
-              title="Create Wallet"
-              onPress={() => router.push(ROUTES.tabs.savingsCreate as any)}
-              leftIcon={
-                <Ionicons
-                  name="add-circle-outline"
-                  size={18}
-                  color={COLORS.white}
-                />
-              }
-            />
-          </View>
         </Card>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -361,30 +265,52 @@ export default function SavingsIndexScreen() {
       <View style={styles.heroCard}>
         <View style={styles.heroTop}>
           <View style={styles.heroIcon}>
-            <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
+            <Ionicons name="people-outline" size={24} color={COLORS.white} />
           </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroEyebrow}>MAIN WALLET</Text>
-            <Text style={styles.heroTitle}>{displayName}</Text>
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroEyebrow}>UNITED CARE</Text>
+            <Text style={styles.heroTitle}>
+              {account.name || "Community Savings"}
+            </Text>
             <Text style={styles.heroSubtitle}>
-              Save, track your balance, and manage your wallet.
+              Save steadily, stay prepared, and grow together with your community.
             </Text>
           </View>
         </View>
 
         <View style={styles.heroBalanceBox}>
-          <Text style={styles.heroBalanceLabel}>Available Balance</Text>
+          <Text style={styles.heroBalanceLabel}>Available to use</Text>
           <Text style={styles.heroBalanceValue}>{available}</Text>
         </View>
 
-        <View style={{ marginTop: SPACING.md }}>
+        <View style={styles.heroMetaRow}>
+          <View style={styles.heroMetaPill}>
+            <Ionicons
+              name="leaf-outline"
+              size={14}
+              color="rgba(255,255,255,0.9)"
+            />
+            <Text style={styles.heroMetaText}>Steady growth</Text>
+          </View>
+
+          <View style={styles.heroMetaPill}>
+            <Ionicons
+              name="heart-outline"
+              size={14}
+              color="rgba(255,255,255,0.9)"
+            />
+            <Text style={styles.heroMetaText}>Community first</Text>
+          </View>
+        </View>
+
+        <View style={styles.heroActions}>
           <Button
-            title="Save Money"
-            onPress={goToSave}
+            title="Contribute to Savings"
+            onPress={goToDeposit}
             leftIcon={
               <Ionicons
-                name="arrow-down-circle-outline"
+                name="add-circle-outline"
                 size={18}
                 color={COLORS.white}
               />
@@ -394,13 +320,13 @@ export default function SavingsIndexScreen() {
       </View>
 
       {error ? (
-        <Card style={styles.errorCard} variant="default">
+        <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
       {!kycComplete ? (
-        <Card style={styles.noticeCard} variant="default" onPress={goToKyc}>
+        <Card style={styles.noticeCard} onPress={goToKyc}>
           <View style={styles.noticeIcon}>
             <Ionicons
               name="shield-checkmark-outline"
@@ -409,10 +335,10 @@ export default function SavingsIndexScreen() {
             />
           </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.noticeTitle}>Complete KYC</Text>
+          <View style={styles.noticeBody}>
+            <Text style={styles.noticeTitle}>Complete your profile verification</Text>
             <Text style={styles.noticeText}>
-              You can save now, but withdrawals need verification.
+              Your savings are active. Verification is only needed before withdrawal.
             </Text>
           </View>
 
@@ -420,70 +346,62 @@ export default function SavingsIndexScreen() {
         </Card>
       ) : null}
 
-      <Section title="Overview">
+      <Section title="Your Savings Overview">
         <View style={styles.summaryGrid}>
-          <SummaryTile label="Balance" value={balance} />
-          <SummaryTile label="Available" value={available} tone="success" />
-          <SummaryTile label="Reserved" value={reserved} tone="warning" />
+          <SummaryTile label="Total Saved" value={balance} />
+          <SummaryTile label="Available Now" value={available} tone="success" />
+          <SummaryTile label="Set Aside" value={reserved} tone="warning" />
         </View>
       </Section>
 
-      <Section title="Actions">
+      <Section title="What would you like to do?">
         <View style={styles.actionList}>
           <ActionRow
-            title="Save Money"
-            subtitle="Add money to your savings wallet."
-            icon="arrow-down-circle-outline"
+            title="Contribute"
+            subtitle="Add to your personal savings."
+            icon="add-circle-outline"
             iconBg={`${COLORS.primary}16`}
             iconColor={COLORS.primary}
-            onPress={goToSave}
+            onPress={goToDeposit}
           />
 
           <ActionRow
-            title="History"
-            subtitle="View your savings transactions."
+            title="View History"
+            subtitle="See your savings journey and past activity."
             icon="time-outline"
-            iconBg={`${COLORS.warning}18`}
-            iconColor={COLORS.warning}
-            onPress={() =>
-              router.push(
-                ROUTES.dynamic.savingsAccountHistory(primaryAccount.id) as any
-              )
-            }
+            iconBg={`${COLORS.info}16`}
+            iconColor={COLORS.info}
+            onPress={goToHistory}
           />
 
           <ActionRow
-            title={finalWithdrawalAllowed ? "Withdraw" : "Withdrawal Info"}
+            title="Withdraw"
             subtitle={
-              finalWithdrawalAllowed
-                ? "Request a withdrawal from your wallet."
-                : !kycComplete
-                ? "Complete KYC before withdrawing."
-                : "Check your wallet withdrawal status."
+              kycComplete
+                ? "Request money from your savings."
+                : "Verification is needed before withdrawal."
             }
-            icon={
-              finalWithdrawalAllowed
-                ? "arrow-up-circle-outline"
-                : "information-circle-outline"
-            }
-            iconBg={
-              finalWithdrawalAllowed
-                ? `${COLORS.success}16`
-                : `${COLORS.info}16`
-            }
-            iconColor={finalWithdrawalAllowed ? COLORS.success : COLORS.info}
-            onPress={() =>
-              finalWithdrawalAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
-                : !kycComplete
-                ? goToKyc()
-                : router.push(
-                    ROUTES.dynamic.savingsAccountHistory(primaryAccount.id) as any
-                  )
-            }
+            icon="arrow-up-circle-outline"
+            iconBg={`${COLORS.success}16`}
+            iconColor={kycComplete ? COLORS.success : COLORS.info}
+            onPress={goToWithdraw}
           />
         </View>
       </Section>
+
+      <Card style={styles.communityCard}>
+        <View style={styles.communityCardTop}>
+          <View style={styles.communityIconWrap}>
+            <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.communityTitle}>Why savings matter here</Text>
+        </View>
+
+        <Text style={styles.communityText}>
+          Small, consistent saving helps members stay ready for goals, family
+          needs, and future opportunities. Every step adds to your stability.
+        </Text>
+      </Card>
 
       <View style={{ height: 20 }} />
     </ScrollView>
@@ -506,13 +424,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.lg,
+  },
+
+  loadingText: {
+    marginTop: SPACING.sm,
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
+    fontSize: 12,
   },
 
   heroCard: {
-    backgroundColor: COLORS.primary,
     borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    backgroundColor: HERO_TOP,
     ...SHADOW.strong,
   },
 
@@ -533,6 +459,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.20)",
   },
 
+  heroTextWrap: {
+    flex: 1,
+  },
+
   heroEyebrow: {
     color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.bold,
@@ -550,7 +480,7 @@ const styles = StyleSheet.create({
 
   heroSubtitle: {
     marginTop: 6,
-    color: "rgba(255,255,255,0.86)",
+    color: "rgba(255,255,255,0.88)",
     fontFamily: FONT.regular,
     fontSize: 13,
     lineHeight: 19,
@@ -575,6 +505,35 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
     fontSize: 28,
     lineHeight: 34,
+  },
+
+  heroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: SPACING.md,
+  },
+
+  heroMetaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroMetaText: {
+    color: "rgba(255,255,255,0.92)",
+    fontFamily: FONT.medium || FONT.regular,
+    fontSize: 12,
+  },
+
+  heroActions: {
+    marginTop: SPACING.md,
   },
 
   errorCard: {
@@ -614,6 +573,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  noticeBody: {
+    flex: 1,
+  },
+
   noticeTitle: {
     color: TEXT_MAIN,
     fontFamily: FONT.bold,
@@ -628,44 +591,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  emptyCard: {
-    backgroundColor: SURFACE,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    padding: SPACING.lg,
-  },
-
-  emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: `${COLORS.primary}16`,
-    marginBottom: SPACING.md,
-  },
-
-  emptyTitle: {
-    color: TEXT_MAIN,
-    fontFamily: FONT.bold,
-    fontSize: 18,
-  },
-
-  emptyText: {
-    marginTop: 6,
-    color: TEXT_MUTED,
-    fontFamily: FONT.regular,
-    fontSize: 13,
-    lineHeight: 20,
-  },
-
   summaryGrid: {
     gap: SPACING.sm,
   },
 
   summaryTile: {
-    backgroundColor: SURFACE,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: CARD_BORDER,
@@ -680,7 +610,6 @@ const styles = StyleSheet.create({
 
   summaryValue: {
     marginTop: 6,
-    color: TEXT_MAIN,
     fontFamily: FONT.bold,
     fontSize: 18,
     lineHeight: 24,
@@ -709,6 +638,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  actionBody: {
+    flex: 1,
+  },
+
   actionTitle: {
     color: TEXT_MAIN,
     fontFamily: FONT.bold,
@@ -721,5 +654,43 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
+  },
+
+  communityCard: {
+    marginTop: SPACING.sm,
+    backgroundColor: SOFT_BLUE,
+    borderWidth: 1,
+    borderColor: "rgba(37, 99, 235, 0.08)",
+    borderRadius: 22,
+    padding: SPACING.md,
+  },
+
+  communityCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  communityIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(37, 99, 235, 0.08)",
+  },
+
+  communityTitle: {
+    color: TEXT_MAIN,
+    fontFamily: FONT.bold,
+    fontSize: 14,
+  },
+
+  communityText: {
+    color: TEXT_MUTED,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    lineHeight: 19,
   },
 });

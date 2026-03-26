@@ -1,8 +1,4 @@
 // constants/routes.ts
-// ------------------------------------------------------
-// Frontend screen routes for Expo Router
-// Single source of truth for navigation paths
-// ------------------------------------------------------
 
 export const ROUTES = {
   auth: {
@@ -40,7 +36,11 @@ export const ROUTES = {
     loansRequest: "/(tabs)/loans/request",
     loansPay: "/(tabs)/loans/pay",
     loansAddGuarantor: "/(tabs)/loans/add-guarantor",
-    loansGuarantees: "/(tabs)/loans/guarantees",
+
+    // ✅ FIXED (only one kept)
+    loansGuarantees: "/(tabs)/loans/guarantee-requests",
+
+    loansHistory: "/(tabs)/loans/history",
 
     /* -----------------------------
        Merry-Go-Round

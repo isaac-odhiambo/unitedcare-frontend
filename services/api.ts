@@ -7,9 +7,11 @@
 // - error parser
 // - small request wrappers
 // - buildUrl helper
+// - unauthorized/session-expired handling
 // -----------------------------------------------------------
 
 import { ENDPOINTS } from "@/services/endpoints";
+import { clearSessionUser } from "@/services/session";
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
@@ -119,6 +121,40 @@ export async function clearAuthTokens() {
 }
 
 /* ============================================================
+   GLOBAL UNAUTHORIZED HANDLER
+   - set from app root/layout
+   - lets api.ts trigger redirect without importing router here
+============================================================ */
+let unauthorizedHandler: null | (() => void) = null;
+let isHandlingUnauthorized = false;
+
+export function setUnauthorizedHandler(handler: () => void) {
+  unauthorizedHandler = handler;
+}
+
+async function handleUnauthorizedSession() {
+  if (isHandlingUnauthorized) return;
+
+  isHandlingUnauthorized = true;
+
+  try {
+    await clearAuthTokens();
+    await clearSessionUser();
+    console.warn("🔐 Session expired or token invalid. Please login again.");
+
+    if (unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+  } catch {
+    // ignore cleanup errors
+  } finally {
+    setTimeout(() => {
+      isHandlingUnauthorized = false;
+    }, 800);
+  }
+}
+
+/* ============================================================
    FRIENDLY ERROR PARSER (DRF Compatible)
 ============================================================ */
 export function getErrorMessage(err: any): string {
@@ -155,7 +191,7 @@ export function getErrorMessage(err: any): string {
 
   const status = e.response?.status;
   if (status === 400) return "Invalid request. Please check your input.";
-  if (status === 401) return "Unauthorized. Please login again.";
+  if (status === 401) return "Session expired. Please login again.";
   if (status === 403) return "Access denied.";
   if (status === 404) return "Endpoint not found.";
   if (status === 405) return "Method not allowed.";
@@ -215,20 +251,18 @@ api.interceptors.request.use(
 );
 
 /* ============================================================
-   OPTIONAL RESPONSE INTERCEPTOR
+   RESPONSE INTERCEPTOR
    - clears bad auth on explicit 401
+   - clears session_user too
+   - triggers redirect through global handler
 ============================================================ */
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error?.response?.status === 401) {
-      try {
-        await clearAuthTokens();
-        console.warn("🔐 Session expired or token invalid. Please login again.");
-      } catch {
-        // ignore token clear failure
-      }
+      await handleUnauthorizedSession();
     }
+
     return Promise.reject(error);
   }
 );

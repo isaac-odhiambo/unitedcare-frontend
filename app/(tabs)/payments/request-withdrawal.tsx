@@ -1,6 +1,6 @@
 // app/(tabs)/payments/request-withdrawal.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,234 +17,124 @@ import {
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
-import {
-  getApiErrorMessage,
-  getNetWithdrawalPayout,
-  getRequestedWithdrawalAmount,
-  getWithdrawalFee,
-  money,
-  requestWithdrawal,
-  WithdrawalRequest,
-  WithdrawalSource,
-} from "@/services/payments";
-import {
-  canWithdraw,
-  getMe,
-  isAdminUser,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
-import {
-  getSessionUser,
-  saveSessionUser,
-  SessionUser,
-} from "@/services/session";
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getApiErrorMessage, money, requestWithdrawal } from "@/services/payments";
+import { canWithdraw, getMe, isKycComplete } from "@/services/profile";
+import { getSessionUser, saveSessionUser } from "@/services/session";
 
-type WithdrawalUser = Partial<MeResponse> & Partial<SessionUser>;
+const SOURCES = ["SAVINGS", "MERRY", "GROUP"] as const;
+type WithdrawalSource = (typeof SOURCES)[number];
 
-const WITHDRAWAL_SOURCES: WithdrawalSource[] = ["SAVINGS", "MERRY", "GROUP"];
+const NOTIFICATIONS_ROUTE =
+  (ROUTES as any)?.tabs?.notifications || "/(tabs)/notifications";
 
-const MPESA = {
-  green: "#16A34A",
-  greenDark: "#15803D",
-  greenSoft: "#EAF8EE",
-  greenBorder: "rgba(22,163,74,0.16)",
-  slateBg: "#F5F7FA",
-  slateCard: "#FFFFFF",
-  slateMuted: "#64748B",
-  slateText: "#0F172A",
-  amberSoft: "#FFF7E8",
-  amber: "#D97706",
-  redSoft: "#FFF1F2",
-};
-
-function normalizePhone(value: string) {
-  const v = value.trim().replace(/\s+/g, "");
-  if (v.startsWith("+254")) return `0${v.slice(4)}`;
-  if (v.startsWith("254")) return `0${v.slice(3)}`;
-  return v;
+function normalizePhone(v: string) {
+  const val = String(v || "").trim().replace(/\s+/g, "").replace(/-/g, "");
+  if (val.startsWith("+254") && val.length === 13) return `0${val.slice(4)}`;
+  if (val.startsWith("254") && val.length === 12) return `0${val.slice(3)}`;
+  return val;
 }
 
-function sanitizeAmount(value: string) {
-  return value.replace(/[^\d.]/g, "");
+function sanitizeAmount(v: string) {
+  const cleaned = String(v || "").replace(/[^\d.]/g, "");
+  const parts = cleaned.split(".");
+  if (parts.length <= 2) return cleaned;
+  return `${parts[0]}.${parts.slice(1).join("")}`;
 }
 
-function isPositiveAmount(value: string) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0;
+function isValidPhone(p: string) {
+  return /^(07|01)\d{8}$/.test(p);
 }
 
-function isValidKenyanPhone(phone: string) {
-  return /^(07|01)\d{8}$/.test(phone);
+function normalizeSource(value?: string): WithdrawalSource {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw === "SAVINGS" || raw === "MERRY" || raw === "GROUP") return raw;
+  return "SAVINGS";
 }
 
-function formatDisplayName(user?: WithdrawalUser | null) {
-  if (!user) return "Member";
-  return (
-    (user as any)?.full_name ||
-    (user as any)?.name ||
-    user?.username ||
-    (typeof user?.phone === "string" ? user.phone : "") ||
-    "Member"
-  );
-}
-
-function SourceCard({
-  label,
-  active,
+function QuickLink({
+  title,
+  icon,
   onPress,
 }: {
-  label: WithdrawalSource;
-  active: boolean;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
 }) {
-  const icons: Record<WithdrawalSource, keyof typeof Ionicons.glyphMap> = {
-    SAVINGS: "wallet-outline",
-    MERRY: "repeat-outline",
-    GROUP: "people-outline",
-  };
-
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onPress}
-      style={[styles.sourceCard, active && styles.sourceCardActive]}
-    >
-      <View
-        style={[
-          styles.sourceIconWrap,
-          active && styles.sourceIconWrapActive,
-        ]}
-      >
-        <Ionicons
-          name={icons[label]}
-          size={18}
-          color={active ? MPESA.green : MPESA.slateMuted}
-        />
+    <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={styles.quickLink}>
+      <View style={styles.quickLinkIcon}>
+        <Ionicons name={icon} size={18} color={COLORS.primary} />
       </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.sourceTitle, active && styles.sourceTitleActive]}>
-          {label}
-        </Text>
-        <Text style={styles.sourceSubtitle}>Withdrawal source</Text>
-      </View>
-
-      {active ? (
-        <Ionicons name="checkmark-circle" size={18} color={MPESA.green} />
-      ) : null}
+      <Text style={styles.quickLinkText}>{title}</Text>
+      <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
     </TouchableOpacity>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={[styles.infoValue, valueColor ? { color: valueColor } : null]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 export default function RequestWithdrawalScreen() {
-  const [user, setUser] = useState<WithdrawalUser | null>(null);
+  const params = useLocalSearchParams<{
+    source?: string;
+    amount?: string;
+    phone?: string;
+  }>();
+
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [phone, setPhone] = useState(
+    typeof params.phone === "string" ? normalizePhone(params.phone) : ""
+  );
+  const [amount, setAmount] = useState(
+    typeof params.amount === "string" ? sanitizeAmount(params.amount) : ""
+  );
+  const [source, setSource] = useState<WithdrawalSource>(
+    normalizeSource(typeof params.source === "string" ? params.source : undefined)
+  );
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const [phone, setPhone] = useState("");
-  const [amount, setAmount] = useState("");
-  const [source, setSource] = useState<WithdrawalSource>("SAVINGS");
-  const [result, setResult] = useState<WithdrawalRequest | null>(null);
-
-  const isAdmin = isAdminUser(user);
   const kycComplete = isKycComplete(user);
-  const withdrawAllowed = canWithdraw(user);
+  const allowed = canWithdraw(user);
 
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
-  const amountOk = useMemo(() => isPositiveAmount(amount), [amount]);
-  const phoneOk = useMemo(
-    () => isValidKenyanPhone(normalizedPhone),
-    [normalizedPhone]
-  );
+  const phoneOk = useMemo(() => isValidPhone(normalizedPhone), [normalizedPhone]);
+  const amountOk = useMemo(() => Number(amount) > 0, [amount]);
 
-  const cleanAmount = useMemo(() => {
-    const n = Number(amount);
-    return Number.isFinite(n) && n > 0 ? String(n) : "";
-  }, [amount]);
-
-  const previewRequestedAmount = useMemo(
-    () => Number(cleanAmount || 0) || 0,
-    [cleanAmount]
-  );
-
-  const canSubmit = withdrawAllowed && phoneOk && amountOk && !submitting;
+  const canSubmit = allowed && phoneOk && amountOk && !submitting;
 
   const load = useCallback(async () => {
     try {
       setError("");
 
-      const [sessionRes, meRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-      ]);
+      const [session, me] = await Promise.all([getSessionUser(), getMe()]);
+      const merged = { ...(session || {}), ...(me || {}) };
 
-      const sessionUser =
-        sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+      setUser(merged);
+      await saveSessionUser(merged);
 
-      const mergedUser: WithdrawalUser | null =
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null;
-
-      setUser(mergedUser);
-
-      if (mergedUser) {
-        await saveSessionUser(mergedUser);
-      }
-
-      const defaultPhone = String(meUser?.phone || sessionUser?.phone || "");
-      setPhone(defaultPhone);
-
-      if (meRes.status === "rejected") {
-        setError(getApiErrorMessage(meRes.reason));
+      if (!phone) {
+        setPhone(normalizePhone(merged?.phone || ""));
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
     }
-  }, []);
+  }, [phone]);
 
   useFocusEffect(
     useCallback(() => {
-      const run = async () => {
+      (async () => {
         try {
           setLoading(true);
           await load();
         } finally {
           setLoading(false);
         }
-      };
-
-      run();
+      })();
     }, [load])
   );
 
@@ -258,7 +148,7 @@ export default function RequestWithdrawalScreen() {
   }, [load]);
 
   const handleSubmit = useCallback(async () => {
-    if (!withdrawAllowed) {
+    if (!allowed) {
       router.push(ROUTES.tabs.profileKyc as any);
       return;
     }
@@ -276,24 +166,19 @@ export default function RequestWithdrawalScreen() {
     try {
       setSubmitting(true);
       setError("");
-      setResult(null);
 
-      const payload = {
+      const res = await requestWithdrawal({
         phone: normalizedPhone,
-        amount: cleanAmount,
+        amount,
         source,
-      };
-
-      const res = await requestWithdrawal(payload);
-      const withdrawal = res?.withdrawal ?? null;
-      setResult(withdrawal);
+      });
 
       Alert.alert(
         "Withdrawal Request",
-        res?.message || "Withdrawal request submitted.",
+        res?.message || "Withdrawal request submitted successfully.",
         [
           {
-            text: "OK",
+            text: "Open Withdrawals",
             onPress: () =>
               router.replace(ROUTES.tabs.paymentsWithdrawals as any),
           },
@@ -306,19 +191,12 @@ export default function RequestWithdrawalScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [
-    amountOk,
-    cleanAmount,
-    normalizedPhone,
-    phoneOk,
-    source,
-    withdrawAllowed,
-  ]);
+  }, [allowed, amount, amountOk, normalizedPhone, phoneOk, source]);
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={MPESA.green} />
+      <View style={styles.center}>
+        <ActivityIndicator color={COLORS.primary} />
       </View>
     );
   }
@@ -328,8 +206,8 @@ export default function RequestWithdrawalScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to request a withdrawal."
-          actionLabel="Go to Login"
+          subtitle="Login to continue"
+          actionLabel="Login"
           onAction={() => router.replace(ROUTES.auth.login as any)}
         />
       </View>
@@ -346,36 +224,40 @@ export default function RequestWithdrawalScreen() {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1, paddingRight: SPACING.md }}>
-            <Text style={styles.heroEyebrow}>M-PESA WITHDRAWAL</Text>
-            <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
-            <Text style={styles.heroSubtitle}>
-              {isAdmin ? "Admin withdrawal view" : "Request payout to phone"}
+      <View style={styles.header}>
+        <Text style={styles.title}>Withdraw</Text>
+        <Button
+          title="Back"
+          variant="ghost"
+          onPress={() => router.back()}
+          leftIcon={
+            <Ionicons name="arrow-back-outline" size={16} color={COLORS.primary} />
+          }
+        />
+      </View>
+
+      {!kycComplete ? (
+        <Card style={styles.warningCard}>
+          <View style={styles.warningRow}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={18}
+              color={COLORS.warning}
+            />
+            <Text style={styles.warningText}>
+              Complete KYC before requesting a withdrawal.
             </Text>
           </View>
 
-          <View style={styles.heroIconWrap}>
-            <Ionicons
-              name="arrow-up-circle-outline"
-              size={24}
-              color={COLORS.white}
+          <View style={{ marginTop: SPACING.sm }}>
+            <Button
+              title="Open KYC"
+              variant="secondary"
+              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
             />
           </View>
-        </View>
-
-        <View style={styles.heroPills}>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>
-              {kycComplete ? "KYC Complete" : "KYC Pending"}
-            </Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>{source}</Text>
-          </View>
-        </View>
-      </View>
+        </Card>
+      ) : null}
 
       {error ? (
         <Card style={styles.errorCard}>
@@ -388,155 +270,89 @@ export default function RequestWithdrawalScreen() {
         </Card>
       ) : null}
 
-      {!kycComplete ? (
-        <Section title="Verification">
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeIcon}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color={COLORS.info}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Complete account verification</Text>
-              <Text style={styles.noticeText}>
-                Withdrawals are locked until KYC is complete.
-              </Text>
-            </View>
-            <Button
-              title="Complete KYC"
-              variant="ghost"
-              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-            />
-          </Card>
-        </Section>
-      ) : null}
+      <Card style={styles.card}>
+        <Text style={styles.label}>Phone</Text>
+        <TextInput
+          value={phone}
+          onChangeText={(v) => setPhone(normalizePhone(v))}
+          style={styles.input}
+          placeholder="07XXXXXXXX"
+          placeholderTextColor={COLORS.textMuted}
+          keyboardType="phone-pad"
+          autoCapitalize="none"
+        />
 
-      <Section title="Source">
-        <View style={styles.sourceGrid}>
-          {WITHDRAWAL_SOURCES.map((s) => (
-            <SourceCard
-              key={s}
-              label={s}
-              active={source === s}
-              onPress={() => setSource(s)}
-            />
-          ))}
+        <Text style={styles.label}>Amount</Text>
+        <TextInput
+          value={amount}
+          onChangeText={(v) => setAmount(sanitizeAmount(v))}
+          style={styles.input}
+          placeholder="e.g. 1500"
+          placeholderTextColor={COLORS.textMuted}
+          keyboardType="numeric"
+        />
+
+        <Text style={styles.label}>Source</Text>
+        <View style={styles.sources}>
+          {SOURCES.map((s) => {
+            const active = source === s;
+            return (
+              <TouchableOpacity
+                key={s}
+                onPress={() => setSource(s)}
+                activeOpacity={0.88}
+                style={[styles.source, active && styles.sourceActive]}
+              >
+                <Text style={[styles.sourceText, active && styles.sourceTextActive]}>
+                  {s}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-      </Section>
 
-      <Section title="Withdrawal">
-        <Card style={styles.formCard}>
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="07XXXXXXXX"
-            placeholderTextColor={MPESA.slateMuted}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          <Text style={styles.label}>Amount</Text>
-          <TextInput
-            value={amount}
-            onChangeText={(v) => setAmount(sanitizeAmount(v))}
-            placeholder="e.g. 1500"
-            placeholderTextColor={MPESA.slateMuted}
-            keyboardType="numeric"
-            style={styles.input}
-          />
-
-          <View style={styles.summaryBox}>
-            <InfoRow label="Phone" value={normalizedPhone || "—"} />
-            <InfoRow label="Requested" value={money(previewRequestedAmount)} />
-            <InfoRow label="Source" value={source} />
-            <InfoRow
-              label="Note"
-              value="Fee, if any, is calculated by backend"
-            />
-            <InfoRow
-              label="Status"
-              value={withdrawAllowed ? "Ready" : "KYC required"}
-              valueColor={withdrawAllowed ? COLORS.success : COLORS.warning}
-            />
-          </View>
-
-          <Button
-            title={
-              !withdrawAllowed
-                ? "Complete KYC"
-                : submitting
-                ? "Submitting..."
-                : "Request Withdrawal"
-            }
-            onPress={
-              !withdrawAllowed
-                ? () => router.push(ROUTES.tabs.profileKyc as any)
-                : handleSubmit
-            }
-            disabled={!withdrawAllowed ? false : !canSubmit}
-            leftIcon={
-              <Ionicons
-                name={!withdrawAllowed ? "shield-outline" : "send-outline"}
-                size={18}
-                color={COLORS.white}
-              />
-            }
-          />
-        </Card>
-      </Section>
-
-      {result ? (
-        <Section title="Latest Request">
-          <Card style={styles.latestCard}>
-            <InfoRow label="Status" value={result.status || "—"} />
-            <InfoRow
-              label="Requested"
-              value={money(getRequestedWithdrawalAmount(result))}
-            />
-            <InfoRow
-              label="Estimated Fee"
-              value={money(getWithdrawalFee(result))}
-            />
-            <InfoRow
-              label="Estimated Payout"
-              value={money(getNetWithdrawalPayout(result))}
-            />
-            <InfoRow label="Phone" value={result.phone || "—"} />
-            <InfoRow label="Source" value={result.source || "—"} />
-            <InfoRow label="Created" value={result.created_at || "—"} />
-          </Card>
-        </Section>
-      ) : null}
-
-      <Section title="Need">
-        <View style={styles.needGrid}>
-          <Card
-            onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals as any)}
-            style={styles.needCard}
-          >
-            <View style={styles.needIconWrap}>
-              <Ionicons name="cash-outline" size={18} color={MPESA.green} />
-            </View>
-            <Text style={styles.needTitle}>My Withdrawals</Text>
-          </Card>
-
-          <Card
-            onPress={() => router.push(ROUTES.tabs.payments as any)}
-            style={styles.needCard}
-          >
-            <View style={styles.needIconWrap}>
-              <Ionicons name="receipt-outline" size={18} color={MPESA.green} />
-            </View>
-            <Text style={styles.needTitle}>Payments</Text>
-          </Card>
+        <View style={styles.amountBox}>
+          <Text style={styles.amountLabel}>Requested</Text>
+          <Text style={styles.amountValue}>{money(Number(amount || 0))}</Text>
         </View>
-      </Section>
 
-      <View style={{ height: 24 }} />
+        <Button
+          title={
+            !allowed
+              ? "Complete KYC"
+              : submitting
+              ? "Submitting..."
+              : "Request Withdrawal"
+          }
+          onPress={
+            !allowed
+              ? () => router.push(ROUTES.tabs.profileKyc as any)
+              : handleSubmit
+          }
+          disabled={!allowed ? false : !canSubmit}
+          leftIcon={
+            <Ionicons
+              name={!allowed ? "shield-outline" : "send-outline"}
+              size={18}
+              color={COLORS.white}
+            />
+          }
+        />
+      </Card>
+
+      <View style={styles.linksWrap}>
+        <QuickLink
+          title="My Withdrawals"
+          icon="cash-outline"
+          onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals as any)}
+        />
+
+        <QuickLink
+          title="Notifications"
+          icon="notifications-outline"
+          onPress={() => router.push(NOTIFICATIONS_ROUTE as any)}
+        />
+      </View>
     </ScrollView>
   );
 }
@@ -544,284 +360,199 @@ export default function RequestWithdrawalScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: MPESA.slateBg,
+    backgroundColor: COLORS.background,
   },
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 24,
+    paddingBottom: SPACING.xl,
   },
 
-  loadingWrap: {
+  center: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MPESA.slateBg,
+    alignItems: "center",
+    backgroundColor: COLORS.background,
   },
 
-  heroCard: {
-    backgroundColor: MPESA.green,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-
-  heroTop: {
+  header: {
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
   },
 
-  heroEyebrow: {
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FONT.bold,
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-
-  heroTitle: {
-    marginTop: 6,
-    color: COLORS.white,
-    fontFamily: FONT.bold,
+  title: {
     fontSize: 24,
     lineHeight: 30,
+    fontFamily: FONT.bold,
+    color: COLORS.text,
   },
 
-  heroSubtitle: {
-    marginTop: 8,
-    color: "rgba(255,255,255,0.90)",
-    fontFamily: FONT.regular,
-    fontSize: 13,
-    lineHeight: 19,
+  card: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOW.card,
   },
 
-  heroIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: RADIUS.round,
+  label: {
+    marginBottom: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.medium,
+    color: COLORS.text,
+  },
+
+  input: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.white,
+    color: COLORS.text,
+  },
+
+  sources: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+    marginBottom: SPACING.md,
+  },
+
+  source: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.20)",
   },
 
-  heroPills: {
-    marginTop: SPACING.md,
+  sourceActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primary,
+  },
+
+  sourceText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.medium,
+    color: COLORS.text,
+  },
+
+  sourceTextActive: {
+    color: COLORS.primary,
+    fontFamily: FONT.bold,
+  },
+
+  amountBox: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  amountLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.regular,
+    color: COLORS.textMuted,
+  },
+
+  amountValue: {
+    marginTop: 4,
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    color: COLORS.text,
+  },
+
+  warningCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.18)",
+    backgroundColor: "#FFF7E8",
+  },
+
+  warningRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
     gap: SPACING.sm,
   },
 
-  heroPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-
-  heroPillText: {
-    color: COLORS.white,
-    fontFamily: FONT.bold,
-    fontSize: 11,
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: COLORS.text,
   },
 
   errorCard: {
-    backgroundColor: MPESA.redSoft,
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: "rgba(239,68,68,0.18)",
+    backgroundColor: "#FFF1F2",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
   },
 
   errorText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
+    fontFamily: FONT.regular,
     color: COLORS.danger,
-    fontFamily: FONT.regular,
   },
 
-  noticeCard: {
-    backgroundColor: MPESA.slateCard,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: MPESA.greenBorder,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  noticeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: MPESA.greenSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  noticeTitle: {
-    fontSize: 14,
-    fontFamily: FONT.bold,
-    color: MPESA.slateText,
-  },
-
-  noticeText: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 18,
-    color: MPESA.slateMuted,
-    fontFamily: FONT.regular,
-  },
-
-  sourceGrid: {
+  linksWrap: {
+    marginTop: SPACING.md,
     gap: SPACING.sm,
   },
 
-  sourceCard: {
-    backgroundColor: MPESA.slateCard,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  sourceCardActive: {
-    borderColor: MPESA.greenBorder,
-    backgroundColor: MPESA.greenSoft,
-  },
-
-  sourceIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F1F5F9",
-  },
-
-  sourceIconWrapActive: {
-    backgroundColor: "rgba(22,163,74,0.10)",
-  },
-
-  sourceTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: MPESA.slateText,
-  },
-
-  sourceTitleActive: {
-    color: MPESA.greenDark,
-  },
-
-  sourceSubtitle: {
-    marginTop: 4,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: MPESA.slateMuted,
-  },
-
-  formCard: {
-    backgroundColor: MPESA.slateCard,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
-  },
-
-  label: {
-    marginBottom: 8,
-    fontFamily: FONT.medium,
-    fontSize: 12,
-    color: MPESA.slateText,
-  },
-
-  input: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.10)",
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 14,
-    marginBottom: SPACING.md,
-    backgroundColor: "#FFFFFF",
-    color: MPESA.slateText,
-  },
-
-  summaryBox: {
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
+  quickLink: {
+    minHeight: 56,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 14,
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    backgroundColor: MPESA.slateBg,
-  },
-
-  infoRow: {
-    paddingVertical: 7,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-  },
-
-  infoLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: MPESA.slateMuted,
-  },
-
-  infoValue: {
-    flexShrink: 1,
-    textAlign: "right",
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: MPESA.slateText,
-  },
-
-  latestCard: {
-    backgroundColor: MPESA.slateCard,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
-  },
-
-  needGrid: {
+    borderColor: COLORS.border,
     flexDirection: "row",
-    gap: SPACING.sm as any,
-  },
-
-  needCard: {
-    flex: 1,
-    backgroundColor: MPESA.slateCard,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(15,23,42,0.06)",
-    padding: SPACING.md,
     alignItems: "center",
+    gap: SPACING.sm,
+    ...SHADOW.card,
   },
 
-  needIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.md,
+  quickLinkIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MPESA.greenSoft,
-    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.primarySoft,
   },
 
-  needTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 13,
-    color: MPESA.slateText,
+  quickLinkText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: FONT.medium,
+    color: COLORS.text,
   },
 });

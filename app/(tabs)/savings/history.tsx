@@ -3,12 +3,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
@@ -18,103 +18,203 @@ import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
 import {
-    getSavingsAccountHistory,
-    SavingsAccount,
-    SavingsHistoryRow,
+  buildSavingsReference,
+  canShowWithdrawAction,
+  getApiErrorMessage,
+  getMySavingsAccount,
+  getSavingsAccountHistory,
+  getSavingsLockMessage,
+  getSavingsTypeLabel,
+  isSavingsLocked,
+  type SavingsAccount,
+  type SavingsHistoryRow,
 } from "@/services/savings";
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
+
   return `KES ${n.toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function entryColor(row: SavingsHistoryRow) {
-  const entryType = String(row.entry_type || "").toUpperCase();
-  const txnType = String(row.txn_type || "").toUpperCase();
+function formatDate(value?: string | null) {
+  if (!value) return "—";
 
-  if (entryType === "CREDIT" || txnType === "DEPOSIT") return COLORS.success;
-  if (entryType === "DEBIT" || txnType === "WITHDRAWAL") return COLORS.danger;
-  return COLORS.info;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-KE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
-function entrySign(row: SavingsHistoryRow) {
-  const entryType = String(row.entry_type || "").toUpperCase();
+function getTxnTitle(row: SavingsHistoryRow) {
   const txnType = String(row.txn_type || "").toUpperCase();
 
-  if (entryType === "CREDIT" || txnType === "DEPOSIT") return "+";
-  if (entryType === "DEBIT" || txnType === "WITHDRAWAL") return "-";
-  return "";
+  if (row.narration) return row.narration;
+  if (txnType === "DEPOSIT") return "Deposit";
+  if (txnType === "WITHDRAWAL") return "Withdrawal";
+  if (txnType === "ADJUSTMENT") return "Adjustment";
+  if (txnType === "AUTO_DEDUCT") return "Auto deduction";
+
+  return "Transaction";
 }
 
-function TypePill({ type }: { type: string }) {
-  const t = String(type || "").toUpperCase();
+function getTxnTone(row: SavingsHistoryRow) {
+  const txnType = String(row.txn_type || "").toUpperCase();
 
-  const bg =
-    t === "FLEXIBLE"
-      ? "rgba(37, 99, 235, 0.12)"
-      : t === "FIXED"
-      ? "rgba(242, 140, 40, 0.14)"
-      : "rgba(46, 125, 50, 0.12)";
+  if (txnType === "DEPOSIT") {
+    return {
+      color: COLORS.success,
+      sign: "+",
+      icon: "arrow-down-circle-outline" as const,
+      bg: "rgba(46, 125, 50, 0.10)",
+    };
+  }
 
-  const color =
-    t === "FLEXIBLE"
-      ? COLORS.info
-      : t === "FIXED"
-      ? COLORS.accent
-      : COLORS.success;
+  if (txnType === "WITHDRAWAL" || txnType === "AUTO_DEDUCT") {
+    return {
+      color: COLORS.danger,
+      sign: "-",
+      icon: "arrow-up-circle-outline" as const,
+      bg: "rgba(211, 47, 47, 0.10)",
+    };
+  }
+
+  return {
+    color: COLORS.info,
+    sign: "",
+    icon: "swap-horizontal-outline" as const,
+    bg: "rgba(37, 99, 235, 0.10)",
+  };
+}
+
+function TypePill({ account }: { account: SavingsAccount }) {
+  const type = String(account.account_type || "").toUpperCase();
+  const locked = isSavingsLocked(account);
+
+  let bg = "rgba(37, 99, 235, 0.10)";
+  let color = COLORS.info;
+  let label = getSavingsTypeLabel(type);
+
+  if (type === "FIXED") {
+    bg = locked ? "rgba(242, 140, 40, 0.14)" : "rgba(242, 140, 40, 0.10)";
+    color = COLORS.warning;
+  }
+
+  if (type === "TARGET") {
+    bg = "rgba(46, 125, 50, 0.10)";
+    color = COLORS.success;
+  }
 
   return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      <Text style={[styles.pillText, { color }]}>{t}</Text>
+    <View style={[styles.typePill, { backgroundColor: bg }]}>
+      <Text style={[styles.typePillText, { color }]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function AccountSummaryCard({ account }: { account: SavingsAccount }) {
-  const helperText =
-    account.account_type === "FIXED" && account.locked_until
-      ? `Locked until ${account.locked_until}`
-      : account.account_type === "TARGET" && account.target_deadline
-      ? `Target by ${account.target_deadline}`
-      : "Standard savings account";
+function StatusBanner({ account }: { account: SavingsAccount }) {
+  if (!account.is_active) {
+    return (
+      <View style={[styles.banner, styles.bannerDanger]}>
+        <Ionicons name="alert-circle-outline" size={16} color={COLORS.danger} />
+        <Text style={[styles.bannerText, { color: COLORS.danger }]}>
+          This savings wallet is inactive.
+        </Text>
+      </View>
+    );
+  }
+
+  const lockMessage = getSavingsLockMessage(account);
+  if (lockMessage) {
+    return (
+      <View style={[styles.banner, styles.bannerWarning]}>
+        <Ionicons name="lock-closed-outline" size={16} color={COLORS.warning} />
+        <Text style={[styles.bannerText, { color: COLORS.warning }]}>
+          {lockMessage}
+        </Text>
+      </View>
+    );
+  }
 
   return (
+    <View style={[styles.banner, styles.bannerSuccess]}>
+      <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.success} />
+      <Text style={[styles.bannerText, { color: COLORS.success }]}>
+        Savings wallet is active.
+      </Text>
+    </View>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "danger";
+}) {
+  const color =
+    tone === "success"
+      ? COLORS.success
+      : tone === "danger"
+      ? COLORS.danger
+      : COLORS.dark;
+
+  return (
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, { color }]} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function AccountCard({ account }: { account: SavingsAccount }) {
+  return (
     <Card style={styles.accountCard}>
-      <View style={styles.accountTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.accountTitle}>{account.name}</Text>
-          <Text style={styles.accountSub}>{helperText}</Text>
+      <View style={styles.accountHead}>
+        <View style={styles.accountHeadText}>
+          <Text style={styles.accountName} numberOfLines={1}>
+            {account.name || "My Savings"}
+          </Text>
+          <Text style={styles.accountMeta}>Personal savings wallet</Text>
         </View>
-        <TypePill type={account.account_type} />
+
+        <TypePill account={account} />
       </View>
 
+      <StatusBanner account={account} />
+
       <View style={styles.metricsGrid}>
-        <View style={styles.metric}>
+        <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Balance</Text>
           <Text style={styles.metricValue}>{formatKes(account.balance)}</Text>
         </View>
 
-        <View style={styles.metric}>
-          <Text style={styles.metricLabel}>Reserved</Text>
-          <Text style={styles.metricValue}>
-            {formatKes(account.reserved_amount)}
-          </Text>
-        </View>
-
-        <View style={styles.metric}>
+        <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Available</Text>
-          <Text style={styles.metricValue}>
-            {formatKes(account.available_balance)}
-          </Text>
+          <Text style={styles.metricValue}>{formatKes(account.available_balance)}</Text>
         </View>
 
-        <View style={styles.metric}>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Reserved</Text>
+          <Text style={styles.metricValue}>{formatKes(account.reserved_amount)}</Text>
+        </View>
+
+        <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Status</Text>
           <Text style={styles.metricValue}>
             {account.is_active ? "Active" : "Inactive"}
@@ -126,28 +226,32 @@ function AccountSummaryCard({ account }: { account: SavingsAccount }) {
 }
 
 function TransactionRow({ row }: { row: SavingsHistoryRow }) {
-  const color = entryColor(row);
-  const sign = entrySign(row);
-  const title =
-    row.narration || row.txn_type || row.entry_type || "Transaction";
-  const reference = row.reference || row.note || "";
-  const date = row.created_at || "—";
+  const tone = getTxnTone(row);
+  const title = getTxnTitle(row);
+  const meta = row.reference || row.note || "";
+  const date = formatDate(row.created_at);
 
   return (
     <Card style={styles.txCard}>
-      <View style={styles.txTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
+      <View style={styles.txRow}>
+        <View style={[styles.txIconWrap, { backgroundColor: tone.bg }]}>
+          <Ionicons name={tone.icon} size={18} color={tone.color} />
+        </View>
+
+        <View style={styles.txBody}>
           <Text style={styles.txTitle} numberOfLines={1}>
             {title}
           </Text>
+
           <Text style={styles.txMeta} numberOfLines={2}>
-            {reference ? `${reference} • ` : ""}
+            {meta ? `${meta} • ` : ""}
             {date}
           </Text>
         </View>
 
-        <Text style={[styles.txAmount, { color }]}>
-          {sign} {formatKes(row.amount)}
+        <Text style={[styles.txAmount, { color: tone.color }]}>
+          {tone.sign}
+          {formatKes(row.amount)}
         </Text>
       </View>
     </Card>
@@ -156,7 +260,7 @@ function TransactionRow({ row }: { row: SavingsHistoryRow }) {
 
 export default function SavingsHistoryScreen() {
   const params = useLocalSearchParams<{ accountId?: string }>();
-  const accountId = Number(params.accountId ?? 0);
+  const routeAccountId = Number(params.accountId ?? 0);
 
   const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [transactions, setTransactions] = useState<SavingsHistoryRow[]>([]);
@@ -165,37 +269,60 @@ export default function SavingsHistoryScreen() {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    if (!accountId || !Number.isFinite(accountId)) {
-      setError("Missing or invalid savings account.");
-      setLoading(false);
-      return;
-    }
-
     try {
-      setLoading(true);
       setError("");
 
+      let accountId = routeAccountId;
+
+      if (!accountId || !Number.isFinite(accountId)) {
+        const myAccount = await getMySavingsAccount();
+        if (!myAccount?.id) {
+          setAccount(null);
+          setTransactions([]);
+          setError("No savings wallet found.");
+          return;
+        }
+        accountId = myAccount.id;
+      }
+
       const data = await getSavingsAccountHistory(accountId);
-      setAccount(data.account);
-      setTransactions(Array.isArray(data.transactions) ? data.transactions : []);
+      setAccount(data?.account || null);
+      setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
     } catch (e: any) {
-      setError(getErrorMessage(e));
       setAccount(null);
       setTransactions([]);
-    } finally {
-      setLoading(false);
+      setError(getApiErrorMessage(e));
     }
-  }, [accountId]);
+  }, [routeAccountId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      let active = true;
+
+      const run = async () => {
+        try {
+          setLoading(true);
+          if (active) {
+            await load();
+          }
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      };
+
+      run();
+
+      return () => {
+        active = false;
+      };
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
     try {
+      setRefreshing(true);
       await load();
     } finally {
       setRefreshing(false);
@@ -206,33 +333,39 @@ export default function SavingsHistoryScreen() {
     let credits = 0;
     let debits = 0;
 
-    transactions.forEach((row) => {
+    for (const row of transactions) {
       const amount = Number(row.amount ?? 0);
-      if (!Number.isFinite(amount)) return;
-
-      const entryType = String(row.entry_type || "").toUpperCase();
       const txnType = String(row.txn_type || "").toUpperCase();
 
-      if (entryType === "CREDIT" || txnType === "DEPOSIT") credits += amount;
-      else if (entryType === "DEBIT" || txnType === "WITHDRAWAL") debits += amount;
-    });
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      if (txnType === "DEPOSIT") {
+        credits += amount;
+      } else if (txnType === "WITHDRAWAL" || txnType === "AUTO_DEDUCT") {
+        debits += amount;
+      }
+    }
 
     return { credits, debits };
   }, [transactions]);
 
+  const canWithdraw = canShowWithdrawAction(account);
+  const savingsReference = account?.id ? buildSavingsReference(account.id) : "";
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator size="small" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading savings history...</Text>
       </View>
     );
   }
 
-  if (error && !account) {
+  if (!account && error) {
     return (
       <View style={styles.page}>
         <EmptyState
-          title="Unable to load account"
+          title="Unable to load savings"
           subtitle={error}
           actionLabel="Back to Savings"
           onAction={() => router.replace(ROUTES.tabs.savings)}
@@ -245,22 +378,22 @@ export default function SavingsHistoryScreen() {
     <ScrollView
       style={styles.page}
       contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
-      showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Savings History</Text>
-          <Text style={styles.hSub}>
-            Review account balances and transaction activity
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>Savings History</Text>
+          <Text style={styles.subtitle}>
+            Review your savings balance and activity.
           </Text>
         </View>
 
         <Button
-          variant="ghost"
           title="Back"
+          variant="ghost"
           onPress={() => router.back()}
           leftIcon={
             <Ionicons
@@ -280,64 +413,129 @@ export default function SavingsHistoryScreen() {
       ) : null}
 
       {account ? (
-        <Section title="Account Summary">
-          <AccountSummaryCard account={account} />
-        </Section>
-      ) : null}
+        <>
+          <Section title="Wallet">
+            <AccountCard account={account} />
+          </Section>
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Credits</Text>
-          <Text style={[styles.summaryValue, { color: COLORS.success }]}>
-            {formatKes(totals.credits)}
-          </Text>
-        </View>
+          <View style={styles.summaryGrid}>
+            <SummaryCard
+              label="Deposits"
+              value={formatKes(totals.credits)}
+              tone="success"
+            />
+            <SummaryCard
+              label="Withdrawals"
+              value={formatKes(totals.debits)}
+              tone="danger"
+            />
+          </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Debits</Text>
-          <Text style={[styles.summaryValue, { color: COLORS.danger }]}>
-            {formatKes(totals.debits)}
-          </Text>
-        </View>
-      </View>
+          <Section
+            title="Transactions"
+            right={
+              <View style={styles.sectionActions}>
+                <Button
+                  title="Deposit"
+                  variant="ghost"
+                  onPress={() =>
+                    router.push({
+                      pathname: ROUTES.tabs.paymentsDeposit as any,
+                      params: {
+                        category: "SAVINGS",
+                        purpose: "SAVINGS_DEPOSIT",
+                        accountId: String(account.id),
+                        reference: savingsReference,
+                        title: account.name || "Savings",
+                      },
+                    })
+                  }
+                />
+                {canWithdraw ? (
+                  <Button
+                    title="Withdraw"
+                    variant="ghost"
+                    onPress={() =>
+                      router.push({
+                        pathname: ROUTES.tabs.paymentsWithdrawals as any,
+                        params: {
+                          category: "SAVINGS",
+                          purpose: "SAVINGS_WITHDRAWAL",
+                          accountId: String(account.id),
+                          reference: savingsReference,
+                          title: account.name || "Savings",
+                        },
+                      })
+                    }
+                  />
+                ) : null}
+              </View>
+            }
+          >
+            {transactions.length === 0 ? (
+              <EmptyState
+                icon="receipt-outline"
+                title="No transactions yet"
+                subtitle="Deposits and withdrawals on your savings wallet will appear here."
+                actionLabel="Deposit"
+                onAction={() =>
+                  router.push({
+                    pathname: ROUTES.tabs.paymentsDeposit as any,
+                    params: {
+                      category: "SAVINGS",
+                      purpose: "SAVINGS_DEPOSIT",
+                      accountId: String(account.id),
+                      reference: savingsReference,
+                      title: account.name || "Savings",
+                    },
+                  })
+                }
+              />
+            ) : (
+              transactions.map((row) => (
+                <TransactionRow key={row.id} row={row} />
+              ))
+            )}
+          </Section>
+        </>
+      ) : (
+        <EmptyState
+          title="No savings wallet"
+          subtitle="Your savings activity will appear here once the wallet is available."
+          actionLabel="Back to Savings"
+          onAction={() => router.replace(ROUTES.tabs.savings)}
+        />
+      )}
 
-      <Section
-        title="Transactions"
-        right={
-          <Button
-            variant="ghost"
-            title="Deposit"
-            onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
-          />
-        }
-      >
-        {transactions.length === 0 ? (
-          <EmptyState
-            icon="receipt-outline"
-            title="No transactions yet"
-            subtitle="Deposits and withdrawals on this savings account will appear here."
-            actionLabel="Deposit"
-            onAction={() => router.push(ROUTES.tabs.paymentsDeposit)}
-          />
-        ) : (
-          transactions.map((row) => <TransactionRow key={row.id} row={row} />)
-        )}
-      </Section>
-
-      <View style={{ height: 24 }} />
+      <View style={{ height: 28 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  page: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 28,
+  },
 
   loadingWrap: {
     flex: 1,
+    backgroundColor: COLORS.background,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.lg,
+  },
+
+  loadingText: {
+    marginTop: SPACING.sm,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: COLORS.gray,
   },
 
   header: {
@@ -347,16 +545,21 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
 
-  hTitle: {
+  headerTextWrap: {
+    flex: 1,
+  },
+
+  title: {
     fontFamily: FONT.bold,
-    fontSize: 18,
+    fontSize: 20,
     color: COLORS.dark,
   },
 
-  hSub: {
+  subtitle: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
+    lineHeight: 18,
     color: COLORS.gray,
   },
 
@@ -366,37 +569,90 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "rgba(211, 47, 47, 0.14)",
+    backgroundColor: "rgba(211, 47, 47, 0.05)",
   },
 
   errorText: {
     flex: 1,
+    fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
     color: COLORS.danger,
-    fontFamily: FONT.regular,
   },
 
   accountCard: {
     padding: SPACING.md,
   },
 
-  accountTop: {
+  accountHead: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SPACING.md,
   },
 
-  accountTitle: {
+  accountHeadText: {
+    flex: 1,
+  },
+
+  accountName: {
     fontFamily: FONT.bold,
-    fontSize: 14,
+    fontSize: 16,
     color: COLORS.dark,
   },
 
-  accountSub: {
+  accountMeta: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: COLORS.gray,
+  },
+
+  typePill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 150,
+  },
+
+  typePillText: {
+    fontFamily: FONT.bold,
+    fontSize: 11,
+  },
+
+  banner: {
+    marginTop: SPACING.md,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+    borderWidth: 1,
+  },
+
+  bannerSuccess: {
+    backgroundColor: "rgba(46, 125, 50, 0.06)",
+    borderColor: "rgba(46, 125, 50, 0.16)",
+  },
+
+  bannerWarning: {
+    backgroundColor: "rgba(242, 140, 40, 0.08)",
+    borderColor: "rgba(242, 140, 40, 0.18)",
+  },
+
+  bannerDanger: {
+    backgroundColor: "rgba(211, 47, 47, 0.06)",
+    borderColor: "rgba(211, 47, 47, 0.16)",
+  },
+
+  bannerText: {
+    flex: 1,
+    fontFamily: FONT.medium || FONT.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   metricsGrid: {
@@ -406,11 +662,11 @@ const styles = StyleSheet.create({
     gap: SPACING.sm as any,
   },
 
-  metric: {
+  metricCard: {
     width: "48%",
-    backgroundColor: "rgba(0,0,0,0.02)",
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
+    backgroundColor: "rgba(0,0,0,0.02)",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -456,16 +712,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
+  sectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xs,
+  },
+
   txCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
   },
 
-  txTop: {
+  txRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  txIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  txBody: {
+    flex: 1,
+    minWidth: 0,
   },
 
   txTitle: {
@@ -475,26 +749,16 @@ const styles = StyleSheet.create({
   },
 
   txMeta: {
-    marginTop: 6,
+    marginTop: 5,
     fontFamily: FONT.regular,
     fontSize: 12,
+    lineHeight: 17,
     color: COLORS.gray,
   },
 
   txAmount: {
     fontFamily: FONT.bold,
     fontSize: 13,
-  },
-
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  pillText: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
-    letterSpacing: 0.3,
+    marginLeft: SPACING.xs,
   },
 });

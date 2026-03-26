@@ -29,6 +29,23 @@ import {
   requestLoan,
 } from "@/services/loans";
 
+const UI = {
+  bg: "#EDF4F7",
+  surface: "#FFFFFF",
+  surfaceSoft: "#F7FAFC",
+  surfaceAlt: "#EEF6F5",
+  border: "#D7E3E8",
+  text: "#243746",
+  textSoft: "#5F7384",
+  textMuted: "#7B8C99",
+  accent: "#2E6F68",
+  accentSoft: "#E3F1EE",
+  infoSoft: "#EAF2FF",
+  warningSoft: "#FFF5E8",
+  successSoft: "#EAF7EF",
+  dangerSoft: "#FDEEEE",
+};
+
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "KES 0.00";
@@ -44,9 +61,12 @@ export default function RequestLoanScreen() {
   const [memberNote, setMemberNote] = useState("");
 
   const [search, setSearch] = useState("");
-  const [selectedGuarantorIds, setSelectedGuarantorIds] = useState<number[]>([]);
+  const [selectedGuarantorIds, setSelectedGuarantorIds] = useState<number[]>(
+    []
+  );
 
-  const [eligibility, setEligibility] = useState<LoanEligibilityPreview | null>(null);
+  const [eligibility, setEligibility] =
+    useState<LoanEligibilityPreview | null>(null);
   const [candidates, setCandidates] = useState<GuarantorCandidate[]>([]);
 
   const [loadingEligibility, setLoadingEligibility] = useState(true);
@@ -69,6 +89,7 @@ export default function RequestLoanScreen() {
     (async () => {
       try {
         setLoadingEligibility(true);
+        setError("");
         const res = await getLoanEligibilityPreview();
         if (!mounted) return;
         setEligibility(res);
@@ -118,14 +139,28 @@ export default function RequestLoanScreen() {
 
   const selectedGuarantors = useMemo(() => {
     const map = new Map(candidates.map((c) => [c.id, c]));
-    return selectedGuarantorIds.map((id) => map.get(id)).filter(Boolean) as GuarantorCandidate[];
+    return selectedGuarantorIds
+      .map((id) => map.get(id))
+      .filter(Boolean) as GuarantorCandidate[];
   }, [candidates, selectedGuarantorIds]);
 
   const amountPreview = useMemo(() => formatKes(principal || 0), [principal]);
 
   const hasActiveLoan = Boolean(eligibility?.has_active_loan);
-  const showEligibilitySection = !loadingEligibility && !!eligibility && !hasActiveLoan;
-  const canSubmit = Boolean(formState.canSubmit && eligibility?.eligible && !submitting && !hasActiveLoan);
+  const showEligibilitySection =
+    !loadingEligibility && !!eligibility && !hasActiveLoan;
+
+  const canSubmit = Boolean(
+    formState.canSubmit &&
+      eligibility?.eligible &&
+      !submitting &&
+      !hasActiveLoan
+  );
+
+  const goToLoansIndex = () => {
+    if (submitting) return;
+    router.replace("/(tabs)/loans" as any);
+  };
 
   const submit = async () => {
     try {
@@ -143,7 +178,10 @@ export default function RequestLoanScreen() {
       }
 
       if (!formState.canSubmit || !formState.payload) {
-        Alert.alert("Loan Request", formState.error || "Please complete the form.");
+        Alert.alert(
+          "Loan Request",
+          formState.error || "Please complete the form."
+        );
         return;
       }
 
@@ -152,8 +190,16 @@ export default function RequestLoanScreen() {
 
       const res = await requestLoan(formState.payload);
 
-      Alert.alert("Success", res?.message || "Loan request submitted successfully.");
-      router.replace("/(tabs)/loans" as any);
+      Alert.alert(
+        "Request Sent",
+        res?.message || "Your loan request has been submitted successfully.",
+        [
+          {
+            text: "OK",
+            onPress: () => router.replace("/(tabs)/loans" as any),
+          },
+        ]
+      );
     } catch (e: any) {
       const msg = getApiErrorMessage(e) || getErrorMessage(e);
       setError(msg);
@@ -174,13 +220,14 @@ export default function RequestLoanScreen() {
         <View style={styles.heroGlow} />
         <View style={styles.heroRow}>
           <View style={styles.heroIcon}>
-            <Ionicons name="wallet-outline" size={22} color={COLORS.white} />
+            <Ionicons name="people-outline" size={22} color={COLORS.white} />
           </View>
 
           <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>Loan Request</Text>
+            <Text style={styles.heroTitle}>Loan Support</Text>
             <Text style={styles.heroSub}>
-              Apply for a loan in a simple and clear process.
+              Request support in a simple and guided way, with help from your
+              community.
             </Text>
           </View>
         </View>
@@ -188,14 +235,18 @@ export default function RequestLoanScreen() {
 
       {error ? (
         <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={18}
+            color={COLORS.danger}
+          />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
       ) : null}
 
       {loadingEligibility ? (
         <Card style={styles.loadingCard}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={UI.accent} />
           <Text style={styles.loadingText}>Checking your loan status...</Text>
         </Card>
       ) : null}
@@ -204,12 +255,17 @@ export default function RequestLoanScreen() {
         <Card style={styles.infoCard}>
           <View style={styles.infoRow}>
             <View style={styles.infoIconWrap}>
-              <Ionicons name="time-outline" size={18} color={COLORS.warning} />
+              <Ionicons
+                name="time-outline"
+                size={18}
+                color={COLORS.warning}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.infoTitle}>Loan request unavailable</Text>
               <Text style={styles.infoText}>
-                You already have an active loan or a pending loan request. Clear the current loan process before making a new request.
+                You already have an active loan or pending request. Finish the
+                current process before starting another one.
               </Text>
             </View>
           </View>
@@ -217,33 +273,35 @@ export default function RequestLoanScreen() {
       ) : null}
 
       {showEligibilitySection ? (
-        <Section title="Overview">
+        <Section title="Your Loan Overview">
           <Card style={styles.overviewCard}>
             <View style={styles.gridRow}>
               <View style={[styles.infoTile, styles.infoTilePrimary]}>
                 <Text style={styles.infoLabelLight}>Status</Text>
                 <Text style={styles.infoValueLight}>
-                  {eligibility?.eligible ? "Ready to Apply" : "Not Ready"}
+                  {eligibility?.eligible ? "Ready to Request" : "Not Ready"}
                 </Text>
               </View>
 
               <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Maximum Loan</Text>
-                <Text style={styles.infoValue}>{formatKes(eligibility?.max_allowed)}</Text>
+                <Text style={styles.infoLabel}>Maximum Available</Text>
+                <Text style={styles.infoValue}>
+                  {formatKes(eligibility?.max_allowed)}
+                </Text>
               </View>
             </View>
 
             <View style={styles.gridRow}>
               <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Available Savings</Text>
+                <Text style={styles.infoLabel}>Savings Considered</Text>
                 <Text style={styles.infoValue}>
                   {formatKes(eligibility?.available_savings)}
                 </Text>
               </View>
 
               <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Application Status</Text>
-                <Text style={styles.infoValue}>No Active Request</Text>
+                <Text style={styles.infoLabel}>Current Request</Text>
+                <Text style={styles.infoValue}>None active</Text>
               </View>
             </View>
           </Card>
@@ -251,10 +309,10 @@ export default function RequestLoanScreen() {
       ) : null}
 
       {!hasActiveLoan ? (
-        <Section title="Loan Information">
+        <Section title="Loan Details">
           <Card style={styles.card}>
             <Input
-              label="Amount (KES)"
+              label="Amount Needed (KES)"
               value={principal}
               onChangeText={setPrincipal}
               placeholder="e.g. 10000"
@@ -273,11 +331,11 @@ export default function RequestLoanScreen() {
               label="Reason (Optional)"
               value={memberNote}
               onChangeText={setMemberNote}
-              placeholder="Why do you need this loan?"
+              placeholder="Tell us what the support is for"
             />
 
             <View style={styles.amountPreviewBox}>
-              <Text style={styles.amountPreviewLabel}>Requested Amount</Text>
+              <Text style={styles.amountPreviewLabel}>Request Preview</Text>
               <Text style={styles.amountPreviewValue}>{amountPreview}</Text>
             </View>
           </Card>
@@ -315,16 +373,16 @@ export default function RequestLoanScreen() {
       ) : null}
 
       {!hasActiveLoan ? (
-        <Section title="Find Guarantor">
+        <Section title="Find a Guarantor">
           <Card style={styles.card}>
             <Input
               label="Search Member"
               value={search}
               onChangeText={setSearch}
-              placeholder="Type member name"
+              placeholder="Type a member name"
             />
             <Text style={styles.helperText}>
-              Select one or more members to support your application.
+              Choose one or more members to support your request.
             </Text>
           </Card>
         </Section>
@@ -334,7 +392,7 @@ export default function RequestLoanScreen() {
         <Section title="Available Members">
           {loadingCandidates ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={UI.accent} />
             </View>
           ) : candidates.length === 0 ? (
             <EmptyState
@@ -352,19 +410,31 @@ export default function RequestLoanScreen() {
                   activeOpacity={0.9}
                   onPress={() => toggleGuarantor(candidate.id)}
                 >
-                  <Card style={[styles.memberCard, selected && styles.memberCardSelected]}>
+                  <Card
+                    style={[
+                      styles.memberCard,
+                      selected && styles.memberCardSelected,
+                    ]}
+                  >
                     <View style={styles.memberCardTop}>
                       <View style={styles.memberLeft}>
-                        <View style={[styles.avatar, selected && styles.avatarSelected]}>
+                        <View
+                          style={[
+                            styles.avatar,
+                            selected && styles.avatarSelected,
+                          ]}
+                        >
                           <Ionicons
                             name={selected ? "checkmark" : "person-outline"}
                             size={16}
-                            color={selected ? COLORS.white : COLORS.primary}
+                            color={selected ? COLORS.white : UI.accent}
                           />
                         </View>
 
                         <View style={styles.memberTextWrap}>
-                          <Text style={styles.memberName}>{candidate.full_name}</Text>
+                          <Text style={styles.memberName}>
+                            {candidate.full_name}
+                          </Text>
                           <Text style={styles.memberMeta}>
                             {selected ? "Selected" : "Tap to select"}
                           </Text>
@@ -374,13 +444,15 @@ export default function RequestLoanScreen() {
                       <View
                         style={[
                           styles.statusPill,
-                          selected ? styles.statusPillSelected : styles.statusPillDefault,
+                          selected
+                            ? styles.statusPillSelected
+                            : styles.statusPillDefault,
                         ]}
                       >
                         <Text
                           style={[
                             styles.statusPillText,
-                            { color: selected ? COLORS.success : COLORS.gray },
+                            { color: selected ? COLORS.success : UI.textMuted },
                           ]}
                         >
                           {selected ? "Selected" : "Available"}
@@ -405,14 +477,16 @@ export default function RequestLoanScreen() {
 
             <View style={styles.submitSummaryBox}>
               <Text style={styles.submitSummaryLabel}>Guarantors</Text>
-              <Text style={styles.submitSummaryValue}>{selectedGuarantorIds.length}</Text>
+              <Text style={styles.submitSummaryValue}>
+                {selectedGuarantorIds.length}
+              </Text>
             </View>
           </View>
 
           <View style={{ height: SPACING.md }} />
 
           <Button
-            title={submitting ? "Submitting..." : "Submit Loan Request"}
+            title={submitting ? "Submitting..." : "Submit Request"}
             onPress={submit}
             loading={submitting}
             disabled={!canSubmit}
@@ -423,7 +497,7 @@ export default function RequestLoanScreen() {
           <Button
             title="Cancel"
             variant="secondary"
-            onPress={() => router.back()}
+            onPress={goToLoansIndex}
             disabled={submitting}
           />
         </Card>
@@ -437,7 +511,7 @@ export default function RequestLoanScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: UI.bg,
   },
 
   content: {
@@ -450,7 +524,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.lg,
-    backgroundColor: COLORS.primary,
+    backgroundColor: UI.accent,
     ...SHADOW.card,
   },
 
@@ -501,13 +575,14 @@ const styles = StyleSheet.create({
   card: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
   overviewCard: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.white,
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
@@ -518,8 +593,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: UI.border,
     borderRadius: RADIUS.lg,
+    backgroundColor: UI.dangerSoft,
   },
 
   errorText: {
@@ -536,6 +612,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
@@ -543,13 +620,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: UI.textMuted,
   },
 
   infoCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
@@ -565,13 +643,13 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFF8E8",
+    backgroundColor: UI.warningSoft,
   },
 
   infoTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: UI.text,
     marginBottom: 4,
   },
 
@@ -579,7 +657,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.gray,
+    color: UI.textMuted,
   },
 
   loadingWrap: {
@@ -596,31 +674,31 @@ const styles = StyleSheet.create({
 
   infoTile: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: UI.surfaceSoft,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: UI.border,
     minHeight: 88,
     justifyContent: "center",
   },
 
   infoTilePrimary: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: UI.accent,
+    borderColor: UI.accent,
   },
 
   infoLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: UI.textMuted,
     marginBottom: 6,
   },
 
   infoValue: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: UI.text,
   },
 
   infoLabelLight: {
@@ -640,22 +718,22 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: `${COLORS.primary}10`,
+    backgroundColor: UI.accentSoft,
     borderWidth: 1,
-    borderColor: `${COLORS.primary}18`,
+    borderColor: "rgba(46,111,104,0.12)",
   },
 
   amountPreviewLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: UI.textMuted,
     marginBottom: 4,
   },
 
   amountPreviewValue: {
     fontFamily: FONT.bold,
     fontSize: 18,
-    color: COLORS.primary,
+    color: UI.accent,
   },
 
   selectedHeader: {
@@ -667,20 +745,20 @@ const styles = StyleSheet.create({
   selectedTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: UI.text,
   },
 
   clearText: {
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.primary,
+    color: UI.accent,
   },
 
   helperText: {
     marginTop: 8,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: UI.textMuted,
     lineHeight: 18,
   },
 
@@ -692,32 +770,33 @@ const styles = StyleSheet.create({
   },
 
   chip: {
-    backgroundColor: `${COLORS.primary}12`,
+    backgroundColor: UI.accentSoft,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: `${COLORS.primary}20`,
+    borderColor: "rgba(46,111,104,0.12)",
   },
 
   chipText: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.primary,
+    color: UI.accent,
   },
 
   memberCard: {
     marginBottom: SPACING.sm,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: UI.border,
     borderRadius: RADIUS.xl,
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
   memberCardSelected: {
     borderColor: COLORS.success,
-    backgroundColor: `${COLORS.success}08`,
+    backgroundColor: UI.successSoft,
   },
 
   memberCardTop: {
@@ -739,7 +818,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${COLORS.primary}14`,
+    backgroundColor: UI.accentSoft,
     marginRight: SPACING.sm,
   },
 
@@ -754,14 +833,14 @@ const styles = StyleSheet.create({
   memberName: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
+    color: UI.text,
   },
 
   memberMeta: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: UI.textMuted,
   },
 
   statusPill: {
@@ -772,13 +851,13 @@ const styles = StyleSheet.create({
   },
 
   statusPillDefault: {
-    backgroundColor: COLORS.background,
-    borderColor: COLORS.border,
+    backgroundColor: UI.surfaceSoft,
+    borderColor: UI.border,
   },
 
   statusPillSelected: {
-    backgroundColor: `${COLORS.success}12`,
-    borderColor: `${COLORS.success}30`,
+    backgroundColor: UI.successSoft,
+    borderColor: "rgba(34,197,94,0.20)",
   },
 
   statusPillText: {
@@ -790,6 +869,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
+    backgroundColor: UI.surface,
     ...SHADOW.card,
   },
 
@@ -800,23 +880,23 @@ const styles = StyleSheet.create({
 
   submitSummaryBox: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: UI.surfaceSoft,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: UI.border,
   },
 
   submitSummaryLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: UI.textMuted,
     marginBottom: 6,
   },
 
   submitSummaryValue: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: UI.text,
   },
 });

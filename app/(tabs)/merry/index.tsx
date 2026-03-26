@@ -35,20 +35,21 @@ import { getSessionUser, SessionUser } from "@/services/session";
 type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
 const UI = {
-  bg: "#EDF2F6",
-  surface: "#F7FAFC",
-  surfaceAlt: "#F1F5F8",
-  card: "#F8FBFD",
-  border: "#D8E1E8",
-  text: "#334155",
-  textSoft: "#64748B",
-  textMuted: "#7C8A9A",
-  accent: "#4C6A7A",
-  accentSoft: "#E4EDF2",
-  successBg: "#EAF6EF",
-  successText: "#3B6B53",
-  warningBg: "#FFF4E8",
-  warningText: "#9A6530",
+  bg: "#EDF4F7",
+  surface: "#F8FBFC",
+  surfaceAlt: "#F1F6F8",
+  card: "#FFFFFF",
+  border: "#D7E3E8",
+  text: "#243746",
+  textSoft: "#5F7384",
+  textMuted: "#7B8C99",
+  accent: "#2E6F68",
+  accentSoft: "#E3F1EE",
+  blueSoft: "#EAF2FF",
+  successBg: "#EAF7EF",
+  successText: "#2F6B4F",
+  warningBg: "#FFF5E8",
+  warningText: "#96602B",
   dangerBg: "#FDEEEE",
   dangerText: "#A05252",
 };
@@ -110,24 +111,36 @@ function DueSummaryHero({
     <Card style={styles.heroCard} variant="default">
       <View style={styles.heroTop}>
         <View style={styles.heroIconWrap}>
-          <Ionicons name="cash-outline" size={20} color={UI.accent} />
+          <Ionicons name="people-outline" size={20} color={UI.accent} />
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.heroTitle}>Contribution due</Text>
+          <Text style={styles.heroTitle}>Your merry contribution</Text>
           <Text style={styles.heroSubtitle}>
-            Complete your current merry contribution from here.
+            Support your merry by contributing your share for this period.
           </Text>
         </View>
       </View>
 
       <View style={styles.heroAmountBox}>
-        <Text style={styles.heroAmountLabel}>Amount to pay now</Text>
+        <Text style={styles.heroAmountLabel}>What you can contribute today</Text>
         <Text style={styles.heroAmountValue}>{fmtKES(amount)}</Text>
       </View>
 
+      <View style={styles.heroPillsRow}>
+        <View style={styles.heroPill}>
+          <Ionicons name="heart-outline" size={13} color={UI.accent} />
+          <Text style={styles.heroPillText}>Community first</Text>
+        </View>
+
+        <View style={styles.heroPill}>
+          <Ionicons name="repeat-outline" size={13} color={UI.accent} />
+          <Text style={styles.heroPillText}>Shared support</Text>
+        </View>
+      </View>
+
       <View style={{ marginTop: SPACING.md }}>
-        <Button title="Contribute Now" onPress={onPress} />
+        <Button title="Contribute to Merry" onPress={onPress} />
       </View>
     </Card>
   );
@@ -139,19 +152,19 @@ function MyMerryCard({ item }: { item: MerryDueSummaryItem }) {
   const hasRequired = hasAmount(item.required_now);
 
   const badgeLabel = hasOverdue
-    ? "Overdue"
+    ? "Needs attention"
     : hasCurrent
-      ? "Due now"
+      ? "Due this period"
       : "Up to date";
 
   const badgeStyle = hasOverdue
-    ? styles.badgeDanger
+    ? styles.badgeWarning
     : hasCurrent
       ? styles.badgeAccent
       : styles.badgeSuccess;
 
   const badgeTextStyle = hasOverdue
-    ? styles.badgeTextDanger
+    ? styles.badgeTextWarning
     : hasCurrent
       ? styles.badgeTextAccent
       : styles.badgeTextSuccess;
@@ -170,17 +183,19 @@ function MyMerryCard({ item }: { item: MerryDueSummaryItem }) {
       </View>
 
       <View style={styles.amountPanel}>
-        <Text style={styles.amountPanelLabel}>Required now</Text>
+        <Text style={styles.amountPanelLabel}>Your share for now</Text>
         <Text style={styles.amountPanelValue}>{fmtKES(item.required_now)}</Text>
       </View>
 
       {hasAmount(item.overdue) ? (
-        <Text style={styles.helperText}>Overdue: {fmtKES(item.overdue)}</Text>
+        <Text style={styles.helperText}>
+          Pending from earlier: {fmtKES(item.overdue)}
+        </Text>
       ) : null}
 
       {!hasRequired && hasAmount(item.next_due) ? (
         <Text style={styles.helperText}>
-          Next due
+          Next contribution
           {item.next_due_date ? ` on ${item.next_due_date}` : ""} •{" "}
           {fmtKES(item.next_due)}
         </Text>
@@ -226,7 +241,7 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
     : requestStatus === "PENDING"
       ? "Open Request"
       : canJoinDirect
-        ? "Join"
+        ? "Join Merry"
         : "Open Merry";
 
   const onPrimaryPress = () => {
@@ -519,7 +534,8 @@ export default function MerryIndexScreen() {
       <View style={styles.headerBlock}>
         <Text style={styles.pageTitle}>Merry</Text>
         <Text style={styles.pageSubtitle}>
-          View your groups, contribution status, and open merries to join.
+          Stay connected with your merry, see your contributions, and discover
+          other open merries.
         </Text>
       </View>
 
@@ -546,12 +562,12 @@ export default function MerryIndexScreen() {
         </Card>
       ) : null}
 
-      <Section title="My Merry Groups">
+      <Section title="Your Merries">
         {myGroupsPreview.length === 0 ? (
           <EmptyState
             icon="people-outline"
-            title="No merry groups yet"
-            subtitle="Join an open merry to start contributing with your group."
+            title="No merry yet"
+            subtitle="Join an open merry to start contributing with others."
           />
         ) : (
           <>
@@ -562,12 +578,12 @@ export default function MerryIndexScreen() {
         )}
       </Section>
 
-      <Section title="Available Merries">
+      <Section title="Open Merries">
         {availablePreview.length === 0 ? (
           <EmptyState
             icon="grid-outline"
             title="No open merries now"
-            subtitle="Available merry groups will appear here."
+            subtitle="New merry opportunities will appear here."
           />
         ) : (
           <>
@@ -581,8 +597,8 @@ export default function MerryIndexScreen() {
       <Section title="Quick Access">
         <View style={styles.quickLinksList}>
           <QuickLink
-            title="Contribution History"
-            subtitle="View your merry payment activity"
+            title="Your Contributions"
+            subtitle="See how you’ve been supporting your merry"
             icon="time-outline"
             onPress={() => router.push("/(tabs)/merry/history" as any)}
           />
@@ -590,7 +606,7 @@ export default function MerryIndexScreen() {
           {firstJoinableMerry ? (
             <QuickLink
               title="Join a Merry"
-              subtitle="Go straight to join request"
+              subtitle="Go straight to a join request"
               icon="person-add-outline"
               onPress={() =>
                 router.push({
@@ -602,6 +618,21 @@ export default function MerryIndexScreen() {
           ) : null}
         </View>
       </Section>
+
+      <Card style={styles.communityCard} variant="default">
+        <View style={styles.communityTop}>
+          <View style={styles.communityIconWrap}>
+            <Ionicons name="sparkles-outline" size={18} color={UI.accent} />
+          </View>
+          <Text style={styles.communityTitle}>Why merry matters</Text>
+        </View>
+
+        <Text style={styles.communityText}>
+          Merry makes it easier for members to support one another through
+          consistent contribution, shared responsibility, and a strong sense of
+          community.
+        </Text>
+      </Card>
 
       <View style={{ height: 24 }} />
     </ScrollView>
@@ -640,6 +671,7 @@ const styles = StyleSheet.create({
     ...TYPE.subtext,
     color: UI.textSoft,
     marginTop: 4,
+    lineHeight: 20,
   },
 
   heroCard: {
@@ -675,6 +707,7 @@ const styles = StyleSheet.create({
     ...TYPE.subtext,
     color: UI.textSoft,
     marginTop: 4,
+    lineHeight: 19,
   },
 
   heroAmountBox: {
@@ -696,6 +729,29 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: UI.text,
     fontWeight: "900",
+  },
+
+  heroPillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: UI.accentSoft,
+  },
+
+  heroPillText: {
+    ...TYPE.caption,
+    color: UI.accent,
+    fontWeight: "700",
   },
 
   errorCard: {
@@ -779,6 +835,7 @@ const styles = StyleSheet.create({
     ...TYPE.subtext,
     color: UI.textSoft,
     marginTop: SPACING.sm,
+    lineHeight: 18,
   },
 
   badgeBase: {
@@ -795,7 +852,7 @@ const styles = StyleSheet.create({
     backgroundColor: UI.successBg,
   },
 
-  badgeDanger: {
+  badgeWarning: {
     backgroundColor: UI.warningBg,
   },
 
@@ -812,7 +869,7 @@ const styles = StyleSheet.create({
     color: UI.successText,
   },
 
-  badgeTextDanger: {
+  badgeTextWarning: {
     color: UI.warningText,
   },
 
@@ -820,7 +877,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: RADIUS.round,
-    backgroundColor: UI.surfaceAlt,
+    backgroundColor: UI.blueSoft,
     borderWidth: 1,
     borderColor: UI.border,
   },
@@ -906,5 +963,43 @@ const styles = StyleSheet.create({
     ...TYPE.caption,
     color: UI.textSoft,
     marginTop: 2,
+    lineHeight: 17,
+  },
+
+  communityCard: {
+    marginTop: SPACING.sm,
+    padding: SPACING.md,
+    backgroundColor: UI.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: UI.border,
+  },
+
+  communityTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: 10,
+  },
+
+  communityIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.accentSoft,
+  },
+
+  communityTitle: {
+    ...TYPE.bodyStrong,
+    color: UI.text,
+    fontWeight: "800",
+  },
+
+  communityText: {
+    ...TYPE.subtext,
+    color: UI.textSoft,
+    lineHeight: 20,
   },
 });

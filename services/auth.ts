@@ -1,7 +1,10 @@
 // services/auth.ts
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
+
 import { api, saveAuthTokens } from "@/services/api";
 import { ENDPOINTS } from "@/services/endpoints";
-import type { SessionUser } from "@/services/session";
+import { clearSessionUser, type SessionUser } from "@/services/session";
 
 export type RegisterPayload = {
   username: string;
@@ -59,6 +62,33 @@ async function persistTokensFromResponse(data?: AuthResponse) {
   if (typeof access === "string" && access.split(".").length === 3) {
     await saveAuthTokens(access, refresh);
   }
+}
+
+async function removeStorageItem(key: string) {
+  try {
+    if (Platform.OS === "web") {
+      localStorage.removeItem(key);
+      return;
+    }
+
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    // silent on purpose
+  }
+}
+
+export async function logoutUser(): Promise<void> {
+  const tokenKeys = [
+    "access",
+    "refresh",
+    "access_token",
+    "refresh_token",
+    "ACCESS_TOKEN",
+    "REFRESH_TOKEN",
+  ];
+
+  await Promise.all(tokenKeys.map(removeStorageItem));
+  await clearSessionUser();
 }
 
 export async function registerUser(

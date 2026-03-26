@@ -1,6 +1,5 @@
 import { getErrorMessage } from "@/services/api";
 import { resetPassword } from "@/services/auth";
-import { saveSessionUser } from "@/services/session";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -23,47 +22,6 @@ function normalizeCode(input: string) {
   return (input || "").replace(/\D/g, "").slice(0, 6);
 }
 
-function pickUserFromResetResponse(data: any) {
-  const src = data?.user ?? data ?? {};
-
-  return {
-    id: src?.id,
-    username: src?.username,
-    phone: src?.phone,
-    email: src?.email ?? null,
-    id_number: src?.id_number ?? null,
-
-    role: src?.role,
-    status: src?.status,
-
-    is_active: typeof src?.is_active === "boolean" ? src.is_active : undefined,
-    is_phone_verified:
-      typeof src?.is_phone_verified === "boolean"
-        ? src.is_phone_verified
-        : undefined,
-    is_admin:
-      typeof src?.is_admin === "boolean"
-        ? src.is_admin
-        : !!(src?.role === "admin"),
-
-    kyc_status: src?.kyc_status,
-    is_kyc_approved:
-      typeof src?.is_kyc_approved === "boolean"
-        ? src.is_kyc_approved
-        : undefined,
-
-    has_limited_access:
-      typeof src?.has_limited_access === "boolean"
-        ? src.has_limited_access
-        : undefined,
-
-    has_full_access:
-      typeof src?.has_full_access === "boolean"
-        ? src.has_full_access
-        : undefined,
-  };
-}
-
 export default function ResetPasswordScreen() {
   const params = useLocalSearchParams();
 
@@ -74,11 +32,13 @@ export default function ResetPasswordScreen() {
 
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleReset = async () => {
     const cleanCode = normalizeCode(code);
     const cleanPassword = newPassword.trim();
+    const cleanConfirmPassword = confirmPassword.trim();
 
     if (!email) {
       Alert.alert("Missing email", "Email is required.");
@@ -108,6 +68,16 @@ export default function ResetPasswordScreen() {
       return;
     }
 
+    if (!cleanConfirmPassword) {
+      Alert.alert("Missing confirmation", "Confirm your new password.");
+      return;
+    }
+
+    if (cleanPassword !== cleanConfirmPassword) {
+      Alert.alert("Password mismatch", "Passwords do not match.");
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -117,15 +87,12 @@ export default function ResetPasswordScreen() {
         new_password: cleanPassword,
       });
 
-      const user = pickUserFromResetResponse(res);
-      await saveSessionUser(user);
-
       Alert.alert(
         "Success",
-        res?.detail || "Password reset successful. You are now logged in."
+        res?.detail || "Password reset successful. Please log in."
       );
 
-      router.replace("/(tabs)/dashboard");
+      router.replace("/(auth)/login");
     } catch (e: any) {
       const data = e?.response?.data;
 
@@ -167,6 +134,17 @@ export default function ResetPasswordScreen() {
           placeholder="New Password"
           value={newPassword}
           onChangeText={setNewPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!loading}
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Confirm New Password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}

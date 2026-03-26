@@ -1,7 +1,6 @@
 // app/(tabs)/payments/withdrawals.tsx
-import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -17,7 +16,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
 import {
   getApiErrorMessage,
   getMyWithdrawals,
@@ -46,15 +45,10 @@ function formatKes(value?: string | number | null) {
 function statusColor(status: string) {
   const s = String(status || "").toUpperCase();
 
-  if (["PAID", "APPROVED", "COMPLETED", "SUCCESS"].includes(s)) {
-    return COLORS.success;
-  }
-  if (["FAILED", "REJECTED", "CANCELLED", "BLOCKED"].includes(s)) {
-    return COLORS.danger;
-  }
-  if (["PENDING", "PROCESSING", "UNDER_REVIEW"].includes(s)) {
-    return COLORS.warning;
-  }
+  if (["PAID", "APPROVED", "SUCCESS"].includes(s)) return COLORS.success;
+  if (["FAILED", "REJECTED", "CANCELLED"].includes(s)) return COLORS.danger;
+  if (["PENDING", "PROCESSING"].includes(s)) return COLORS.warning;
+
   return COLORS.gray;
 }
 
@@ -64,24 +58,21 @@ function StatusPill({ status }: { status: string }) {
   return (
     <View style={[styles.statusPill, { borderColor: color }]}>
       <View style={[styles.statusDot, { backgroundColor: color }]} />
-      <Text style={styles.statusText}>{String(status || "—").toUpperCase()}</Text>
+      <Text style={styles.statusText}>{status}</Text>
     </View>
   );
 }
 
 function WithdrawalCard({ item }: { item: WithdrawalRequest }) {
   return (
-    <Card style={styles.withdrawalCard}>
-      <View style={styles.cardTop}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.cardTitle}>Withdrawal • {item.source}</Text>
-          <Text style={styles.cardMeta}>
-            {item.phone}
-            {item.created_at ? ` • ${item.created_at}` : ""}
-          </Text>
+    <Card style={styles.card}>
+      <View style={styles.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{item.source}</Text>
+          <Text style={styles.meta}>{item.phone}</Text>
         </View>
 
-        <View style={{ alignItems: "flex-end", gap: 8 }}>
+        <View style={{ alignItems: "flex-end" }}>
           <Text style={styles.amount}>{formatKes(item.amount)}</Text>
           <StatusPill status={String(item.status)} />
         </View>
@@ -116,26 +107,16 @@ export default function WithdrawalsScreen() {
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
       const meUser = meRes.status === "fulfilled" ? meRes.value : null;
 
-      const mergedUser: WithdrawalsUser | null =
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null;
-
-      setUser(mergedUser);
+      setUser({ ...(sessionUser ?? {}), ...(meUser ?? {}) });
 
       setWithdrawals(
-        withdrawalsRes.status === "fulfilled" && Array.isArray(withdrawalsRes.value)
-          ? withdrawalsRes.value
+        withdrawalsRes.status === "fulfilled"
+          ? withdrawalsRes.value || []
           : []
       );
 
       if (withdrawalsRes.status === "rejected") {
         setError(getApiErrorMessage(withdrawalsRes.reason));
-      } else if (meRes.status === "rejected") {
-        setError(getApiErrorMessage(meRes.reason));
       }
     } catch (e: any) {
       setError(getApiErrorMessage(e));
@@ -144,50 +125,17 @@ export default function WithdrawalsScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
+    await load();
+    setRefreshing(false);
   }, [load]);
-
-  const stats = useMemo(() => {
-    const pending = withdrawals.filter(
-      (w) => String(w.status).toUpperCase() === "PENDING"
-    ).length;
-
-    const processing = withdrawals.filter((w) =>
-      ["APPROVED", "PROCESSING"].includes(String(w.status).toUpperCase())
-    ).length;
-
-    const paid = withdrawals.filter((w) =>
-      ["PAID", "COMPLETED", "SUCCESS"].includes(String(w.status).toUpperCase())
-    ).length;
-
-    const totalAmount = withdrawals.reduce((sum, w) => {
-      const n = Number(w.amount ?? 0);
-      return sum + (Number.isFinite(n) ? n : 0);
-    }, 0);
-
-    return {
-      pending,
-      processing,
-      paid,
-      totalAmount,
-    };
-  }, [withdrawals]);
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
+      <View style={styles.center}>
         <ActivityIndicator color={COLORS.primary} />
       </View>
     );
@@ -195,14 +143,11 @@ export default function WithdrawalsScreen() {
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to access withdrawals."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
-        />
-      </View>
+      <EmptyState
+        title="Not signed in"
+        actionLabel="Login"
+        onAction={() => router.replace(ROUTES.auth.login)}
+      />
     );
   }
 
@@ -213,87 +158,37 @@ export default function WithdrawalsScreen() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
-      showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Withdrawals</Text>
-          <Text style={styles.hSub}>
-            Track payout requests and statuses • {isAdmin ? "Admin" : "Member"}
-          </Text>
-        </View>
+        <Text style={styles.headerTitle}>Withdrawals</Text>
 
         <Button
-          variant="ghost"
           title="Back"
+          variant="ghost"
           onPress={() => router.back()}
-          leftIcon={
-            <Ionicons
-              name="arrow-back-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
         />
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
+        <Text style={styles.error}>{error}</Text>
       ) : null}
 
-      {!kycComplete ? (
-        <Section title="KYC Notice">
-          <Card style={styles.noticeCard}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.info}
-            />
-            <Text style={styles.noticeText}>
-              Withdrawal requests require completed KYC. You can still review any
-              previous requests here.
-            </Text>
-            <View style={{ height: SPACING.sm }} />
-            <Button
-              title="Complete KYC"
-              variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profileKyc)}
-            />
-          </Card>
-        </Section>
-      ) : null}
-
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Pending</Text>
-          <Text style={styles.summaryValue}>{stats.pending}</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Processing</Text>
-          <Text style={styles.summaryValue}>{stats.processing}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Paid</Text>
-          <Text style={styles.summaryValue}>{stats.paid}</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Requested</Text>
-          <Text style={styles.summaryValue}>{formatKes(stats.totalAmount)}</Text>
-        </View>
-      </View>
-
-      <Section title="Quick Actions">
-        <View style={styles.actionsRow}>
+      {!kycComplete && (
+        <Card style={styles.notice}>
+          <Text style={styles.noticeText}>
+            Complete KYC to request withdrawal
+          </Text>
           <Button
-            title={withdrawAllowed ? "Request Withdrawal" : "Complete KYC"}
+            title="Open KYC"
+            onPress={() => router.push(ROUTES.tabs.profileKyc)}
+          />
+        </Card>
+      )}
+
+      <Section title="Actions">
+        <View style={styles.actions}>
+          <Button
+            title={withdrawAllowed ? "Withdraw" : "Complete KYC"}
             onPress={() =>
               withdrawAllowed
                 ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
@@ -301,7 +196,6 @@ export default function WithdrawalsScreen() {
             }
             style={{ flex: 1 }}
           />
-          <View style={{ width: SPACING.sm }} />
           <Button
             title="Deposit"
             variant="secondary"
@@ -311,21 +205,13 @@ export default function WithdrawalsScreen() {
         </View>
       </Section>
 
-      <Section title="My Withdrawal Requests">
+      <Section title="Requests">
         {withdrawals.length === 0 ? (
           <EmptyState
-            icon="cash-outline"
             title="No withdrawals yet"
-            subtitle={
-              withdrawAllowed
-                ? "When you request a payout, it will appear here."
-                : "Complete KYC before submitting a withdrawal request."
-            }
-            actionLabel={withdrawAllowed ? "Request Withdrawal" : "Complete KYC"}
+            actionLabel="Withdraw"
             onAction={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal)
-                : router.push(ROUTES.tabs.profileKyc)
+              router.push(ROUTES.tabs.paymentsRequestWithdrawal)
             }
           />
         ) : (
@@ -334,155 +220,86 @@ export default function WithdrawalsScreen() {
           ))
         )}
       </Section>
-
-      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  content: { padding: SPACING.md },
 
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.background,
-  },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   header: {
-    marginBottom: SPACING.lg,
     flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  hTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
-  },
-
-  hSub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  errorCard: {
+    justifyContent: "space-between",
     marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
   },
 
-  errorText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: FONT.bold,
+  },
+
+  error: {
     color: COLORS.danger,
-    fontFamily: FONT.regular,
+    marginBottom: SPACING.sm,
   },
 
-  noticeCard: {
+  notice: {
+    marginBottom: SPACING.md,
     padding: SPACING.md,
   },
 
   noticeText: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.textMuted,
-    fontFamily: FONT.regular,
+    marginBottom: SPACING.sm,
   },
 
-  summaryGrid: {
+  actions: {
     flexDirection: "row",
     gap: SPACING.sm as any,
   },
 
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  summaryValue: {
-    marginTop: 8,
-    fontFamily: FONT.bold,
-    fontSize: 16,
-    color: COLORS.dark,
-  },
-
-  actionsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  withdrawalCard: {
-    marginBottom: SPACING.md,
+  card: {
+    marginBottom: SPACING.sm,
     padding: SPACING.md,
   },
 
-  cardTop: {
+  row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
   },
 
-  cardTitle: {
+  title: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
   },
 
-  cardMeta: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
+  meta: {
     fontSize: 12,
     color: COLORS.gray,
   },
 
   amount: {
     fontFamily: FONT.bold,
-    fontSize: 13,
-    color: COLORS.dark,
   },
 
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    padding: 6,
     borderRadius: RADIUS.round,
     borderWidth: 1,
-    backgroundColor: COLORS.surface,
   },
 
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 6,
+    marginRight: 6,
   },
 
   statusText: {
     fontSize: 11,
-    color: COLORS.text,
-    fontFamily: FONT.medium,
   },
 });

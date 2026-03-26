@@ -96,10 +96,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="loans/index"
         options={{
-          title: "Loans",
+          title: "Support",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "cash" : "cash-outline"}
+              name={focused ? "heart" : "heart-outline"}
               color={color}
               size={20}
             />
@@ -113,9 +113,9 @@ export default function TabsLayout() {
           title: "Me",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "person" : "person-outline"}
+              name={focused ? "person-circle" : "person-circle-outline"}
               color={color}
-              size={20}
+              size={22}
             />
           ),
         }}
@@ -145,6 +145,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="loans/guarantee-requests" options={{ href: null }} />
       <Tabs.Screen name="loans/[Id]" options={{ href: null }} />
       <Tabs.Screen name="loans/admin-approve" options={{ href: null }} />
+      <Tabs.Screen name="loans/history" options={{ href: null }} />
 
       <Tabs.Screen name="merry/contribute" options={{ href: null }} />
       <Tabs.Screen name="merry/history" options={{ href: null }} />

@@ -180,6 +180,7 @@ export default function GroupsIndexScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [showAvailableGroups, setShowAvailableGroups] = useState(false);
 
   const kycComplete = isKycComplete(user);
   const joinAllowed = canJoinGroup(user);
@@ -429,15 +430,21 @@ export default function GroupsIndexScreen() {
           <Card
             onPress={() =>
               joinAllowed
-                ? router.push(ROUTES.tabs.groupsAvailable as any)
+                ? setShowAvailableGroups((prev) => !prev)
                 : goToKyc()
             }
             style={styles.primaryActionCard}
           >
             <View style={styles.actionIconCircle}>
-              <Ionicons name="search-outline" size={20} color={COLORS.white} />
+              <Ionicons
+                name={showAvailableGroups ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={COLORS.white}
+              />
             </View>
-            <Text style={styles.primaryActionTitle}>Browse Groups</Text>
+            <Text style={styles.primaryActionTitle}>
+              {showAvailableGroups ? "Hide Available Groups" : "View Available Groups"}
+            </Text>
           </Card>
 
           <Card
@@ -452,24 +459,26 @@ export default function GroupsIndexScreen() {
         </View>
       </Section>
 
-      <Section title="Available Groups">
-        {groups.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No groups found"
-            subtitle="Available groups will appear here once created."
-          />
-        ) : (
-          groups.map((g) => (
-            <GroupCard
-              key={g.id}
-              group={g}
-              isMember={myMembershipGroupIds.includes(g.id)}
-              hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
+      {showAvailableGroups ? (
+        <Section title="Available Groups">
+          {groups.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No groups found"
+              subtitle="Available groups will appear here once created."
             />
-          ))
-        )}
-      </Section>
+          ) : (
+            groups.map((g) => (
+              <GroupCard
+                key={g.id}
+                group={g}
+                isMember={myMembershipGroupIds.includes(g.id)}
+                hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
+              />
+            ))
+          )}
+        </Section>
+      ) : null}
 
       <View style={{ height: 28 }} />
     </ScrollView>
