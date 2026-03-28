@@ -1,12 +1,21 @@
 // app/(tabs)/_layout.tsx
+
 import { COLORS } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
 import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+
   const isWeb = Platform.OS === "web";
+  const isAndroid = Platform.OS === "android";
+  const isIOS = Platform.OS === "ios";
+
+  const baseHeight = isWeb ? 70 : isAndroid ? 64 : 68;
+  const bottomInset = isWeb ? 0 : Math.max(insets.bottom, isIOS ? 10 : 8);
 
   return (
     <Tabs
@@ -14,25 +23,33 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray,
+        tabBarHideOnKeyboard: true,
+        sceneStyle: {
+          backgroundColor: COLORS.background,
+        },
         tabBarStyle: {
           borderTopColor: COLORS.lightGray,
+          borderTopWidth: 1,
           backgroundColor: COLORS.white,
-          height: isWeb ? 92 : 80,
-          paddingTop: 6,
-          paddingBottom: 10,
+          height: baseHeight + bottomInset,
+          paddingTop: 8,
+          paddingBottom: bottomInset,
+          paddingHorizontal: 4,
         },
         tabBarItemStyle: {
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
+          paddingVertical: 4,
         },
         tabBarIconStyle: {
           marginBottom: 2,
         },
         tabBarLabelStyle: {
-          fontSize: 9,
-          fontWeight: "600",
+          fontSize: 10,
+          fontWeight: "700",
           textAlign: "center",
+          paddingBottom: 2,
         },
       }}
     >
@@ -52,12 +69,12 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="savings/index"
+        name="merry/index"
         options={{
-          title: "Save",
+          title: "Merry",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "wallet" : "wallet-outline"}
+              name={focused ? "repeat" : "repeat-outline"}
               color={color}
               size={20}
             />
@@ -66,12 +83,12 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="merry/index"
+        name="savings/index"
         options={{
-          title: "Merry",
+          title: "Save",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? "repeat" : "repeat-outline"}
+              name={focused ? "wallet" : "wallet-outline"}
               color={color}
               size={20}
             />
@@ -108,7 +125,7 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="profile/index"
+        name="profile"
         options={{
           title: "Me",
           tabBarIcon: ({ color, focused }) => (
@@ -124,7 +141,6 @@ export default function TabsLayout() {
       {/* Hidden routes */}
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
 
-      <Tabs.Screen name="savings/create" options={{ href: null }} />
       <Tabs.Screen name="savings/[id]" options={{ href: null }} />
       <Tabs.Screen name="savings/history" options={{ href: null }} />
       <Tabs.Screen name="savings/save" options={{ href: null }} />
@@ -167,7 +183,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="groups/[id]" options={{ href: null }} />
       <Tabs.Screen name="groups/available" options={{ href: null }} />
       <Tabs.Screen name="groups/contribute" options={{ href: null }} />
-      <Tabs.Screen name="groups/create" options={{ href: null }} />
       <Tabs.Screen name="groups/history" options={{ href: null }} />
       <Tabs.Screen name="groups/join-requests" options={{ href: null }} />
       <Tabs.Screen name="groups/memberships" options={{ href: null }} />
@@ -176,9 +191,6 @@ export default function TabsLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen name="groups/my-savings" options={{ href: null }} />
-
-      <Tabs.Screen name="profile/edit" options={{ href: null }} />
-      <Tabs.Screen name="profile/kyc" options={{ href: null }} />
     </Tabs>
   );
 }

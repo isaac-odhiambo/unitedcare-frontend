@@ -1,4 +1,3 @@
-// app/(tabs)/savings/history.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -148,7 +151,11 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
 
   return (
     <View style={[styles.banner, styles.bannerSuccess]}>
-      <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.success} />
+      <Ionicons
+        name="checkmark-circle-outline"
+        size={16}
+        color={COLORS.success}
+      />
       <Text style={[styles.bannerText, { color: COLORS.success }]}>
         Savings wallet is active.
       </Text>
@@ -169,8 +176,8 @@ function SummaryCard({
     tone === "success"
       ? COLORS.success
       : tone === "danger"
-      ? COLORS.danger
-      : COLORS.dark;
+        ? COLORS.danger
+        : COLORS.dark;
 
   return (
     <View style={styles.summaryCard}>
@@ -206,12 +213,16 @@ function AccountCard({ account }: { account: SavingsAccount }) {
 
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Available</Text>
-          <Text style={styles.metricValue}>{formatKes(account.available_balance)}</Text>
+          <Text style={styles.metricValue}>
+            {formatKes(account.available_balance)}
+          </Text>
         </View>
 
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Reserved</Text>
-          <Text style={styles.metricValue}>{formatKes(account.reserved_amount)}</Text>
+          <Text style={styles.metricValue}>
+            {formatKes(account.reserved_amount)}
+          </Text>
         </View>
 
         <View style={styles.metricCard}>
@@ -259,6 +270,8 @@ function TransactionRow({ row }: { row: SavingsHistoryRow }) {
 }
 
 export default function SavingsHistoryScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{ accountId?: string }>();
   const routeAccountId = Number(params.accountId ?? 0);
 
@@ -354,91 +367,143 @@ export default function SavingsHistoryScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading savings history...</Text>
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading savings history...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!account && error) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Unable to load savings"
-          subtitle={error}
-          actionLabel="Back to Savings"
-          onAction={() => router.replace(ROUTES.tabs.savings)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Unable to load savings"
+            subtitle={error}
+            actionLabel="Back to Savings"
+            onAction={() => router.replace(ROUTES.tabs.savings)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <View style={styles.header}>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.title}>Savings History</Text>
-          <Text style={styles.subtitle}>
-            Review your savings balance and activity.
-          </Text>
-        </View>
-
-        <Button
-          title="Back"
-          variant="ghost"
-          onPress={() => router.back()}
-          leftIcon={
-            <Ionicons
-              name="arrow-back-outline"
-              size={16}
-              color={COLORS.primary}
-            />
-          }
-        />
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      {account ? (
-        <>
-          <Section title="Wallet">
-            <AccountCard account={account} />
-          </Section>
-
-          <View style={styles.summaryGrid}>
-            <SummaryCard
-              label="Deposits"
-              value={formatKes(totals.credits)}
-              tone="success"
-            />
-            <SummaryCard
-              label="Withdrawals"
-              value={formatKes(totals.debits)}
-              tone="danger"
-            />
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.title}>Savings History</Text>
+            <Text style={styles.subtitle}>
+              Review your savings balance and activity.
+            </Text>
           </View>
 
-          <Section
-            title="Transactions"
-            right={
-              <View style={styles.sectionActions}>
-                <Button
-                  title="Deposit"
-                  variant="ghost"
-                  onPress={() =>
+          <Button
+            title="Back"
+            variant="ghost"
+            onPress={() => router.back()}
+            leftIcon={
+              <Ionicons
+                name="arrow-back-outline"
+                size={16}
+                color={COLORS.primary}
+              />
+            }
+          />
+        </View>
+
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        {account ? (
+          <>
+            <Section title="Wallet">
+              <AccountCard account={account} />
+            </Section>
+
+            <View style={styles.summaryGrid}>
+              <SummaryCard
+                label="Deposits"
+                value={formatKes(totals.credits)}
+                tone="success"
+              />
+              <SummaryCard
+                label="Withdrawals"
+                value={formatKes(totals.debits)}
+                tone="danger"
+              />
+            </View>
+
+            <Section
+              title="Transactions"
+              right={
+                <View style={styles.sectionActions}>
+                  <Button
+                    title="Deposit"
+                    variant="ghost"
+                    onPress={() =>
+                      router.push({
+                        pathname: ROUTES.tabs.paymentsDeposit as any,
+                        params: {
+                          category: "SAVINGS",
+                          purpose: "SAVINGS_DEPOSIT",
+                          accountId: String(account.id),
+                          reference: savingsReference,
+                          title: account.name || "Savings",
+                        },
+                      })
+                    }
+                  />
+                  {canWithdraw ? (
+                    <Button
+                      title="Withdraw"
+                      variant="ghost"
+                      onPress={() =>
+                        router.push({
+                          pathname: ROUTES.tabs.paymentsWithdrawals as any,
+                          params: {
+                            category: "SAVINGS",
+                            purpose: "SAVINGS_WITHDRAWAL",
+                            accountId: String(account.id),
+                            reference: savingsReference,
+                            title: account.name || "Savings",
+                          },
+                        })
+                      }
+                    />
+                  ) : null}
+                </View>
+              }
+            >
+              {transactions.length === 0 ? (
+                <EmptyState
+                  icon="receipt-outline"
+                  title="No transactions yet"
+                  subtitle="Deposits and withdrawals on your savings wallet will appear here."
+                  actionLabel="Deposit"
+                  onAction={() =>
                     router.push({
                       pathname: ROUTES.tabs.paymentsDeposit as any,
                       params: {
@@ -451,64 +516,23 @@ export default function SavingsHistoryScreen() {
                     })
                   }
                 />
-                {canWithdraw ? (
-                  <Button
-                    title="Withdraw"
-                    variant="ghost"
-                    onPress={() =>
-                      router.push({
-                        pathname: ROUTES.tabs.paymentsWithdrawals as any,
-                        params: {
-                          category: "SAVINGS",
-                          purpose: "SAVINGS_WITHDRAWAL",
-                          accountId: String(account.id),
-                          reference: savingsReference,
-                          title: account.name || "Savings",
-                        },
-                      })
-                    }
-                  />
-                ) : null}
-              </View>
-            }
-          >
-            {transactions.length === 0 ? (
-              <EmptyState
-                icon="receipt-outline"
-                title="No transactions yet"
-                subtitle="Deposits and withdrawals on your savings wallet will appear here."
-                actionLabel="Deposit"
-                onAction={() =>
-                  router.push({
-                    pathname: ROUTES.tabs.paymentsDeposit as any,
-                    params: {
-                      category: "SAVINGS",
-                      purpose: "SAVINGS_DEPOSIT",
-                      accountId: String(account.id),
-                      reference: savingsReference,
-                      title: account.name || "Savings",
-                    },
-                  })
-                }
-              />
-            ) : (
-              transactions.map((row) => (
-                <TransactionRow key={row.id} row={row} />
-              ))
-            )}
-          </Section>
-        </>
-      ) : (
-        <EmptyState
-          title="No savings wallet"
-          subtitle="Your savings activity will appear here once the wallet is available."
-          actionLabel="Back to Savings"
-          onAction={() => router.replace(ROUTES.tabs.savings)}
-        />
-      )}
-
-      <View style={{ height: 28 }} />
-    </ScrollView>
+              ) : (
+                transactions.map((row) => (
+                  <TransactionRow key={row.id} row={row} />
+                ))
+              )}
+            </Section>
+          </>
+        ) : (
+          <EmptyState
+            title="No savings wallet"
+            subtitle="Your savings activity will appear here once the wallet is available."
+            actionLabel="Back to Savings"
+            onAction={() => router.replace(ROUTES.tabs.savings)}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -520,7 +544,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.lg,
-    paddingBottom: 28,
   },
 
   loadingWrap: {

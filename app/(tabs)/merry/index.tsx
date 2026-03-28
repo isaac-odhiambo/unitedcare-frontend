@@ -1,4 +1,3 @@
-// app/(tabs)/merry/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -348,6 +351,8 @@ function QuickLink({
 }
 
 export default function MerryIndexScreen() {
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<MerryUser | null>(null);
   const [summary, setSummary] =
     useState<MyAllMerryDueSummaryResponse | null>(null);
@@ -503,139 +508,146 @@ export default function MerryIndexScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={UI.accent} />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={UI.accent} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to access merry."
-          actionLabel="Go to Login"
-          onAction={() => router.replace("/(auth)/login" as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to access merry."
+            actionLabel="Go to Login"
+            onAction={() => router.replace("/(auth)/login" as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.headerBlock}>
-        <Text style={styles.pageTitle}>Merry</Text>
-        <Text style={styles.pageSubtitle}>
-          Stay connected with your merry, see your contributions, and discover
-          other open merries.
-        </Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerBlock}>
+          <Text style={styles.pageTitle}>Merry</Text>
+          <Text style={styles.pageSubtitle}>
+            Join a merry, stay connected with your group, and keep supporting one
+            another through shared contribution.
+          </Text>
+        </View>
 
-      {hasAmount(totalRequiredNow) && firstPayableMerry ? (
-        <DueSummaryHero
-          amount={totalRequiredNow}
-          onPress={() =>
-            router.push({
-              pathname: "/(tabs)/merry/contribute" as any,
-              params: { merryId: String(firstPayableMerry.merry_id) },
-            })
-          }
-        />
-      ) : null}
-
-      {error ? (
-        <Card style={styles.errorCard} variant="default">
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={UI.dangerText}
+        {hasAmount(totalRequiredNow) && firstPayableMerry ? (
+          <DueSummaryHero
+            amount={totalRequiredNow}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/merry/contribute" as any,
+                params: { merryId: String(firstPayableMerry.merry_id) },
+              })
+            }
           />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+        ) : null}
 
-      <Section title="Your Merries">
-        {myGroupsPreview.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No merry yet"
-            subtitle="Join an open merry to start contributing with others."
-          />
-        ) : (
-          <>
-            {myGroupsPreview.map((item) => (
-              <MyMerryCard key={`due-${item.merry_id}`} item={item} />
-            ))}
-          </>
-        )}
-      </Section>
-
-      <Section title="Open Merries">
-        {availablePreview.length === 0 ? (
-          <EmptyState
-            icon="grid-outline"
-            title="No open merries now"
-            subtitle="New merry opportunities will appear here."
-          />
-        ) : (
-          <>
-            {availablePreview.map((item) => (
-              <AvailableMerryCard key={`available-${item.id}`} item={item} />
-            ))}
-          </>
-        )}
-      </Section>
-
-      <Section title="Quick Access">
-        <View style={styles.quickLinksList}>
-          <QuickLink
-            title="Your Contributions"
-            subtitle="See how you’ve been supporting your merry"
-            icon="time-outline"
-            onPress={() => router.push("/(tabs)/merry/history" as any)}
-          />
-
-          {firstJoinableMerry ? (
-            <QuickLink
-              title="Join a Merry"
-              subtitle="Go straight to a join request"
-              icon="person-add-outline"
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/merry/join-request" as any,
-                  params: { merryId: String(firstJoinableMerry.id) },
-                })
-              }
+        {error ? (
+          <Card style={styles.errorCard} variant="default">
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={UI.dangerText}
             />
-          ) : null}
-        </View>
-      </Section>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      <Card style={styles.communityCard} variant="default">
-        <View style={styles.communityTop}>
-          <View style={styles.communityIconWrap}>
-            <Ionicons name="sparkles-outline" size={18} color={UI.accent} />
+        <Section title="Your Merries">
+          {myGroupsPreview.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No merry yet"
+              subtitle="You can join an open merry straight away and begin participating."
+            />
+          ) : (
+            <>
+              {myGroupsPreview.map((item) => (
+                <MyMerryCard key={`due-${item.merry_id}`} item={item} />
+              ))}
+            </>
+          )}
+        </Section>
+
+        <Section title="Open Merries">
+          {availablePreview.length === 0 ? (
+            <EmptyState
+              icon="grid-outline"
+              title="No open merries now"
+              subtitle="New merry opportunities will appear here."
+            />
+          ) : (
+            <>
+              {availablePreview.map((item) => (
+                <AvailableMerryCard key={`available-${item.id}`} item={item} />
+              ))}
+            </>
+          )}
+        </Section>
+
+        <Section title="Quick Access">
+          <View style={styles.quickLinksList}>
+            <QuickLink
+              title="Your Contributions"
+              subtitle="See how you’ve been supporting your merry"
+              icon="time-outline"
+              onPress={() => router.push("/(tabs)/merry/history" as any)}
+            />
+
+            {firstJoinableMerry ? (
+              <QuickLink
+                title="Join a Merry"
+                subtitle="Open a merry and send your join request"
+                icon="person-add-outline"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/merry/join-request" as any,
+                    params: { merryId: String(firstJoinableMerry.id) },
+                  })
+                }
+              />
+            ) : null}
           </View>
-          <Text style={styles.communityTitle}>Why merry matters</Text>
-        </View>
+        </Section>
 
-        <Text style={styles.communityText}>
-          Merry makes it easier for members to support one another through
-          consistent contribution, shared responsibility, and a strong sense of
-          community.
-        </Text>
-      </Card>
+        <Card style={styles.communityCard} variant="default">
+          <View style={styles.communityTop}>
+            <View style={styles.communityIconWrap}>
+              <Ionicons name="sparkles-outline" size={18} color={UI.accent} />
+            </View>
+            <Text style={styles.communityTitle}>Why merry matters</Text>
+          </View>
 
-      <View style={{ height: 24 }} />
-    </ScrollView>
+          <Text style={styles.communityText}>
+            Merry makes it easier for members to support one another through
+            consistent contribution, shared responsibility, and a strong sense of
+            community.
+          </Text>
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -647,7 +659,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 28,
   },
 
   loadingWrap: {

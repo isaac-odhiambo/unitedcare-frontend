@@ -10,6 +10,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -56,6 +60,8 @@ function formatKes(value?: string | number | null) {
 }
 
 export default function RequestLoanScreen() {
+  const insets = useSafeAreaInsets();
+
   const [principal, setPrincipal] = useState("");
   const [termWeeks, setTermWeeks] = useState("12");
   const [memberNote, setMemberNote] = useState("");
@@ -210,301 +216,304 @@ export default function RequestLoanScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.hero}>
-        <View style={styles.heroGlow} />
-        <View style={styles.heroRow}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="people-outline" size={22} color={COLORS.white} />
-          </View>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 28, 36) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.hero}>
+          <View style={styles.heroGlow} />
+          <View style={styles.heroRow}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="people-outline" size={22} color={COLORS.white} />
+            </View>
 
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroTitle}>Loan Support</Text>
-            <Text style={styles.heroSub}>
-              Request support in a simple and guided way, with help from your
-              community.
-            </Text>
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroTitle}>Loan Support</Text>
+              <Text style={styles.heroSub}>
+                Request support in a simple and guided way, with help from your
+                community.
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      {loadingEligibility ? (
-        <Card style={styles.loadingCard}>
-          <ActivityIndicator color={UI.accent} />
-          <Text style={styles.loadingText}>Checking your loan status...</Text>
-        </Card>
-      ) : null}
+        {loadingEligibility ? (
+          <Card style={styles.loadingCard}>
+            <ActivityIndicator color={UI.accent} />
+            <Text style={styles.loadingText}>Checking your loan status...</Text>
+          </Card>
+        ) : null}
 
-      {hasActiveLoan ? (
-        <Card style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={COLORS.warning}
+        {hasActiveLoan ? (
+          <Card style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconWrap}>
+                <Ionicons
+                  name="time-outline"
+                  size={18}
+                  color={COLORS.warning}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoTitle}>Loan request unavailable</Text>
+                <Text style={styles.infoText}>
+                  You already have an active loan or pending request. Finish the
+                  current process before starting another one.
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
+
+        {showEligibilitySection ? (
+          <Section title="Your Loan Overview">
+            <Card style={styles.overviewCard}>
+              <View style={styles.gridRow}>
+                <View style={[styles.infoTile, styles.infoTilePrimary]}>
+                  <Text style={styles.infoLabelLight}>Status</Text>
+                  <Text style={styles.infoValueLight}>
+                    {eligibility?.eligible ? "Ready to Request" : "Not Ready"}
+                  </Text>
+                </View>
+
+                <View style={styles.infoTile}>
+                  <Text style={styles.infoLabel}>Maximum Available</Text>
+                  <Text style={styles.infoValue}>
+                    {formatKes(eligibility?.max_allowed)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.gridRow}>
+                <View style={styles.infoTile}>
+                  <Text style={styles.infoLabel}>Savings Considered</Text>
+                  <Text style={styles.infoValue}>
+                    {formatKes(eligibility?.available_savings)}
+                  </Text>
+                </View>
+
+                <View style={styles.infoTile}>
+                  <Text style={styles.infoLabel}>Current Request</Text>
+                  <Text style={styles.infoValue}>None active</Text>
+                </View>
+              </View>
+            </Card>
+          </Section>
+        ) : null}
+
+        {!hasActiveLoan ? (
+          <Section title="Loan Details">
+            <Card style={styles.card}>
+              <Input
+                label="Amount Needed (KES)"
+                value={principal}
+                onChangeText={setPrincipal}
+                placeholder="e.g. 10000"
+                keyboardType="decimal-pad"
               />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.infoTitle}>Loan request unavailable</Text>
-              <Text style={styles.infoText}>
-                You already have an active loan or pending request. Finish the
-                current process before starting another one.
+
+              <Input
+                label="Repayment Period (Weeks)"
+                value={termWeeks}
+                onChangeText={setTermWeeks}
+                placeholder="e.g. 12"
+                keyboardType="number-pad"
+              />
+
+              <Input
+                label="Reason (Optional)"
+                value={memberNote}
+                onChangeText={setMemberNote}
+                placeholder="Tell us what the support is for"
+              />
+
+              <View style={styles.amountPreviewBox}>
+                <Text style={styles.amountPreviewLabel}>Request Preview</Text>
+                <Text style={styles.amountPreviewValue}>{amountPreview}</Text>
+              </View>
+            </Card>
+          </Section>
+        ) : null}
+
+        {!hasActiveLoan ? (
+          <Section title="Selected Guarantors">
+            <Card style={styles.card}>
+              <View style={styles.selectedHeader}>
+                <Text style={styles.selectedTitle}>
+                  {selectedGuarantorIds.length} selected
+                </Text>
+
+                {selectedGuarantorIds.length > 0 ? (
+                  <TouchableOpacity onPress={() => setSelectedGuarantorIds([])}>
+                    <Text style={styles.clearText}>Clear all</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {selectedGuarantors.length === 0 ? (
+                <Text style={styles.helperText}>No guarantor selected yet.</Text>
+              ) : (
+                <View style={styles.chipsWrap}>
+                  {selectedGuarantors.map((item) => (
+                    <View key={item.id} style={styles.chip}>
+                      <Text style={styles.chipText}>{item.full_name}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Card>
+          </Section>
+        ) : null}
+
+        {!hasActiveLoan ? (
+          <Section title="Find a Guarantor">
+            <Card style={styles.card}>
+              <Input
+                label="Search Member"
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Type a member name"
+              />
+              <Text style={styles.helperText}>
+                Choose one or more members to support your request.
               </Text>
-            </View>
-          </View>
-        </Card>
-      ) : null}
+            </Card>
+          </Section>
+        ) : null}
 
-      {showEligibilitySection ? (
-        <Section title="Your Loan Overview">
-          <Card style={styles.overviewCard}>
-            <View style={styles.gridRow}>
-              <View style={[styles.infoTile, styles.infoTilePrimary]}>
-                <Text style={styles.infoLabelLight}>Status</Text>
-                <Text style={styles.infoValueLight}>
-                  {eligibility?.eligible ? "Ready to Request" : "Not Ready"}
-                </Text>
+        {!hasActiveLoan ? (
+          <Section title="Available Members">
+            {loadingCandidates ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator color={UI.accent} />
               </View>
-
-              <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Maximum Available</Text>
-                <Text style={styles.infoValue}>
-                  {formatKes(eligibility?.max_allowed)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.gridRow}>
-              <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Savings Considered</Text>
-                <Text style={styles.infoValue}>
-                  {formatKes(eligibility?.available_savings)}
-                </Text>
-              </View>
-
-              <View style={styles.infoTile}>
-                <Text style={styles.infoLabel}>Current Request</Text>
-                <Text style={styles.infoValue}>None active</Text>
-              </View>
-            </View>
-          </Card>
-        </Section>
-      ) : null}
-
-      {!hasActiveLoan ? (
-        <Section title="Loan Details">
-          <Card style={styles.card}>
-            <Input
-              label="Amount Needed (KES)"
-              value={principal}
-              onChangeText={setPrincipal}
-              placeholder="e.g. 10000"
-              keyboardType="decimal-pad"
-            />
-
-            <Input
-              label="Repayment Period (Weeks)"
-              value={termWeeks}
-              onChangeText={setTermWeeks}
-              placeholder="e.g. 12"
-              keyboardType="number-pad"
-            />
-
-            <Input
-              label="Reason (Optional)"
-              value={memberNote}
-              onChangeText={setMemberNote}
-              placeholder="Tell us what the support is for"
-            />
-
-            <View style={styles.amountPreviewBox}>
-              <Text style={styles.amountPreviewLabel}>Request Preview</Text>
-              <Text style={styles.amountPreviewValue}>{amountPreview}</Text>
-            </View>
-          </Card>
-        </Section>
-      ) : null}
-
-      {!hasActiveLoan ? (
-        <Section title="Selected Guarantors">
-          <Card style={styles.card}>
-            <View style={styles.selectedHeader}>
-              <Text style={styles.selectedTitle}>
-                {selectedGuarantorIds.length} selected
-              </Text>
-
-              {selectedGuarantorIds.length > 0 ? (
-                <TouchableOpacity onPress={() => setSelectedGuarantorIds([])}>
-                  <Text style={styles.clearText}>Clear all</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-
-            {selectedGuarantors.length === 0 ? (
-              <Text style={styles.helperText}>No guarantor selected yet.</Text>
+            ) : candidates.length === 0 ? (
+              <EmptyState
+                icon="people-outline"
+                title="No members found"
+                subtitle="Try another search name."
+              />
             ) : (
-              <View style={styles.chipsWrap}>
-                {selectedGuarantors.map((item) => (
-                  <View key={item.id} style={styles.chip}>
-                    <Text style={styles.chipText}>{item.full_name}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </Card>
-        </Section>
-      ) : null}
+              candidates.map((candidate) => {
+                const selected = selectedGuarantorIds.includes(candidate.id);
 
-      {!hasActiveLoan ? (
-        <Section title="Find a Guarantor">
-          <Card style={styles.card}>
-            <Input
-              label="Search Member"
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Type a member name"
-            />
-            <Text style={styles.helperText}>
-              Choose one or more members to support your request.
-            </Text>
-          </Card>
-        </Section>
-      ) : null}
-
-      {!hasActiveLoan ? (
-        <Section title="Available Members">
-          {loadingCandidates ? (
-            <View style={styles.loadingWrap}>
-              <ActivityIndicator color={UI.accent} />
-            </View>
-          ) : candidates.length === 0 ? (
-            <EmptyState
-              icon="people-outline"
-              title="No members found"
-              subtitle="Try another search name."
-            />
-          ) : (
-            candidates.map((candidate) => {
-              const selected = selectedGuarantorIds.includes(candidate.id);
-
-              return (
-                <TouchableOpacity
-                  key={candidate.id}
-                  activeOpacity={0.9}
-                  onPress={() => toggleGuarantor(candidate.id)}
-                >
-                  <Card
-                    style={[
-                      styles.memberCard,
-                      selected && styles.memberCardSelected,
-                    ]}
+                return (
+                  <TouchableOpacity
+                    key={candidate.id}
+                    activeOpacity={0.9}
+                    onPress={() => toggleGuarantor(candidate.id)}
                   >
-                    <View style={styles.memberCardTop}>
-                      <View style={styles.memberLeft}>
+                    <Card
+                      style={[
+                        styles.memberCard,
+                        selected && styles.memberCardSelected,
+                      ]}
+                    >
+                      <View style={styles.memberCardTop}>
+                        <View style={styles.memberLeft}>
+                          <View
+                            style={[
+                              styles.avatar,
+                              selected && styles.avatarSelected,
+                            ]}
+                          >
+                            <Ionicons
+                              name={selected ? "checkmark" : "person-outline"}
+                              size={16}
+                              color={selected ? COLORS.white : UI.accent}
+                            />
+                          </View>
+
+                          <View style={styles.memberTextWrap}>
+                            <Text style={styles.memberName}>
+                              {candidate.full_name}
+                            </Text>
+                            <Text style={styles.memberMeta}>
+                              {selected ? "Selected" : "Tap to select"}
+                            </Text>
+                          </View>
+                        </View>
+
                         <View
                           style={[
-                            styles.avatar,
-                            selected && styles.avatarSelected,
+                            styles.statusPill,
+                            selected
+                              ? styles.statusPillSelected
+                              : styles.statusPillDefault,
                           ]}
                         >
-                          <Ionicons
-                            name={selected ? "checkmark" : "person-outline"}
-                            size={16}
-                            color={selected ? COLORS.white : UI.accent}
-                          />
-                        </View>
-
-                        <View style={styles.memberTextWrap}>
-                          <Text style={styles.memberName}>
-                            {candidate.full_name}
-                          </Text>
-                          <Text style={styles.memberMeta}>
-                            {selected ? "Selected" : "Tap to select"}
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              { color: selected ? COLORS.success : UI.textMuted },
+                            ]}
+                          >
+                            {selected ? "Selected" : "Available"}
                           </Text>
                         </View>
                       </View>
+                    </Card>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </Section>
+        ) : null}
 
-                      <View
-                        style={[
-                          styles.statusPill,
-                          selected
-                            ? styles.statusPillSelected
-                            : styles.statusPillDefault,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusPillText,
-                            { color: selected ? COLORS.success : UI.textMuted },
-                          ]}
-                        >
-                          {selected ? "Selected" : "Available"}
-                        </Text>
-                      </View>
-                    </View>
-                  </Card>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </Section>
-      ) : null}
+        {!hasActiveLoan ? (
+          <Card style={styles.submitCard}>
+            <View style={styles.submitSummary}>
+              <View style={styles.submitSummaryBox}>
+                <Text style={styles.submitSummaryLabel}>Amount</Text>
+                <Text style={styles.submitSummaryValue}>{amountPreview}</Text>
+              </View>
 
-      {!hasActiveLoan ? (
-        <Card style={styles.submitCard}>
-          <View style={styles.submitSummary}>
-            <View style={styles.submitSummaryBox}>
-              <Text style={styles.submitSummaryLabel}>Amount</Text>
-              <Text style={styles.submitSummaryValue}>{amountPreview}</Text>
+              <View style={styles.submitSummaryBox}>
+                <Text style={styles.submitSummaryLabel}>Guarantors</Text>
+                <Text style={styles.submitSummaryValue}>
+                  {selectedGuarantorIds.length}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.submitSummaryBox}>
-              <Text style={styles.submitSummaryLabel}>Guarantors</Text>
-              <Text style={styles.submitSummaryValue}>
-                {selectedGuarantorIds.length}
-              </Text>
-            </View>
-          </View>
+            <View style={{ height: SPACING.md }} />
 
-          <View style={{ height: SPACING.md }} />
+            <Button
+              title={submitting ? "Submitting..." : "Submit Request"}
+              onPress={submit}
+              loading={submitting}
+              disabled={!canSubmit}
+            />
 
-          <Button
-            title={submitting ? "Submitting..." : "Submit Request"}
-            onPress={submit}
-            loading={submitting}
-            disabled={!canSubmit}
-          />
+            <View style={{ height: SPACING.sm }} />
 
-          <View style={{ height: SPACING.sm }} />
-
-          <Button
-            title="Cancel"
-            variant="secondary"
-            onPress={goToLoansIndex}
-            disabled={submitting}
-          />
-        </Card>
-      ) : null}
-
-      <View style={{ height: 28 }} />
-    </ScrollView>
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onPress={goToLoansIndex}
+              disabled={submitting}
+            />
+          </Card>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -516,7 +525,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.lg,
-    paddingBottom: 28,
   },
 
   hero: {

@@ -1,5 +1,3 @@
-// app/(tabs)/groups/available.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -39,7 +37,7 @@ import { getSessionUser, SessionUser } from "@/services/session";
 type AvailableGroupsUser = Partial<MeResponse> & Partial<SessionUser>;
 
 function groupTypeLabel(group: Group) {
-  return group.group_type_display || group.group_type || "Group";
+  return group.group_type_display || group.group_type || "Community space";
 }
 
 function joinPolicyLabel(group: Group) {
@@ -49,17 +47,15 @@ function joinPolicyLabel(group: Group) {
 }
 
 function contributionLabel(group: Group) {
-  if (!group.requires_contributions) return "Optional";
-  return `${group.contribution_amount || "0"} ${group.contribution_frequency || ""}`.trim();
+  if (!group.requires_contributions) return "Flexible";
+  return `${group.contribution_amount || "0"} ${
+    group.contribution_frequency || ""
+  }`.trim();
 }
 
 function toUniqueNumberArray(values: any[]) {
   return Array.from(
-    new Set(
-      values
-        .map((v) => Number(v))
-        .filter((n) => Number.isFinite(n))
-    )
+    new Set(values.map((v) => Number(v)).filter((n) => Number.isFinite(n)))
   );
 }
 
@@ -73,7 +69,7 @@ function StatusPill({
   tone,
 }: {
   label: string;
-  tone: "member" | "pending" | "open" | "closed";
+  tone: "member" | "pending" | "open" | "closed" | "review";
 }) {
   const toneStyles =
     tone === "member"
@@ -85,6 +81,11 @@ function StatusPill({
       ? {
           bg: "rgba(245,158,11,0.12)",
           color: COLORS.warning,
+        }
+      : tone === "review"
+      ? {
+          bg: "rgba(242,140,40,0.12)",
+          color: COLORS.accent || COLORS.warning,
         }
       : tone === "open"
       ? {
@@ -124,17 +125,17 @@ function GroupCard({
 
   const joinButtonLabel =
     joinPolicy === "OPEN"
-      ? "Join Group"
+      ? "Join now"
       : joinPolicy === "APPROVAL"
-      ? "Request Join"
+      ? "Request to join"
       : "Closed";
 
   const footerText =
     joinPolicy === "OPEN"
-      ? "Join instantly"
+      ? "Open for new members"
       : joinPolicy === "APPROVAL"
-      ? "Request to join"
-      : "Closed";
+      ? "Joins are reviewed first"
+      : "Not open right now";
 
   const showJoinButton = !joined && !pending;
   const buttonDisabled = !canRequestJoin || busy || joinPolicy === "CLOSED";
@@ -144,6 +145,9 @@ function GroupCard({
       onPress={() => router.push(ROUTES.dynamic.groupDetail(group.id) as any)}
       style={styles.groupCard}
     >
+      <View style={styles.cardGlowPrimary} />
+      <View style={styles.cardGlowAccent} />
+
       <View style={styles.cardTopRow}>
         <View style={styles.groupIconWrap}>
           <Ionicons name="people-outline" size={18} color={COLORS.white} />
@@ -158,11 +162,13 @@ function GroupCard({
           </Text>
         </View>
 
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={COLORS.textMuted || COLORS.gray}
-        />
+        <View style={styles.arrowWrap}>
+          <Ionicons
+            name="chevron-forward"
+            size={18}
+            color={COLORS.textMuted || COLORS.gray}
+          />
+        </View>
       </View>
 
       {group.description ? (
@@ -177,6 +183,8 @@ function GroupCard({
           <Text style={styles.infoValue}>{group.member_count ?? "—"}</Text>
         </View>
 
+        <View style={styles.infoDivider} />
+
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Contribution</Text>
           <Text style={styles.infoValue} numberOfLines={1}>
@@ -186,10 +194,13 @@ function GroupCard({
       </View>
 
       <View style={styles.badgesRow}>
-        {joined ? <StatusPill label="MEMBER" tone="member" /> : null}
-        {!joined && pending ? <StatusPill label="PENDING" tone="pending" /> : null}
+        {joined ? <StatusPill label="JOINED" tone="member" /> : null}
+        {!joined && pending ? <StatusPill label="REQUESTED" tone="pending" /> : null}
         {!joined && !pending && joinPolicy === "OPEN" ? (
-          <StatusPill label="OPEN" tone="open" />
+          <StatusPill label="AVAILABLE" tone="open" />
+        ) : null}
+        {!joined && !pending && joinPolicy === "APPROVAL" ? (
+          <StatusPill label="REVIEW" tone="review" />
         ) : null}
         {joinPolicy === "CLOSED" ? (
           <StatusPill label="CLOSED" tone="closed" />
@@ -197,7 +208,10 @@ function GroupCard({
       </View>
 
       <View style={styles.cardFooter}>
-        <Text style={styles.cardFooterText}>{footerText}</Text>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.cardFooterText}>Enter space</Text>
+          <Text style={styles.cardFooterSub}>{footerText}</Text>
+        </View>
         <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
       </View>
 
@@ -341,60 +355,70 @@ export default function AvailableGroupsScreen() {
     return {
       total: groups.length,
       joined: joinedGroupIds.length,
+      pending: pendingJoinGroupIds.length,
     };
-  }, [groups, joinedGroupIds]);
+  }, [groups, joinedGroupIds, pendingJoinGroupIds]);
 
   const handleJoin = useCallback(
     async (group: Group) => {
       if (!joinAllowed) {
-        Alert.alert("Groups", "Complete KYC before joining a group.");
+        Alert.alert(
+          "Community spaces",
+          "Complete your profile before joining a community space.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Open profile",
+              onPress: () => router.push(ROUTES.tabs.profile as any),
+            },
+          ]
+        );
         return;
       }
 
       const joinPolicy = String(group.join_policy || "").toUpperCase().trim();
 
       if (joinPolicy === "CLOSED") {
-        Alert.alert("Groups", "This group is closed for joining.");
+        Alert.alert("Community spaces", "This space is not open right now.");
         return;
       }
 
       const isOpen = joinPolicy === "OPEN";
-      const actionText = isOpen ? "join" : "send a join request for";
+      const title = isOpen ? "Join community space" : "Send join request";
+      const message = isOpen
+        ? `Would you like to join ${group.name} now?`
+        : `Would you like to request to join ${group.name}?`;
 
-      Alert.alert(
-        "Join Group",
-        `Do you want to ${actionText} ${group.name}?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Continue",
-            onPress: async () => {
-              try {
-                setSubmittingGroupId(group.id);
+      Alert.alert(title, message, [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: isOpen ? "Join now" : "Send request",
+          onPress: async () => {
+            try {
+              setSubmittingGroupId(group.id);
 
-                const res = await createGroupJoinRequest({
-                  group_id: group.id,
-                  note: "",
-                });
+              const res = await createGroupJoinRequest({
+                group_id: group.id,
+                note: "",
+              });
 
-                Alert.alert(
-                  "Groups",
-                  res?.message ||
-                    (isOpen
-                      ? "You joined the group successfully."
-                      : "Join request submitted successfully.")
-                );
+              Alert.alert(
+                "Community spaces",
+                res?.message ||
+                  (isOpen
+                    ? "You joined the space successfully."
+                    : "Your request has been submitted.")
+              );
 
-                await load();
-              } catch (e: any) {
-                Alert.alert("Groups", getApiErrorMessage(e));
-              } finally {
-                setSubmittingGroupId(null);
-              }
-            },
+              await load();
+            } catch (e: any) {
+              Alert.alert("Community spaces", getApiErrorMessage(e));
+            } finally {
+              setSubmittingGroupId(null);
+            }
           },
-        ]
-      );
+        },
+      ]);
     },
     [joinAllowed, load]
   );
@@ -412,7 +436,7 @@ export default function AvailableGroupsScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to browse groups."
+          subtitle="Please login to explore community spaces."
           actionLabel="Go to Login"
           onAction={() => router.replace(ROUTES.auth.login as any)}
         />
@@ -430,11 +454,14 @@ export default function AvailableGroupsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.heroCard}>
+        <View style={styles.heroGlowOne} />
+        <View style={styles.heroGlowTwo} />
+
         <View style={styles.heroTop}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.heroTitle}>Available Groups</Text>
+            <Text style={styles.heroTitle}>Open community spaces</Text>
             <Text style={styles.heroSubtitle}>
-              Explore support, savings, welfare, and community groups.
+              Explore spaces where members save, support each other, and grow together.
             </Text>
           </View>
 
@@ -452,6 +479,11 @@ export default function AvailableGroupsScreen() {
           <View style={styles.heroStatPill}>
             <Text style={styles.heroStatLabel}>Joined</Text>
             <Text style={styles.heroStatValue}>{stats.joined}</Text>
+          </View>
+
+          <View style={styles.heroStatPill}>
+            <Text style={styles.heroStatLabel}>Requested</Text>
+            <Text style={styles.heroStatValue}>{stats.pending}</Text>
           </View>
         </View>
       </View>
@@ -479,29 +511,29 @@ export default function AvailableGroupsScreen() {
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Complete KYC to join</Text>
+              <Text style={styles.noticeTitle}>Complete profile to join</Text>
               <Text style={styles.noticeText}>
-                You can browse groups now. KYC is required before joining.
+                You can explore community spaces now. Complete your profile before joining.
               </Text>
             </View>
           </View>
 
           <View style={{ marginTop: SPACING.md }}>
             <Button
-              title="Complete KYC"
+              title="Complete profile"
               variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
+              onPress={() => router.push(ROUTES.tabs.profile as any)}
             />
           </View>
         </Card>
       ) : null}
 
-      <Section title="Browse Groups">
+      <Section title="Browse spaces">
         {groups.length === 0 ? (
           <EmptyState
             icon="people-outline"
-            title="No groups found"
-            subtitle="Groups created by admin will appear here."
+            title="No spaces found"
+            subtitle="Community spaces created by admins will appear here."
           />
         ) : (
           groups.map((group) => (
@@ -542,11 +574,33 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.xl || RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     ...SHADOW.card,
+  },
+
+  heroGlowOne: {
+    position: "absolute",
+    right: -28,
+    top: -20,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.09)",
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    left: -20,
+    bottom: -26,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(242,140,40,0.18)",
   },
 
   heroTop: {
@@ -665,6 +719,8 @@ const styles = StyleSheet.create({
   },
 
   groupCard: {
+    position: "relative",
+    overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
     backgroundColor: COLORS.card || "#14202f",
@@ -672,6 +728,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     ...SHADOW.card,
+  },
+
+  cardGlowPrimary: {
+    position: "absolute",
+    top: -30,
+    right: -20,
+    width: 105,
+    height: 105,
+    borderRadius: 52.5,
+    backgroundColor: "rgba(37,99,235,0.04)",
+  },
+
+  cardGlowAccent: {
+    position: "absolute",
+    bottom: -22,
+    left: -18,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(242,140,40,0.06)",
   },
 
   cardTopRow: {
@@ -715,6 +791,15 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
 
+  arrowWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15,23,42,0.04)",
+  },
+
   infoBox: {
     marginTop: SPACING.md,
     backgroundColor: COLORS.background,
@@ -728,6 +813,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
+  },
+
+  infoDivider: {
+    height: 1,
+    backgroundColor: "rgba(15,23,42,0.05)",
   },
 
   infoLabel: {
@@ -776,6 +866,14 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontFamily: FONT.bold,
     fontSize: 12,
+  },
+
+  cardFooterSub: {
+    marginTop: 4,
+    color: COLORS.textMuted,
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    lineHeight: 16,
   },
 
   joinActionWrap: {

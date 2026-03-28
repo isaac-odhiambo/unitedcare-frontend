@@ -1,4 +1,3 @@
-// app/(tabs)/merry/join-request.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -64,6 +67,8 @@ function getFrequencyLabel(merry?: AvailableMerryRow | null) {
 }
 
 export default function MerryJoinRequestScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{ merryId?: string; id?: string }>();
   const merryId = useMemo(
     () => Number(params.merryId || params.id || 0),
@@ -341,288 +346,297 @@ export default function MerryJoinRequestScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={UI.accent} />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={UI.accent} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merryId || Number.isNaN(merryId)) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Invalid merry"
-          subtitle="The selected merry could not be opened."
-          actionLabel="Go Back"
-          onAction={() => router.back()}
-        />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Invalid merry"
+            subtitle="The selected merry could not be opened."
+            actionLabel="Go Back"
+            onAction={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merry) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Unable to load join request"
-          subtitle={error || "This merry could not be loaded."}
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Unable to load join request"
+            subtitle={error || "This merry could not be loaded."}
+            actionLabel="Back to Merry"
+            onAction={() => router.replace(ROUTES.tabs.merry as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.topBar}>
-        <Button
-          title="Back"
-          variant="ghost"
-          onPress={() => router.back()}
-          leftIcon={
-            <Ionicons name="arrow-back-outline" size={16} color={UI.text} />
-          }
-        />
-      </View>
-
-      <Card style={styles.headerCard} variant="default">
-        <View style={styles.headerTop}>
-          <View style={styles.headerIconWrap}>
-            <Ionicons name="people-outline" size={20} color={UI.accent} />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerEyebrow}>JOIN REQUEST</Text>
-            <Text style={styles.headerTitle}>{merry.name}</Text>
-            <Text style={styles.headerMeta}>
-              {getFrequencyLabel(merry)}
-              {merry.contribution_amount != null ? " • Contribution set" : ""}
-            </Text>
-          </View>
-
-          <View style={[styles.badgeBase, joinBadge.wrapStyle]}>
-            <Text style={[styles.badgeText, joinBadge.textStyle]}>
-              {joinBadge.label}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.headerText}>{helperText}</Text>
-
-        <View style={styles.metaRow}>
-          <View style={styles.metaPill}>
-            <Ionicons name="albums-outline" size={14} color={UI.accent} />
-            <Text style={styles.metaPillText}>
-              {merry.seats_count} total seat
-              {Number(merry.seats_count) === 1 ? "" : "s"}
-            </Text>
-          </View>
-
-          <View style={styles.metaPill}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={14}
-              color={UI.accent}
-            />
-            <Text style={styles.metaPillText}>
-              {availableSeats == null
-                ? "Seats available"
-                : `${availableSeats} seat${availableSeats === 1 ? "" : "s"} left`}
-            </Text>
-          </View>
-        </View>
-      </Card>
-
-      {error ? (
-        <Card style={styles.errorCard} variant="default">
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={UI.dangerText}
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.topBar}>
+          <Button
+            title="Back"
+            variant="ghost"
+            onPress={() => router.back()}
+            leftIcon={
+              <Ionicons name="arrow-back-outline" size={16} color={UI.text} />
+            }
           />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+        </View>
 
-      {statusMessage ? (
-        <Card
-          style={[
-            styles.statusCard,
-            statusTone === "success"
-              ? styles.statusSuccess
-              : statusTone === "warning"
-                ? styles.statusWarning
-                : statusTone === "danger"
-                  ? styles.statusDanger
-                  : styles.statusNeutral,
-          ]}
-          variant="default"
-        >
-          <View style={styles.statusRow}>
-            <Ionicons
-              name={
-                statusTone === "success"
-                  ? "checkmark-circle-outline"
-                  : statusTone === "warning"
-                    ? "alert-circle-outline"
-                    : statusTone === "danger"
-                      ? "close-circle-outline"
-                      : "information-circle-outline"
-              }
-              size={18}
-              color={
-                statusTone === "success"
-                  ? UI.successText
-                  : statusTone === "warning"
-                    ? UI.warningText
-                    : statusTone === "danger"
-                      ? UI.dangerText
-                      : UI.text
-              }
-            />
-            <Text
-              style={[
-                styles.statusText,
-                statusTone === "success"
-                  ? styles.statusTextSuccess
-                  : statusTone === "warning"
-                    ? styles.statusTextWarning
-                    : statusTone === "danger"
-                      ? styles.statusTextDanger
-                      : styles.statusTextNeutral,
-              ]}
-            >
-              {statusMessage}
-            </Text>
-          </View>
-        </Card>
-      ) : null}
-
-      <Card style={styles.formCard} variant="default">
-        <Text style={styles.sectionTitle}>Seat request</Text>
-        <Text style={styles.sectionSubtitle}>
-          Choose the number of seats you want the admin to review and assign.
-        </Text>
-
-        <View style={styles.stepperCard}>
-          <Text style={styles.stepperLabel}>Number of seats</Text>
-
-          <View style={styles.stepperRow}>
-            <Button
-              title="-"
-              variant="secondary"
-              onPress={decreaseSeats}
-              disabled={!canDecreaseSeats || submitting || redirecting}
-              style={styles.stepperButton}
-            />
-
-            <View style={styles.stepperValueBox}>
-              <Text style={styles.stepperValue}>{parsedRequestedSeats || 1}</Text>
+        <Card style={styles.headerCard} variant="default">
+          <View style={styles.headerTop}>
+            <View style={styles.headerIconWrap}>
+              <Ionicons name="people-outline" size={20} color={UI.accent} />
             </View>
 
-            <Button
-              title="+"
-              variant="secondary"
-              onPress={increaseSeats}
-              disabled={!canIncreaseSeats || submitting || redirecting}
-              style={styles.stepperButton}
-            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerEyebrow}>JOIN REQUEST</Text>
+              <Text style={styles.headerTitle}>{merry.name}</Text>
+              <Text style={styles.headerMeta}>
+                {getFrequencyLabel(merry)}
+                {merry.contribution_amount != null ? " • Contribution set" : ""}
+              </Text>
+            </View>
+
+            <View style={[styles.badgeBase, joinBadge.wrapStyle]}>
+              <Text style={[styles.badgeText, joinBadge.textStyle]}>
+                {joinBadge.label}
+              </Text>
+            </View>
           </View>
 
-          <Text style={styles.formHelp}>
-            You are requesting {parsedRequestedSeats || 1} seat
-            {(parsedRequestedSeats || 1) === 1 ? "" : "s"}.
-          </Text>
-        </View>
+          <Text style={styles.headerText}>{helperText}</Text>
 
-        <View style={{ height: SPACING.md }} />
+          <View style={styles.metaRow}>
+            <View style={styles.metaPill}>
+              <Ionicons name="albums-outline" size={14} color={UI.accent} />
+              <Text style={styles.metaPillText}>
+                {merry.seats_count} total seat
+                {Number(merry.seats_count) === 1 ? "" : "s"}
+              </Text>
+            </View>
 
-        <Input
-          label="Seat count"
-          placeholder="Enter seat count"
-          keyboardType="number-pad"
-          value={requestedSeats}
-          onChangeText={(text: string) =>
-            setRequestedSeats(text.replace(/[^\d]/g, ""))
-          }
-        />
+            <View style={styles.metaPill}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={14}
+                color={UI.accent}
+              />
+              <Text style={styles.metaPillText}>
+                {availableSeats == null
+                  ? "Seats available"
+                  : `${availableSeats} seat${availableSeats === 1 ? "" : "s"} left`}
+              </Text>
+            </View>
+          </View>
+        </Card>
 
-        <Text style={styles.formHelp}>
-          You can also type the exact number if preferred.
-        </Text>
-
-        <View style={{ height: SPACING.lg }} />
-
-        <Input
-          label="Note to admin"
-          placeholder="Example: Please assign 2 seats together if possible."
-          value={note}
-          onChangeText={setNote}
-          multiline
-        />
-
-        <Text style={styles.formHelp}>
-          Add any seat preference or short message for the admin.
-        </Text>
-
-        <View style={{ height: SPACING.lg }} />
-
-        <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Request summary</Text>
-          <Text style={styles.summaryValue}>
-            {parsedRequestedSeats || 1} seat
-            {(parsedRequestedSeats || 1) === 1 ? "" : "s"} requested
-          </Text>
-          <Text style={styles.summaryNote}>
-            {note.trim()
-              ? note.trim()
-              : `Requesting ${parsedRequestedSeats || 1} seat(s).`}
-          </Text>
-        </View>
-
-        <View style={{ height: SPACING.lg }} />
-
-        {!canSubmit ? (
-          <Text style={styles.blockedText}>{blockedMessage}</Text>
+        {error ? (
+          <Card style={styles.errorCard} variant="default">
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={UI.dangerText}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
         ) : null}
 
-        <Button
-          title={
-            redirecting
-              ? "Redirecting..."
-              : submitting
-                ? "Submitting..."
-                : joinStatus === "PENDING"
-                  ? "Request Pending"
-                  : joinStatus === "APPROVED"
-                    ? "Already Approved"
-                    : "Submit Join Request"
-          }
-          onPress={handleSubmit}
-          disabled={submitting || redirecting}
-        />
+        {statusMessage ? (
+          <Card
+            style={[
+              styles.statusCard,
+              statusTone === "success"
+                ? styles.statusSuccess
+                : statusTone === "warning"
+                  ? styles.statusWarning
+                  : statusTone === "danger"
+                    ? styles.statusDanger
+                    : styles.statusNeutral,
+            ]}
+            variant="default"
+          >
+            <View style={styles.statusRow}>
+              <Ionicons
+                name={
+                  statusTone === "success"
+                    ? "checkmark-circle-outline"
+                    : statusTone === "warning"
+                      ? "alert-circle-outline"
+                      : statusTone === "danger"
+                        ? "close-circle-outline"
+                        : "information-circle-outline"
+                }
+                size={18}
+                color={
+                  statusTone === "success"
+                    ? UI.successText
+                    : statusTone === "warning"
+                      ? UI.warningText
+                      : statusTone === "danger"
+                        ? UI.dangerText
+                        : UI.text
+                }
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  statusTone === "success"
+                    ? styles.statusTextSuccess
+                    : statusTone === "warning"
+                      ? styles.statusTextWarning
+                      : statusTone === "danger"
+                        ? styles.statusTextDanger
+                        : styles.statusTextNeutral,
+                ]}
+              >
+                {statusMessage}
+              </Text>
+            </View>
+          </Card>
+        ) : null}
 
-        <View style={{ height: SPACING.sm }} />
+        <Card style={styles.formCard} variant="default">
+          <Text style={styles.sectionTitle}>Seat request</Text>
+          <Text style={styles.sectionSubtitle}>
+            Choose the number of seats you want the admin to review and assign.
+          </Text>
 
-        <Button
-          title="Back to Merry"
-          variant="secondary"
-          onPress={() => router.replace(ROUTES.tabs.merry as any)}
-          disabled={redirecting}
-        />
-      </Card>
+          <View style={styles.stepperCard}>
+            <Text style={styles.stepperLabel}>Number of seats</Text>
 
-      <View style={{ height: 24 }} />
-    </ScrollView>
+            <View style={styles.stepperRow}>
+              <Button
+                title="-"
+                variant="secondary"
+                onPress={decreaseSeats}
+                disabled={!canDecreaseSeats || submitting || redirecting}
+                style={styles.stepperButton}
+              />
+
+              <View style={styles.stepperValueBox}>
+                <Text style={styles.stepperValue}>{parsedRequestedSeats || 1}</Text>
+              </View>
+
+              <Button
+                title="+"
+                variant="secondary"
+                onPress={increaseSeats}
+                disabled={!canIncreaseSeats || submitting || redirecting}
+                style={styles.stepperButton}
+              />
+            </View>
+
+            <Text style={styles.formHelp}>
+              You are requesting {parsedRequestedSeats || 1} seat
+              {(parsedRequestedSeats || 1) === 1 ? "" : "s"}.
+            </Text>
+          </View>
+
+          <View style={{ height: SPACING.md }} />
+
+          <Input
+            label="Seat count"
+            placeholder="Enter seat count"
+            keyboardType="number-pad"
+            value={requestedSeats}
+            onChangeText={(text: string) =>
+              setRequestedSeats(text.replace(/[^\d]/g, ""))
+            }
+          />
+
+          <Text style={styles.formHelp}>
+            You can also type the exact number if preferred.
+          </Text>
+
+          <View style={{ height: SPACING.lg }} />
+
+          <Input
+            label="Note to admin"
+            placeholder="Example: Please assign 2 seats together if possible."
+            value={note}
+            onChangeText={setNote}
+            multiline
+          />
+
+          <Text style={styles.formHelp}>
+            Add any seat preference or short message for the admin.
+          </Text>
+
+          <View style={{ height: SPACING.lg }} />
+
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryLabel}>Request summary</Text>
+            <Text style={styles.summaryValue}>
+              {parsedRequestedSeats || 1} seat
+              {(parsedRequestedSeats || 1) === 1 ? "" : "s"} requested
+            </Text>
+            <Text style={styles.summaryNote}>
+              {note.trim()
+                ? note.trim()
+                : `Requesting ${parsedRequestedSeats || 1} seat(s).`}
+            </Text>
+          </View>
+
+          <View style={{ height: SPACING.lg }} />
+
+          {!canSubmit ? (
+            <Text style={styles.blockedText}>{blockedMessage}</Text>
+          ) : null}
+
+          <Button
+            title={
+              redirecting
+                ? "Redirecting..."
+                : submitting
+                  ? "Submitting..."
+                  : joinStatus === "PENDING"
+                    ? "Request Pending"
+                    : joinStatus === "APPROVED"
+                      ? "Already Approved"
+                      : "Submit Join Request"
+            }
+            onPress={handleSubmit}
+            disabled={submitting || redirecting}
+          />
+
+          <View style={{ height: SPACING.sm }} />
+
+          <Button
+            title="Back to Merry"
+            variant="secondary"
+            onPress={() => router.replace(ROUTES.tabs.merry as any)}
+            disabled={redirecting}
+          />
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -634,7 +648,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 24,
   },
 
   loadingWrap: {

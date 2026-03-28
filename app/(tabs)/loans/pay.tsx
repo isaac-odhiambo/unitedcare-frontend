@@ -2,6 +2,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -82,43 +83,50 @@ export default function PayLoanScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Repay Loan</Text>
-      </View>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Repay Loan</Text>
+        </View>
 
-      <Card style={styles.card}>
-        <Input
-          label="Phone"
-          value={phone}
-          onChangeText={(v) => setPhone(normalizePhone(v))}
-          placeholder="07XXXXXXXX"
-          keyboardType="phone-pad"
-        />
+        <Card style={styles.card}>
+          <Input
+            label="Phone"
+            value={phone}
+            onChangeText={(v) => setPhone(normalizePhone(v))}
+            placeholder="07XXXXXXXX"
+            keyboardType="phone-pad"
+          />
 
-        <Input
-          label="Amount"
-          value={amount}
-          onChangeText={(v) => setAmount(cleanAmount(v))}
-          placeholder="500"
-          keyboardType="numeric"
-        />
+          <Input
+            label="Amount"
+            value={amount}
+            onChangeText={(v) => setAmount(cleanAmount(v))}
+            placeholder="500"
+            keyboardType="numeric"
+          />
 
-        <View style={{ height: SPACING.lg }} />
+          <View style={{ height: SPACING.lg }} />
 
-        <Button
-          title="Pay"
-          onPress={handlePay}
-          disabled={!canSubmit}
-        />
-      </Card>
+          <Button
+            title="Pay"
+            onPress={handlePay}
+            disabled={!canSubmit}
+          />
+        </Card>
 
-      <View style={{ height: 24 }} />
-    </ScrollView>
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

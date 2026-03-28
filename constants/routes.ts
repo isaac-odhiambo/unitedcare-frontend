@@ -13,6 +13,11 @@ export const ROUTES = {
     dashboard: "/(tabs)/dashboard",
 
     /* -----------------------------
+       Notifications
+    ----------------------------- */
+    notifications: "/(tabs)/notifications",
+
+    /* -----------------------------
        Savings
     ----------------------------- */
     savings: "/(tabs)/savings",
@@ -30,16 +35,13 @@ export const ROUTES = {
     paymentsRequestWithdrawal: "/(tabs)/payments/request-withdrawal",
 
     /* -----------------------------
-       Loans
+       Loans / Support
     ----------------------------- */
     loans: "/(tabs)/loans",
     loansRequest: "/(tabs)/loans/request",
     loansPay: "/(tabs)/loans/pay",
     loansAddGuarantor: "/(tabs)/loans/add-guarantor",
-
-    // ✅ FIXED (only one kept)
     loansGuarantees: "/(tabs)/loans/guarantee-requests",
-
     loansHistory: "/(tabs)/loans/history",
 
     /* -----------------------------
@@ -73,10 +75,13 @@ export const ROUTES = {
 
     /* -----------------------------
        Profile
+       NOTE:
+       Actual existing route is only "/(tabs)/profile"
+       Keep profileEdit/profileKyc mapped here for backward compatibility.
     ----------------------------- */
     profile: "/(tabs)/profile",
-    profileEdit: "/(tabs)/profile/edit",
-    profileKyc: "/(tabs)/profile/kyc",
+    profileEdit: "/(tabs)/profile",
+    profileKyc: "/(tabs)/profile",
   },
 
   dynamic: {

@@ -1,4 +1,3 @@
-// app/(tabs)/payments/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -148,6 +151,8 @@ function InfoRow({
 }
 
 export default function PaymentsIndexScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{
     deposited?: string;
     amount?: string;
@@ -317,282 +322,289 @@ export default function PaymentsIndexScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to access payments."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to access payments."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.heroCard}>
-        <View style={styles.heroGlowOne} />
-        <View style={styles.heroGlowTwo} />
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 30, 36) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroGlowOne} />
+          <View style={styles.heroGlowTwo} />
 
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1, paddingRight: SPACING.md }}>
-            <Text style={styles.heroEyebrow}>PAYMENTS</Text>
-            <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
-            <Text style={styles.heroSubtitle}>
-              {isAdmin ? "Admin payments view" : "Member payments view"}
-            </Text>
+          <View style={styles.heroTop}>
+            <View style={{ flex: 1, paddingRight: SPACING.md }}>
+              <Text style={styles.heroEyebrow}>PAYMENTS</Text>
+              <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
+              <Text style={styles.heroSubtitle}>
+                {isAdmin ? "Admin payments view" : "Member payments view"}
+              </Text>
+            </View>
+
+            <View style={styles.heroAvatar}>
+              <Ionicons name="card-outline" size={24} color={COLORS.white} />
+            </View>
           </View>
 
-          <View style={styles.heroAvatar}>
-            <Ionicons name="card-outline" size={24} color={COLORS.white} />
+          <View style={styles.heroFooter}>
+            <View style={styles.heroPill}>
+              <Text style={styles.heroPillText}>In {overview.totalIn}</Text>
+            </View>
+            <View style={styles.heroPill}>
+              <Text style={styles.heroPillText}>Out {overview.totalOut}</Text>
+            </View>
+            <View style={styles.heroPill}>
+              <Text style={styles.heroPillText}>
+                {kycComplete ? "KYC Complete" : "KYC Pending"}
+              </Text>
+            </View>
           </View>
         </View>
 
-        <View style={styles.heroFooter}>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>In {overview.totalIn}</Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>Out {overview.totalOut}</Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>
-              {kycComplete ? "KYC Complete" : "KYC Pending"}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {successNotice ? (
-        <Card style={styles.successCard}>
-          <View style={styles.successIcon}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={18}
-              color={COLORS.success}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.successText}>{successNotice}</Text>
-          </View>
-          <Button title="Dismiss" variant="ghost" onPress={clearPaymentParams} />
-        </Card>
-      ) : null}
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <View style={styles.errorIcon}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={COLORS.danger}
-            />
-          </View>
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      {!kycComplete ? (
-        <Section title="Verification" subtitle="Withdrawals need completed KYC.">
-          <Card style={styles.noticeCard} onPress={goToKyc}>
-            <View style={styles.noticeIcon}>
+        {successNotice ? (
+          <Card style={styles.successCard}>
+            <View style={styles.successIcon}>
               <Ionicons
-                name="shield-checkmark-outline"
+                name="checkmark-circle-outline"
                 size={18}
-                color={COLORS.info}
+                color={COLORS.success}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Complete account verification</Text>
-              <Text style={styles.noticeText}>
-                Deposits and ledger access are available now.
-              </Text>
+              <Text style={styles.successText}>{successNotice}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+            <Button title="Dismiss" variant="ghost" onPress={clearPaymentParams} />
+          </Card>
+        ) : null}
+
+        {error ? (
+          <Card style={styles.errorCard}>
+            <View style={styles.errorIcon}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={COLORS.danger}
+              />
+            </View>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        {!kycComplete ? (
+          <Section title="Verification" subtitle="Withdrawals need completed KYC.">
+            <Card style={styles.noticeCard} onPress={goToKyc}>
+              <View style={styles.noticeIcon}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={18}
+                  color={COLORS.info}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.noticeTitle}>Complete account verification</Text>
+                <Text style={styles.noticeText}>
+                  Deposits and ledger access are available now.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+            </Card>
+          </Section>
+        ) : null}
+
+        <Section title="Overview" subtitle="Latest activity and withdrawal status.">
+          <Card style={styles.overviewCard}>
+            <InfoRow label="Latest" value={overview.lastLabel} />
+            <InfoRow
+              label="Pending withdrawals"
+              value={String(overview.pendingCount)}
+              valueColor={overview.pendingCount > 0 ? COLORS.warning : TEXT_MAIN}
+            />
+            <InfoRow
+              label="Processing withdrawals"
+              value={String(overview.processingCount)}
+              valueColor={overview.processingCount > 0 ? COLORS.info : TEXT_MAIN}
+            />
           </Card>
         </Section>
-      ) : null}
 
-      <Section title="Overview" subtitle="Latest activity and withdrawal status.">
-        <Card style={styles.overviewCard}>
-          <InfoRow label="Latest" value={overview.lastLabel} />
-          <InfoRow
-            label="Pending withdrawals"
-            value={String(overview.pendingCount)}
-            valueColor={overview.pendingCount > 0 ? COLORS.warning : TEXT_MAIN}
-          />
-          <InfoRow
-            label="Processing withdrawals"
-            value={String(overview.processingCount)}
-            valueColor={overview.processingCount > 0 ? COLORS.info : TEXT_MAIN}
-          />
-        </Card>
-      </Section>
+        <Section title="Actions" subtitle="Main payment tools.">
+          <View style={styles.smallActionsGrid}>
+            <SmallAction
+              title="Deposit"
+              icon="arrow-down-circle-outline"
+              tone={COLORS.primary}
+              onPress={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
+            />
 
-      <Section title="Actions" subtitle="Main payment tools.">
-        <View style={styles.smallActionsGrid}>
-          <SmallAction
-            title="Deposit"
-            icon="arrow-down-circle-outline"
-            tone={COLORS.primary}
-            onPress={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
-          />
+            <SmallAction
+              title={withdrawAllowed ? "Withdraw" : "KYC First"}
+              icon={withdrawAllowed ? "arrow-up-circle-outline" : "shield-outline"}
+              tone={withdrawAllowed ? COLORS.success : COLORS.warning}
+              onPress={() =>
+                withdrawAllowed
+                  ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
+                  : goToKyc()
+              }
+            />
 
-          <SmallAction
-            title={withdrawAllowed ? "Withdraw" : "KYC First"}
-            icon={withdrawAllowed ? "arrow-up-circle-outline" : "shield-outline"}
-            tone={withdrawAllowed ? COLORS.success : COLORS.warning}
-            onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
-                : goToKyc()
-            }
-          />
+            <SmallAction
+              title="Ledger"
+              icon="list-outline"
+              tone={COLORS.info}
+              onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
+            />
 
-          <SmallAction
-            title="Ledger"
-            icon="list-outline"
-            tone={COLORS.info}
-            onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
-          />
+            <SmallAction
+              title="Withdrawals"
+              icon="cash-outline"
+              tone={withdrawAllowed ? COLORS.primary : COLORS.warning}
+              onPress={() =>
+                withdrawAllowed
+                  ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
+                  : goToKyc()
+              }
+            />
+          </View>
+        </Section>
 
-          <SmallAction
-            title="Withdrawals"
-            icon="cash-outline"
-            tone={withdrawAllowed ? COLORS.primary : COLORS.warning}
-            onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
-                : goToKyc()
-            }
-          />
-        </View>
-      </Section>
+        <Section
+          title="Recent Transactions"
+          right={
+            <Button
+              variant="ghost"
+              title="See all"
+              onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
+            />
+          }
+        >
+          {ledger?.length ? (
+            <View style={{ gap: SPACING.sm }}>
+              {ledger.slice(0, 6).map((row) => {
+                const isCredit = String(row.entry_type).toUpperCase() === "CREDIT";
+                const amtColor = isCredit ? COLORS.success : COLORS.danger;
+                const ref = typeof row.reference === "string" ? row.reference : "";
+                const feeRow = isFeeCategory(row.category);
 
-      <Section
-        title="Recent Transactions"
-        right={
-          <Button
-            variant="ghost"
-            title="See all"
-            onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
-          />
-        }
-      >
-        {ledger?.length ? (
-          <View style={{ gap: SPACING.sm }}>
-            {ledger.slice(0, 6).map((row) => {
-              const isCredit = String(row.entry_type).toUpperCase() === "CREDIT";
-              const amtColor = isCredit ? COLORS.success : COLORS.danger;
-              const ref = typeof row.reference === "string" ? row.reference : "";
-              const feeRow = isFeeCategory(row.category);
+                return (
+                  <Card
+                    key={row.id}
+                    style={[styles.txCard, feeRow && styles.feeTxCard]}
+                  >
+                    <View style={styles.txTop}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.txTitle} numberOfLines={1}>
+                          {row.narration || categoryLabel(row.category)}
+                        </Text>
+                        <Text style={styles.txMeta} numberOfLines={2}>
+                          {categoryLabel(row.category)}
+                          {ref ? ` • ${ref}` : ""}
+                          {row.created_at ? ` • ${row.created_at}` : ""}
+                        </Text>
+                      </View>
 
-              return (
-                <Card
-                  key={row.id}
-                  style={[styles.txCard, feeRow && styles.feeTxCard]}
-                >
-                  <View style={styles.txTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.txTitle} numberOfLines={1}>
-                        {row.narration || categoryLabel(row.category)}
-                      </Text>
-                      <Text style={styles.txMeta} numberOfLines={2}>
-                        {categoryLabel(row.category)}
-                        {ref ? ` • ${ref}` : ""}
-                        {row.created_at ? ` • ${row.created_at}` : ""}
+                      <Text style={[styles.txAmount, { color: amtColor }]}>
+                        {isCredit ? "+" : "-"} {money(row.amount)}
                       </Text>
                     </View>
 
-                    <Text style={[styles.txAmount, { color: amtColor }]}>
-                      {isCredit ? "+" : "-"} {money(row.amount)}
-                    </Text>
-                  </View>
+                    {feeRow ? (
+                      <Text style={styles.feeHint}>System fee</Text>
+                    ) : null}
+                  </Card>
+                );
+              })}
+            </View>
+          ) : (
+            <EmptyState
+              title="No transactions yet"
+              subtitle="Your payment activity will appear here."
+              actionLabel="Deposit"
+              onAction={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
+            />
+          )}
+        </Section>
 
-                  {feeRow ? (
-                    <Text style={styles.feeHint}>System fee</Text>
-                  ) : null}
+        <Section
+          title="Recent Withdrawals"
+          right={
+            <Button
+              variant="ghost"
+              title="See all"
+              onPress={() =>
+                withdrawAllowed
+                  ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
+                  : goToKyc()
+              }
+            />
+          }
+        >
+          {withdrawals?.length ? (
+            <View style={{ gap: SPACING.sm }}>
+              {withdrawals.slice(0, 4).map((w) => (
+                <Card key={w.id} style={styles.wdCard}>
+                  <View style={styles.wdTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.wdTitle} numberOfLines={1}>
+                        Withdrawal • {w.source}
+                      </Text>
+                      <Text style={styles.wdMeta} numberOfLines={2}>
+                        {w.phone}
+                        {w.created_at ? ` • ${w.created_at}` : ""}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end", gap: 6 }}>
+                      <Text style={styles.wdAmount}>{money(w.amount)}</Text>
+                      <StatusPill label={String(w.status)} />
+                    </View>
+                  </View>
                 </Card>
-              );
-            })}
-          </View>
-        ) : (
-          <EmptyState
-            title="No transactions yet"
-            subtitle="Your payment activity will appear here."
-            actionLabel="Deposit"
-            onAction={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
-          />
-        )}
-      </Section>
-
-      <Section
-        title="Recent Withdrawals"
-        right={
-          <Button
-            variant="ghost"
-            title="See all"
-            onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
-                : goToKyc()
-            }
-          />
-        }
-      >
-        {withdrawals?.length ? (
-          <View style={{ gap: SPACING.sm }}>
-            {withdrawals.slice(0, 4).map((w) => (
-              <Card key={w.id} style={styles.wdCard}>
-                <View style={styles.wdTop}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.wdTitle} numberOfLines={1}>
-                      Withdrawal • {w.source}
-                    </Text>
-                    <Text style={styles.wdMeta} numberOfLines={2}>
-                      {w.phone}
-                      {w.created_at ? ` • ${w.created_at}` : ""}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end", gap: 6 }}>
-                    <Text style={styles.wdAmount}>{money(w.amount)}</Text>
-                    <StatusPill label={String(w.status)} />
-                  </View>
-                </View>
-              </Card>
-            ))}
-          </View>
-        ) : (
-          <EmptyState
-            title="No withdrawals"
-            subtitle="Your withdrawal requests will appear here."
-            actionLabel={withdrawAllowed ? "Request withdrawal" : "Complete KYC"}
-            onAction={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
-                : goToKyc()
-            }
-          />
-        )}
-      </Section>
-
-      <View style={{ height: 12 }} />
-    </ScrollView>
+              ))}
+            </View>
+          ) : (
+            <EmptyState
+              title="No withdrawals"
+              subtitle="Your withdrawal requests will appear here."
+              actionLabel={withdrawAllowed ? "Request withdrawal" : "Complete KYC"}
+              onAction={() =>
+                withdrawAllowed
+                  ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
+                  : goToKyc()
+              }
+            />
+          )}
+        </Section>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -604,7 +616,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 30,
   },
 
   loadingWrap: {

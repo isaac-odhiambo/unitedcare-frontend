@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -248,86 +249,93 @@ export default function GuaranteesScreen() {
   );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.hTitle}>Guarantee Requests</Text>
-          <Text style={styles.hSub}>
-            Accept or reject requests to guarantee a loan.
-          </Text>
-        </View>
-        <Ionicons
-          name="shield-checkmark-outline"
-          size={22}
-          color={COLORS.primary}
-        />
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard}>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={styles.hTitle}>Guarantee Requests</Text>
+            <Text style={styles.hSub}>
+              Accept or reject requests to guarantee a loan.
+            </Text>
+          </View>
           <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
+            name="shield-checkmark-outline"
+            size={22}
+            color={COLORS.primary}
           />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+        </View>
 
-      <Section title={`Pending (${pending.length})`}>
-        {loading ? (
-          <Text style={styles.muted}>Loading…</Text>
-        ) : pending.length === 0 ? (
-          <EmptyState
-            title="No pending requests"
-            subtitle="New requests will appear here."
-          />
-        ) : (
-          pending.map((g) => (
-            <GuaranteeCard
-              key={g.id}
-              item={g}
-              busy={busyId === g.id}
-              onAccept={() => doAccept(g.id)}
-              onReject={() => doReject(g.id)}
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
             />
-          ))
-        )}
-      </Section>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      <Section title={`Accepted (${accepted.length})`}>
-        {!loading && accepted.length === 0 ? (
-          <EmptyState
-            icon="checkmark-done-outline"
-            title="No accepted guarantees"
-            subtitle="Accepted guarantees will appear here."
-          />
-        ) : (
-          accepted.map((g) => (
-            <GuaranteeCard
-              key={g.id}
-              item={g}
-              busy={busyId === g.id}
-              onAccept={() => {}}
-              onReject={() => {}}
+        <Section title={`Pending (${pending.length})`}>
+          {loading ? (
+            <Text style={styles.muted}>Loading…</Text>
+          ) : pending.length === 0 ? (
+            <EmptyState
+              title="No pending requests"
+              subtitle="New requests will appear here."
             />
-          ))
-        )}
-      </Section>
+          ) : (
+            pending.map((g) => (
+              <GuaranteeCard
+                key={g.id}
+                item={g}
+                busy={busyId === g.id}
+                onAccept={() => doAccept(g.id)}
+                onReject={() => doReject(g.id)}
+              />
+            ))
+          )}
+        </Section>
 
-      <View style={{ height: 24 }} />
-    </ScrollView>
+        <Section title={`Accepted (${accepted.length})`}>
+          {!loading && accepted.length === 0 ? (
+            <EmptyState
+              icon="checkmark-done-outline"
+              title="No accepted guarantees"
+              subtitle="Accepted guarantees will appear here."
+            />
+          ) : (
+            accepted.map((g) => (
+              <GuaranteeCard
+                key={g.id}
+                item={g}
+                busy={busyId === g.id}
+                onAccept={() => {}}
+                onReject={() => {}}
+              />
+            ))
+          )}
+        </Section>
+
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg, paddingBottom: 24 },
 

@@ -1,4 +1,3 @@
-// app/(tabs)/merry/history.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
@@ -11,6 +10,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
 import { api, getErrorMessage } from "@/services/api";
@@ -49,6 +52,8 @@ function pillColor(status: string) {
 }
 
 export default function MerryHistoryScreen() {
+  const insets = useSafeAreaInsets();
+
   const [merries, setMerries] = useState<MyMerriesResponse | null>(null);
   const [selectedMerryId, setSelectedMerryId] = useState<string>("");
 
@@ -126,151 +131,154 @@ export default function MerryHistoryScreen() {
   }, [dues]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-    >
-      <Card style={{ marginBottom: SPACING.lg }}>
-        <View style={styles.header}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.hTitle}>Contribution History</Text>
-            <Text style={styles.hSub}>Shows your dues status per slot & seat (PAID/PARTIAL/PENDING).</Text>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        <Card style={{ marginBottom: SPACING.lg }}>
+          <View style={styles.header}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.hTitle}>Contribution History</Text>
+              <Text style={styles.hSub}>Shows your dues status per slot & seat (PAID/PARTIAL/PENDING).</Text>
+            </View>
+            <Ionicons name="time-outline" size={22} color={COLORS.primary} />
           </View>
-          <Ionicons name="time-outline" size={22} color={COLORS.primary} />
-        </View>
 
-        <View style={{ height: SPACING.md }} />
+          <View style={{ height: SPACING.md }} />
 
-        <Button
-          title="My Payments"
-          variant="secondary"
-          onPress={() => router.push("/merry/contributions" as any)}
-          leftIcon={<Ionicons name="receipt-outline" size={18} color={COLORS.dark} />}
-        />
-      </Card>
-
-      <Section title="Pick Merry & Period">
-        {loading ? (
-          <Card>
-            <View style={styles.loader}>
-              <ActivityIndicator color={COLORS.primary} />
-            </View>
-          </Card>
-        ) : membershipOptions.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No memberships"
-            subtitle="Join a merry first, then your dues history will show here."
+          <Button
+            title="My Payments"
+            variant="secondary"
+            onPress={() => router.push("/merry/contributions" as any)}
+            leftIcon={<Ionicons name="receipt-outline" size={18} color={COLORS.dark} />}
           />
-        ) : (
-          <Card>
-            <View style={styles.pickerRow}>
-              <Text style={styles.pickerLabel}>Selected Merry</Text>
-              <View style={styles.pickerButtons}>
-                {membershipOptions.slice(0, 3).map((m) => (
-                  <Button
-                    key={m.id}
-                    title={m.name.length > 10 ? m.name.slice(0, 10) + "…" : m.name}
-                    variant={selectedMerryId === m.id ? "primary" : "secondary"}
-                    onPress={() => setSelectedMerryId(m.id)}
-                    style={{ flex: 1 }}
-                  />
-                ))}
+        </Card>
+
+        <Section title="Pick Merry & Period">
+          {loading ? (
+            <Card>
+              <View style={styles.loader}>
+                <ActivityIndicator color={COLORS.primary} />
               </View>
-              {membershipOptions.length > 3 ? (
-                <Text style={styles.hint}>
-                  You have more than 3 merries. You can extend this picker or make a dedicated select screen.
-                </Text>
-              ) : null}
-            </View>
-
-            <Input
-              label="Period key (optional)"
-              value={periodKey}
-              onChangeText={setPeriodKey}
-              placeholder='Leave blank for current (e.g. "2026-W10" or "2026-03")'
+            </Card>
+          ) : membershipOptions.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No memberships"
+              subtitle="Join a merry first, then your dues history will show here."
             />
+          ) : (
+            <Card>
+              <View style={styles.pickerRow}>
+                <Text style={styles.pickerLabel}>Selected Merry</Text>
+                <View style={styles.pickerButtons}>
+                  {membershipOptions.slice(0, 3).map((m) => (
+                    <Button
+                      key={m.id}
+                      title={m.name.length > 10 ? m.name.slice(0, 10) + "…" : m.name}
+                      variant={selectedMerryId === m.id ? "primary" : "secondary"}
+                      onPress={() => setSelectedMerryId(m.id)}
+                      style={{ flex: 1 }}
+                    />
+                  ))}
+                </View>
+                {membershipOptions.length > 3 ? (
+                  <Text style={styles.hint}>
+                    You have more than 3 merries. You can extend this picker or make a dedicated select screen.
+                  </Text>
+                ) : null}
+              </View>
 
-            <Button
-              title={fetchingDues ? "Loading..." : "Load Dues"}
-              onPress={fetchMyDues}
-              loading={fetchingDues}
-              leftIcon={<Ionicons name="refresh-outline" size={18} color={COLORS.white} />}
-            />
-          </Card>
-        )}
-      </Section>
+              <Input
+                label="Period key (optional)"
+                value={periodKey}
+                onChangeText={setPeriodKey}
+                placeholder='Leave blank for current (e.g. "2026-W10" or "2026-03")'
+              />
 
-      {dues ? (
-        <Section title="Summary">
-          <Card>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Period</Text>
-              <Text style={styles.kvValue}>{dues.period_key}</Text>
-            </View>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Total due</Text>
-              <Text style={styles.kvValue}>{fmtKES(totals.dueTotal)}</Text>
-            </View>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Total paid</Text>
-              <Text style={styles.kvValue}>{fmtKES(totals.paidTotal)}</Text>
-            </View>
-            <View style={styles.kvRow}>
-              <Text style={styles.kvLabel}>Outstanding</Text>
-              <Text style={[styles.kvValue, { color: totals.outTotal > 0 ? COLORS.danger : COLORS.success }]}>
-                {fmtKES(totals.outTotal)}
-              </Text>
-            </View>
-          </Card>
+              <Button
+                title={fetchingDues ? "Loading..." : "Load Dues"}
+                onPress={fetchMyDues}
+                loading={fetchingDues}
+                leftIcon={<Ionicons name="refresh-outline" size={18} color={COLORS.white} />}
+              />
+            </Card>
+          )}
         </Section>
-      ) : null}
 
-      <Section title="Dues (slot → seat)">
-        {!dues ? (
-          <EmptyState icon="albums-outline" title="No dues loaded" subtitle="Pick a merry and load dues." />
-        ) : dues.data.length === 0 ? (
-          <EmptyState icon="albums-outline" title="No dues rows" subtitle="Admin may not have generated dues yet." />
-        ) : (
-          dues.data.map((d) => {
-            const c = pillColor(d.status);
-            return (
-              <Card key={`due-${d.due_id}`} style={{ marginBottom: SPACING.md }}>
-                <View style={styles.rowTop}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.title}>
-                      Slot {d.slot_no} • Seat #{d.seat_no}
-                    </Text>
-                    <Text style={styles.sub}>
-                      Due: {fmtKES(d.due_amount)} • Paid: {fmtKES(d.paid_amount)} • Outstanding: {fmtKES(d.outstanding)}
-                    </Text>
+        {dues ? (
+          <Section title="Summary">
+            <Card>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Period</Text>
+                <Text style={styles.kvValue}>{dues.period_key}</Text>
+              </View>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Total due</Text>
+                <Text style={styles.kvValue}>{fmtKES(totals.dueTotal)}</Text>
+              </View>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Total paid</Text>
+                <Text style={styles.kvValue}>{fmtKES(totals.paidTotal)}</Text>
+              </View>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Outstanding</Text>
+                <Text style={[styles.kvValue, { color: totals.outTotal > 0 ? COLORS.danger : COLORS.success }]}>
+                  {fmtKES(totals.outTotal)}
+                </Text>
+              </View>
+            </Card>
+          </Section>
+        ) : null}
+
+        <Section title="Dues (slot → seat)">
+          {!dues ? (
+            <EmptyState icon="albums-outline" title="No dues loaded" subtitle="Pick a merry and load dues." />
+          ) : dues.data.length === 0 ? (
+            <EmptyState icon="albums-outline" title="No dues rows" subtitle="Admin may not have generated dues yet." />
+          ) : (
+            dues.data.map((d) => {
+              const c = pillColor(d.status);
+              return (
+                <Card key={`due-${d.due_id}`} style={{ marginBottom: SPACING.md }}>
+                  <View style={styles.rowTop}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={styles.title}>
+                        Slot {d.slot_no} • Seat #{d.seat_no}
+                      </Text>
+                      <Text style={styles.sub}>
+                        Due: {fmtKES(d.due_amount)} • Paid: {fmtKES(d.paid_amount)} • Outstanding: {fmtKES(d.outstanding)}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.pill, { borderColor: c }]}>
+                      <Text style={[styles.pillText, { color: c }]}>{String(d.status).toUpperCase()}</Text>
+                    </View>
                   </View>
 
-                  <View style={[styles.pill, { borderColor: c }]}>
-                    <Text style={[styles.pillText, { color: c }]}>{String(d.status).toUpperCase()}</Text>
+                  <View style={styles.kvRow}>
+                    <Text style={styles.kvLabel}>Updated</Text>
+                    <Text style={styles.kvValue}>{d.updated_at ? String(d.updated_at) : "—"}</Text>
                   </View>
-                </View>
-
-                <View style={styles.kvRow}>
-                  <Text style={styles.kvLabel}>Updated</Text>
-                  <Text style={styles.kvValue}>{d.updated_at ? String(d.updated_at) : "—"}</Text>
-                </View>
-              </Card>
-            );
-          })
-        )}
-      </Section>
-
-      <View style={{ height: 24 }} />
-    </ScrollView>
+                </Card>
+              );
+            })
+          )}
+        </Section>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  content: { padding: SPACING.lg },
 
   header: {
     flexDirection: "row",

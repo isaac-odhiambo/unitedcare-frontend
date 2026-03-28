@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
@@ -454,118 +455,129 @@ export default function LoansIndexScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={UI.primary} />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={UI.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please log in to continue."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please log in to continue."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerEyebrow}>UNITED CARE</Text>
-        <Text style={styles.headerTitle}>Member Support</Text>
-        <Text style={styles.headerSubtitle}>
-          Simple community support for members when needed.
-        </Text>
-      </View>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerEyebrow}>UNITED CARE</Text>
+          <Text style={styles.headerTitle}>Member Support</Text>
+          <Text style={styles.headerSubtitle}>
+            Simple community support for members when needed.
+          </Text>
+        </View>
 
-      <HeroCard
-        eligibility={eligibility}
-        activeLoan={activeLoan}
-        kycComplete={kycComplete}
-        loanAllowed={loanAllowed}
-        onPrimary={handleHeroPrimary}
-        onSecondary={handleHeroSecondary}
-      />
+        <HeroCard
+          eligibility={eligibility}
+          activeLoan={activeLoan}
+          kycComplete={kycComplete}
+          loanAllowed={loanAllowed}
+          onPrimary={handleHeroPrimary}
+          onSecondary={handleHeroSecondary}
+        />
 
-      {error ? (
-        <TouchableOpacity activeOpacity={0.92} onPress={openPayment}>
-          <Card style={styles.errorCard} variant="default">
-            <View style={styles.errorIconWrap}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={18}
-                color={COLORS.danger}
-              />
-            </View>
-
-            <View style={styles.errorContent}>
-              <Text style={styles.errorText}>{error}</Text>
-              <View style={styles.errorActionRow}>
-                <Text style={styles.errorActionText}>Open payment</Text>
+        {error ? (
+          <TouchableOpacity activeOpacity={0.92} onPress={openPayment}>
+            <Card style={styles.errorCard} variant="default">
+              <View style={styles.errorIconWrap}>
                 <Ionicons
-                  name="arrow-forward"
-                  size={15}
+                  name="alert-circle-outline"
+                  size={18}
                   color={COLORS.danger}
                 />
               </View>
-            </View>
-          </Card>
-        </TouchableOpacity>
-      ) : null}
 
-      <Section title="More">
-        <View style={styles.actionsWrap}>
-          {!activeLoan ? (
+              <View style={styles.errorContent}>
+                <Text style={styles.errorText}>{error}</Text>
+                <View style={styles.errorActionRow}>
+                  <Text style={styles.errorActionText}>Open payment</Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={15}
+                    color={COLORS.danger}
+                  />
+                </View>
+              </View>
+            </Card>
+          </TouchableOpacity>
+        ) : null}
+
+        <Section title="More">
+          <View style={styles.actionsWrap}>
+            {!activeLoan ? (
+              <ActionRow
+                title="Ask for support"
+                subtitle="Start a simple support request"
+                icon="create-outline"
+                iconTone="primary"
+                onPress={() =>
+                  kycComplete && loanAllowed
+                    ? router.push(ROUTES.tabs.loansRequest as any)
+                    : router.push(ROUTES.tabs.profileKyc as any)
+                }
+              />
+            ) : null}
+
             <ActionRow
-              title="Ask for support"
-              subtitle="Start a simple support request"
-              icon="create-outline"
-              iconTone="primary"
-              onPress={() =>
-                kycComplete && loanAllowed
-                  ? router.push(ROUTES.tabs.loansRequest as any)
-                  : router.push(ROUTES.tabs.profileKyc as any)
-              }
+              title="Member requests"
+              subtitle="Review requests that need your response"
+              icon="people-outline"
+              iconTone="gold"
+              badge={guaranteeCount > 0 ? String(guaranteeCount) : undefined}
+              onPress={() => router.push(ROUTES.tabs.loansGuarantees as any)}
             />
-          ) : null}
 
-          <ActionRow
-            title="Member requests"
-            subtitle="Review requests that need your response"
-            icon="people-outline"
-            iconTone="gold"
-            badge={guaranteeCount > 0 ? String(guaranteeCount) : undefined}
-            onPress={() => router.push(ROUTES.tabs.loansGuarantees as any)}
-          />
+            <ActionRow
+              title="Past activity"
+              subtitle="See earlier support activity"
+              icon="time-outline"
+              iconTone="green"
+              onPress={() => router.push(ROUTES.tabs.loansHistory as any)}
+            />
+          </View>
+        </Section>
 
-          <ActionRow
-            title="Past activity"
-            subtitle="See earlier support activity"
-            icon="time-outline"
-            iconTone="green"
-            onPress={() => router.push(ROUTES.tabs.loansHistory as any)}
-          />
-        </View>
-      </Section>
-
-      <View style={{ height: 18 }} />
-    </ScrollView>
+        <View style={{ height: 18 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: UI.bg,
+  },
+
   page: {
     flex: 1,
     backgroundColor: UI.bg,

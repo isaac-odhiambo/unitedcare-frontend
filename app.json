@@ -4,7 +4,7 @@
     "slug": "united-care",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/united-care-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "united-care",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -12,27 +12,27 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/united-care-icon.png",
-        "backgroundColor": "#0A6E8A"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0E5E6F"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/united-care-icon.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/united-care-splash.png",
+          "image": "./assets/images/splash.png",
           "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#0A6E8A",
+          "backgroundColor": "#0E5E6F",
           "dark": {
-            "backgroundColor": "#0A6E8A"
+            "backgroundColor": "#0E5E6F"
           }
         }
       ],
@@ -51,58 +51,3 @@
     }
   }
 }
-
-// {
-//   "expo": {
-//     "name": "UNITED CARE",
-//     "slug": "united-care",
-//     "version": "1.0.0",
-//     "orientation": "portrait",
-//     "icon": "./assets/images/united-care-icon.png",
-//     "scheme": "united-care",
-//     "userInterfaceStyle": "automatic",
-//     "ios": {
-//       "supportsTablet": true
-//     },
-//     "android": {
-//       "adaptiveIcon": {
-//         "foregroundImage": "./assets/images/united-care-icon.png",
-//         "backgroundColor": "#0A6E8A"
-//       },
-//       "predictiveBackGestureEnabled": false
-//     },
-    
-//     "web": {
-//       "output": "static",
-//       "favicon": "./assets/images/united-care-icon.png"
-//     },
-//     "plugins": [
-//       "expo-router",
-//       [
-//         "expo-splash-screen",
-//         {
-//           "image": "./assets/images/united-care-splash.png",
-//           "imageWidth": 220,
-//           "resizeMode": "contain",
-//           "backgroundColor": "#0A6E8A",
-//           "dark": {
-//             "backgroundColor": "#0A6E8A"
-//           }
-//         }
-//       ],
-//       [
-//         "expo-image-picker",
-//         {
-//           "photosPermission": "Allow UNITED CARE to access your photos for KYC upload.",
-//           "cameraPermission": "Allow UNITED CARE to use your camera to capture KYC documents."
-//         }
-//       ],
-//       "expo-secure-store"
-//     ],
-//     "experiments": {
-//       "typedRoutes": true,
-//       "reactCompiler": true
-//     }
-//   }
-// }
-

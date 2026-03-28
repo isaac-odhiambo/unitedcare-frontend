@@ -3,14 +3,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
@@ -19,6 +20,8 @@ import { ROUTES } from "@/constants/routes";
 import { COLORS, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import { getApiErrorMessage, getMyLoans, Loan } from "@/services/loans";
+
+/* ---------------- HELPERS ---------------- */
 
 function toNum(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -50,35 +53,25 @@ function getStatusTone(status?: string | null) {
   const value = String(status || "").toUpperCase();
 
   if (value === "COMPLETED") {
-    return {
-      text: COLORS.secondary,
-      bg: "rgba(22, 163, 74, 0.10)",
-    };
+    return { text: COLORS.secondary, bg: "rgba(22, 163, 74, 0.10)" };
   }
 
   if (["PENDING", "UNDER_REVIEW"].includes(value)) {
-    return {
-      text: COLORS.warning,
-      bg: "rgba(245, 158, 11, 0.12)",
-    };
+    return { text: COLORS.warning, bg: "rgba(245, 158, 11, 0.12)" };
   }
 
   if (["REJECTED", "CANCELLED", "DEFAULTED"].includes(value)) {
-    return {
-      text: COLORS.danger,
-      bg: "rgba(239, 68, 68, 0.10)",
-    };
+    return { text: COLORS.danger, bg: "rgba(239, 68, 68, 0.10)" };
   }
 
-  return {
-    text: COLORS.primary,
-    bg: "rgba(14, 94, 111, 0.10)",
-  };
+  return { text: COLORS.primary, bg: "rgba(14, 94, 111, 0.10)" };
 }
 
 function getLoanTitle(loan: Loan) {
   return loan.product_detail?.name || loan.product_name || `Loan #${loan.id}`;
 }
+
+/* ---------------- ROW ---------------- */
 
 function LoanRow({ loan }: { loan: Loan }) {
   const tone = getStatusTone(loan.status);
@@ -91,11 +84,7 @@ function LoanRow({ loan }: { loan: Loan }) {
     >
       <View style={styles.rowLeft}>
         <View style={styles.iconWrap}>
-          <Ionicons
-            name="document-text-outline"
-            size={18}
-            color={COLORS.primary}
-          />
+          <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
         </View>
 
         <View style={styles.rowContent}>
@@ -116,15 +105,13 @@ function LoanRow({ loan }: { loan: Loan }) {
           </Text>
         </View>
 
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={COLORS.textMuted}
-        />
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </View>
     </TouchableOpacity>
   );
 }
+
+/* ---------------- SCREEN ---------------- */
 
 export default function LoanHistoryScreen() {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -153,7 +140,6 @@ export default function LoanHistoryScreen() {
           setLoading(false);
         }
       };
-
       run();
     }, [load])
   );
@@ -171,62 +157,77 @@ export default function LoanHistoryScreen() {
     return [...loans].sort((a, b) => Number(b.id) - Number(a.id));
   }, [loans]);
 
+  /* ---------------- LOADING ---------------- */
+
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
+  /* ---------------- UI ---------------- */
+
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Loan History</Text>
-        <Text style={styles.headerSubtitle}>
-          Your past and current loan records
-        </Text>
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard} variant="default">
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      {sortedLoans.length === 0 ? (
-        <EmptyState
-          title="No loan records yet"
-          subtitle="Your loan records will appear here."
-          actionLabel="Back to Loans"
-          onAction={() => router.replace(ROUTES.tabs.loans as any)}
-        />
-      ) : (
-        <View style={styles.list}>
-          {sortedLoans.map((loan) => (
-            <LoanRow key={loan.id} loan={loan} />
-          ))}
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Loan History</Text>
+          <Text style={styles.headerSubtitle}>
+            Your past and current loan records
+          </Text>
         </View>
-      )}
 
-      <View style={{ height: 12 }} />
-    </ScrollView>
+        {error ? (
+          <Card style={styles.errorCard} variant="default">
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        {sortedLoans.length === 0 ? (
+          <EmptyState
+            title="No loan records yet"
+            subtitle="Your loan records will appear here."
+            actionLabel="Back to Loans"
+            onAction={() => router.replace(ROUTES.tabs.loans as any)}
+          />
+        ) : (
+          <View style={styles.list}>
+            {sortedLoans.map((loan) => (
+              <LoanRow key={loan.id} loan={loan} />
+            ))}
+          </View>
+        )}
+
+        <View style={{ height: 12 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
+/* ---------------- STYLES ---------------- */
+
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   page: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -250,7 +251,6 @@ const styles = StyleSheet.create({
 
   headerTitle: {
     fontSize: 28,
-    lineHeight: 34,
     fontWeight: "900",
     color: COLORS.text,
   },
@@ -258,8 +258,6 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     marginTop: 4,
     fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
     color: COLORS.textMuted,
   },
 
@@ -278,8 +276,6 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "500",
     color: COLORS.danger,
   },
 
@@ -296,8 +292,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(14, 94, 111, 0.08)",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     ...SHADOW.soft,
   },
 
@@ -323,7 +319,6 @@ const styles = StyleSheet.create({
 
   rowTitle: {
     fontSize: 15,
-    lineHeight: 20,
     fontWeight: "800",
     color: COLORS.text,
   },
@@ -331,8 +326,6 @@ const styles = StyleSheet.create({
   rowSubtitle: {
     marginTop: 3,
     fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "500",
     color: COLORS.textMuted,
   },
 
@@ -340,7 +333,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
-    marginLeft: SPACING.sm,
   },
 
   statusPill: {
@@ -351,7 +343,6 @@ const styles = StyleSheet.create({
 
   statusText: {
     fontSize: 12,
-    lineHeight: 16,
     fontWeight: "900",
   },
 });

@@ -79,16 +79,24 @@ function resolveRoute(actionUrl?: string | null) {
   switch (actionUrl) {
     case "/dashboard":
       return "/(tabs)/dashboard";
+
     case "/loans/my-loans":
       return "/(tabs)/loans";
+
     case "/merry":
       return "/(tabs)/merry";
+
     case "/savings":
       return "/(tabs)/savings";
+
     case "/profile/kyc":
-      return "/(tabs)/profile/kyc";
+    case "/profile/edit":
+    case "/profile":
+      return "/(tabs)/profile";
+
     case "/notifications":
       return "/(tabs)/notifications";
+
     default:
       return actionUrl.startsWith("/") ? (actionUrl as any) : null;
   }
@@ -251,7 +259,7 @@ export default function NotificationsScreen() {
           {items.length === 0 ? (
             <EmptyState
               title="No notifications yet"
-              subtitle="Admin messages, loan updates, payment alerts, and action-needed updates will appear here."
+              subtitle="Admin messages, support updates, payment alerts, and action-needed updates will appear here."
             />
           ) : (
             items.map((item) => {

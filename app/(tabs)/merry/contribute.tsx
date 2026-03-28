@@ -1,4 +1,3 @@
-// app/(tabs)/merry/contribute.tsx
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -11,6 +10,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -85,6 +88,8 @@ function getMerryReference(user?: MerryContributionUser | null) {
 }
 
 export default function MerryContributeScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{ id?: string; merryId?: string }>();
   const merryId = Number(params.id ?? params.merryId ?? 0);
 
@@ -295,158 +300,173 @@ export default function MerryContributeScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.mpesa} />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.mpesa} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merry) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Merry not found"
-          subtitle="We could not load this merry."
-          actionLabel="Go Back"
-          onAction={() => router.back()}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Merry not found"
+            subtitle="We could not load this merry."
+            actionLabel="Go Back"
+            onAction={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merryAllowed || !kycComplete) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Unable to continue"
-          subtitle="Complete your account setup first."
-          actionLabel="Go Back"
-          onAction={() => router.back()}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Unable to continue"
+            subtitle="Complete your account setup first."
+            actionLabel="Go Back"
+            onAction={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (isAdmin) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Unavailable"
-          subtitle="Admin accounts cannot contribute here."
-          actionLabel="Go Back"
-          onAction={() => router.back()}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Unavailable"
+            subtitle="Admin accounts cannot contribute here."
+            actionLabel="Go Back"
+            onAction={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!isMemberOfThisMerry) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not assigned"
-          subtitle="You do not have a seat in this merry."
-          actionLabel="Go Back"
-          onAction={() => router.back()}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Not assigned"
+            subtitle="You do not have a seat in this merry."
+            actionLabel="Go Back"
+            onAction={() => router.back()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Merry Contribution</Text>
-        <Text style={styles.subtitle}>{merry.name}</Text>
-      </View>
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Merry Contribution</Text>
+          <Text style={styles.subtitle}>{merry.name}</Text>
+        </View>
 
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        <Card style={styles.formCard}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Seats</Text>
+            <Text style={styles.summaryValue}>{mySeats.length}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Expected</Text>
+            <Text style={styles.summaryValue}>{formatKes(expectedAmount)}</Text>
+          </View>
+
+          <Text style={styles.label}>Amount</Text>
+          <TextInput
+            value={amount}
+            onChangeText={(v) => setAmount(sanitizeAmount(v))}
+            placeholder={expectedAmount > 0 ? String(expectedAmount) : "1000"}
+            placeholderTextColor={COLORS.placeholder}
+            keyboardType="numeric"
+            style={styles.input}
+          />
+
+          <View style={styles.switchRow}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setMethod("STK")}
+              disabled={opening}
+              style={[
+                styles.switchBtn,
+                method === "STK" ? styles.switchBtnActive : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.switchBtnText,
+                  method === "STK" ? styles.switchBtnTextActive : null,
+                ]}
+              >
+                STK Push
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                if (paybillEnabled && !opening) {
+                  setMethod("PAYBILL");
+                }
+              }}
+              disabled={!paybillEnabled || opening}
+              style={[
+                styles.switchBtn,
+                method === "PAYBILL" ? styles.switchBtnActive : null,
+                !paybillEnabled ? styles.switchBtnDisabled : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.switchBtnText,
+                  method === "PAYBILL" ? styles.switchBtnTextActive : null,
+                ]}
+              >
+                Paybill
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Button
+            title={opening ? "Opening..." : "Continue"}
+            onPress={handleContinue}
+            disabled={!canContinue || opening}
+          />
         </Card>
-      ) : null}
-
-      <Card style={styles.formCard}>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Seats</Text>
-          <Text style={styles.summaryValue}>{mySeats.length}</Text>
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Expected</Text>
-          <Text style={styles.summaryValue}>{formatKes(expectedAmount)}</Text>
-        </View>
-
-        <Text style={styles.label}>Amount</Text>
-        <TextInput
-          value={amount}
-          onChangeText={(v) => setAmount(sanitizeAmount(v))}
-          placeholder={expectedAmount > 0 ? String(expectedAmount) : "1000"}
-          placeholderTextColor={COLORS.placeholder}
-          keyboardType="numeric"
-          style={styles.input}
-        />
-
-        <View style={styles.switchRow}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => setMethod("STK")}
-            disabled={opening}
-            style={[
-              styles.switchBtn,
-              method === "STK" ? styles.switchBtnActive : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.switchBtnText,
-                method === "STK" ? styles.switchBtnTextActive : null,
-              ]}
-            >
-              STK Push
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              if (paybillEnabled && !opening) {
-                setMethod("PAYBILL");
-              }
-            }}
-            disabled={!paybillEnabled || opening}
-            style={[
-              styles.switchBtn,
-              method === "PAYBILL" ? styles.switchBtnActive : null,
-              !paybillEnabled ? styles.switchBtnDisabled : null,
-            ]}
-          >
-            <Text
-              style={[
-                styles.switchBtnText,
-                method === "PAYBILL" ? styles.switchBtnTextActive : null,
-              ]}
-            >
-              Paybill
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Button
-          title={opening ? "Opening..." : "Continue"}
-          onPress={handleContinue}
-          disabled={!canContinue || opening}
-        />
-      </Card>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -457,7 +477,6 @@ const styles = StyleSheet.create({
 
   content: {
     ...P.content,
-    paddingBottom: 24,
   },
 
   loadingWrap: {

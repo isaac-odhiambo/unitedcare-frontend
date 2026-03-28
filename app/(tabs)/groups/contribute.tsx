@@ -1,5 +1,3 @@
-// app/(tabs)/groups/contribute.tsx
-
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
@@ -41,15 +39,15 @@ export default function GroupContributeScreen() {
 
       redirectedRef.current = true;
 
-      const groupName = String(loadedGroup?.name || "Group").trim();
+      const groupName = String(loadedGroup?.name || "Community space").trim();
       const narration = groupName
         ? `${groupName} contribution`
-        : "Group contribution";
+        : "Community contribution";
 
       router.replace({
         pathname: ROUTES.tabs.paymentsDeposit as any,
         params: {
-          title: "Group Contribution",
+          title: "Community Contribution",
           purpose: "GROUP_CONTRIBUTION",
           reference: `grp${groupId}`,
           narration,
@@ -95,10 +93,13 @@ export default function GroupContributeScreen() {
     return (
       <View style={styles.page}>
         <Card style={styles.loadingCard}>
-          <ActivityIndicator color={COLORS.primary} />
-          <Text style={styles.loadingTitle}>Preparing payment</Text>
+          <View style={styles.iconWrap}>
+            <ActivityIndicator color={COLORS.white} />
+          </View>
+
+          <Text style={styles.loadingTitle}>Preparing your contribution</Text>
           <Text style={styles.loadingText}>
-            Opening the payment screen for this group contribution.
+            Opening the payment screen for this community space.
           </Text>
         </Card>
       </View>
@@ -110,8 +111,8 @@ export default function GroupContributeScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Unable to open contribution"
-          subtitle="We could not prepare the payment screen for this group."
-          actionLabel="Back to Group"
+          subtitle="We could not prepare the payment screen for this community space."
+          actionLabel="Back to space"
           onAction={() => {
             if (Number.isFinite(groupId) && groupId > 0) {
               router.replace(ROUTES.dynamic.groupDetail(groupId) as any);
@@ -127,10 +128,13 @@ export default function GroupContributeScreen() {
   return (
     <View style={styles.page}>
       <Card style={styles.loadingCard}>
-        <ActivityIndicator color={COLORS.primary} />
-        <Text style={styles.loadingTitle}>Preparing payment</Text>
+        <View style={styles.iconWrap}>
+          <ActivityIndicator color={COLORS.white} />
+        </View>
+
+        <Text style={styles.loadingTitle}>Preparing your contribution</Text>
         <Text style={styles.loadingText}>
-          Opening the payment screen for this group contribution.
+          Opening the payment screen for this community space.
         </Text>
       </Card>
     </View>
@@ -152,7 +156,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: "center",
+    overflow: "hidden",
     ...SHADOW.card,
+  },
+
+  iconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
   },
 
   loadingTitle: {

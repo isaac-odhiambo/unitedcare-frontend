@@ -1,4 +1,3 @@
-// app/(tabs)/savings/save.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,6 +9,10 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -90,6 +93,8 @@ function SummaryRow({
 }
 
 export default function SavingsSaveScreen() {
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<any>(null);
   const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -176,207 +181,221 @@ export default function SavingsSaveScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-        <Text style={styles.loadingText}>Preparing savings...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.loadingText}>Preparing savings...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to continue with savings."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to continue with savings."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!account) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Unable to open savings"
-          subtitle={error || "We could not load your savings right now."}
-          actionLabel="Try Again"
-          onAction={() => load()}
-        />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Unable to open savings"
+            subtitle={error || "We could not load your savings right now."}
+            actionLabel="Try Again"
+            onAction={() => load()}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   const locked = isLocked(account);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
-          </View>
-
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroEyebrow}>SAVE MONEY</Text>
-            <Text style={styles.heroTitle}>{account.name || "My Savings"}</Text>
-            <Text style={styles.heroSubtitle}>
-              Continue to deposit into your savings wallet.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.heroBalanceBox}>
-          <Text style={styles.heroBalanceLabel}>Available Balance</Text>
-          <Text style={styles.heroBalanceValue}>{availableBalance}</Text>
-        </View>
-
-        <View style={styles.heroButtonWrap}>
-          <Button
-            title="Continue to Deposit"
-            onPress={handleContinue}
-            leftIcon={
-              <Ionicons
-                name="arrow-down-circle-outline"
-                size={18}
-                color={COLORS.white}
-              />
-            }
-          />
-        </View>
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      <Section title="Wallet">
-        <Card style={styles.walletCard}>
-          <View style={styles.walletHead}>
-            <View style={styles.walletHeadText}>
-              <Text style={styles.walletName}>{account.name || "My Savings"}</Text>
-              <Text style={styles.walletType}>
-                {formatAccountType(account.account_type)}
-              </Text>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
             </View>
 
-            <View style={styles.typePill}>
-              <Text style={styles.typePillText}>
-                {String(account.account_type || "SAVINGS")}
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>SAVE MONEY</Text>
+              <Text style={styles.heroTitle}>{account.name || "My Savings"}</Text>
+              <Text style={styles.heroSubtitle}>
+                Continue to deposit into your savings wallet.
               </Text>
             </View>
           </View>
 
-          {!account.is_active ? (
-            <View style={styles.noticeBoxDanger}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={16}
-                color={COLORS.danger}
-              />
-              <Text style={[styles.noticeBoxText, { color: COLORS.danger }]}>
-                This savings account is inactive.
-              </Text>
-            </View>
-          ) : locked ? (
-            <View style={styles.noticeBoxWarning}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={16}
-                color={COLORS.warning}
-              />
-              <Text style={[styles.noticeBoxText, { color: COLORS.warning }]}>
-                Locked until {account.locked_until}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.noticeBoxSuccess}>
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={16}
-                color={COLORS.success}
-              />
-              <Text style={[styles.noticeBoxText, { color: COLORS.success }]}>
-                Savings wallet is ready for deposit.
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.summaryList}>
-            <SummaryRow label="Balance" value={totalBalance} />
-            <SummaryRow
-              label="Available"
-              value={availableBalance}
-              tone="success"
-            />
-            <SummaryRow
-              label="Reserved"
-              value={reservedBalance}
-              tone="warning"
-            />
-          </View>
-        </Card>
-      </Section>
-
-      <Section title="Payment Details">
-        <Card style={styles.detailsCard}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Deposit route</Text>
-            <Text style={styles.detailValue}>Centralized STK deposit</Text>
+          <View style={styles.heroBalanceBox}>
+            <Text style={styles.heroBalanceLabel}>Available Balance</Text>
+            <Text style={styles.heroBalanceValue}>{availableBalance}</Text>
           </View>
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Reference</Text>
-            <Text style={styles.detailValue}>{savingsReference}</Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Phone</Text>
-            <Text style={styles.detailValue}>{user?.phone || "Not available"}</Text>
-          </View>
-        </Card>
-      </Section>
-
-      <Section title="Next Step">
-        <Card style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            You will continue to the payment screen to enter amount and confirm
-            STK push for your savings deposit.
-          </Text>
-
-          <View style={{ marginTop: SPACING.md }}>
+          <View style={styles.heroButtonWrap}>
             <Button
               title="Continue to Deposit"
               onPress={handleContinue}
               leftIcon={
                 <Ionicons
-                  name="arrow-forward-outline"
+                  name="arrow-down-circle-outline"
                   size={18}
                   color={COLORS.white}
                 />
               }
             />
           </View>
-        </Card>
-      </Section>
+        </View>
 
-      <View style={{ height: 20 }} />
-    </ScrollView>
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        <Section title="Wallet">
+          <Card style={styles.walletCard}>
+            <View style={styles.walletHead}>
+              <View style={styles.walletHeadText}>
+                <Text style={styles.walletName}>{account.name || "My Savings"}</Text>
+                <Text style={styles.walletType}>
+                  {formatAccountType(account.account_type)}
+                </Text>
+              </View>
+
+              <View style={styles.typePill}>
+                <Text style={styles.typePillText}>
+                  {String(account.account_type || "SAVINGS")}
+                </Text>
+              </View>
+            </View>
+
+            {!account.is_active ? (
+              <View style={styles.noticeBoxDanger}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={COLORS.danger}
+                />
+                <Text style={[styles.noticeBoxText, { color: COLORS.danger }]}>
+                  This savings account is inactive.
+                </Text>
+              </View>
+            ) : locked ? (
+              <View style={styles.noticeBoxWarning}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={16}
+                  color={COLORS.warning}
+                />
+                <Text style={[styles.noticeBoxText, { color: COLORS.warning }]}>
+                  Locked until {account.locked_until}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.noticeBoxSuccess}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={16}
+                  color={COLORS.success}
+                />
+                <Text style={[styles.noticeBoxText, { color: COLORS.success }]}>
+                  Savings wallet is ready for deposit.
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.summaryList}>
+              <SummaryRow label="Balance" value={totalBalance} />
+              <SummaryRow
+                label="Available"
+                value={availableBalance}
+                tone="success"
+              />
+              <SummaryRow
+                label="Reserved"
+                value={reservedBalance}
+                tone="warning"
+              />
+            </View>
+          </Card>
+        </Section>
+
+        <Section title="Payment Details">
+          <Card style={styles.detailsCard}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Deposit route</Text>
+              <Text style={styles.detailValue}>Centralized STK deposit</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Reference</Text>
+              <Text style={styles.detailValue}>{savingsReference}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Phone</Text>
+              <Text style={styles.detailValue}>{user?.phone || "Not available"}</Text>
+            </View>
+          </Card>
+        </Section>
+
+        <Section title="Next Step">
+          <Card style={styles.infoCard}>
+            <Text style={styles.infoText}>
+              You will continue to the payment screen to enter amount and confirm
+              STK push for your savings deposit.
+            </Text>
+
+            <View style={{ marginTop: SPACING.md }}>
+              <Button
+                title="Continue to Deposit"
+                onPress={handleContinue}
+                leftIcon={
+                  <Ionicons
+                    name="arrow-forward-outline"
+                    size={18}
+                    color={COLORS.white}
+                  />
+                }
+              />
+            </View>
+          </Card>
+        </Section>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -384,7 +403,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 24,
   },
 
   loadingWrap: {

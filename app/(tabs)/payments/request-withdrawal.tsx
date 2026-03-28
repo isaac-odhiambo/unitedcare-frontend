@@ -1,4 +1,3 @@
-// app/(tabs)/payments/request-withdrawal.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -13,6 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -75,6 +78,8 @@ function QuickLink({
 }
 
 export default function RequestWithdrawalScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{
     source?: string;
     amount?: string;
@@ -195,165 +200,174 @@ export default function RequestWithdrawalScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.center}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Login to continue"
-          actionLabel="Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Login to continue"
+            actionLabel="Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Withdraw</Text>
-        <Button
-          title="Back"
-          variant="ghost"
-          onPress={() => router.back()}
-          leftIcon={
-            <Ionicons name="arrow-back-outline" size={16} color={COLORS.primary} />
-          }
-        />
-      </View>
-
-      {!kycComplete ? (
-        <Card style={styles.warningCard}>
-          <View style={styles.warningRow}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.warning}
-            />
-            <Text style={styles.warningText}>
-              Complete KYC before requesting a withdrawal.
-            </Text>
-          </View>
-
-          <View style={{ marginTop: SPACING.sm }}>
-            <Button
-              title="Open KYC"
-              variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-            />
-          </View>
-        </Card>
-      ) : null}
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Withdraw</Text>
+          <Button
+            title="Back"
+            variant="ghost"
+            onPress={() => router.back()}
+            leftIcon={
+              <Ionicons name="arrow-back-outline" size={16} color={COLORS.primary} />
+            }
           />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      <Card style={styles.card}>
-        <Text style={styles.label}>Phone</Text>
-        <TextInput
-          value={phone}
-          onChangeText={(v) => setPhone(normalizePhone(v))}
-          style={styles.input}
-          placeholder="07XXXXXXXX"
-          placeholderTextColor={COLORS.textMuted}
-          keyboardType="phone-pad"
-          autoCapitalize="none"
-        />
-
-        <Text style={styles.label}>Amount</Text>
-        <TextInput
-          value={amount}
-          onChangeText={(v) => setAmount(sanitizeAmount(v))}
-          style={styles.input}
-          placeholder="e.g. 1500"
-          placeholderTextColor={COLORS.textMuted}
-          keyboardType="numeric"
-        />
-
-        <Text style={styles.label}>Source</Text>
-        <View style={styles.sources}>
-          {SOURCES.map((s) => {
-            const active = source === s;
-            return (
-              <TouchableOpacity
-                key={s}
-                onPress={() => setSource(s)}
-                activeOpacity={0.88}
-                style={[styles.source, active && styles.sourceActive]}
-              >
-                <Text style={[styles.sourceText, active && styles.sourceTextActive]}>
-                  {s}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
         </View>
 
-        <View style={styles.amountBox}>
-          <Text style={styles.amountLabel}>Requested</Text>
-          <Text style={styles.amountValue}>{money(Number(amount || 0))}</Text>
-        </View>
+        {!kycComplete ? (
+          <Card style={styles.warningCard}>
+            <View style={styles.warningRow}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={COLORS.warning}
+              />
+              <Text style={styles.warningText}>
+                Complete KYC before requesting a withdrawal.
+              </Text>
+            </View>
 
-        <Button
-          title={
-            !allowed
-              ? "Complete KYC"
-              : submitting
-              ? "Submitting..."
-              : "Request Withdrawal"
-          }
-          onPress={
-            !allowed
-              ? () => router.push(ROUTES.tabs.profileKyc as any)
-              : handleSubmit
-          }
-          disabled={!allowed ? false : !canSubmit}
-          leftIcon={
+            <View style={{ marginTop: SPACING.sm }}>
+              <Button
+                title="Open KYC"
+                variant="secondary"
+                onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
+              />
+            </View>
+          </Card>
+        ) : null}
+
+        {error ? (
+          <Card style={styles.errorCard}>
             <Ionicons
-              name={!allowed ? "shield-outline" : "send-outline"}
+              name="alert-circle-outline"
               size={18}
-              color={COLORS.white}
+              color={COLORS.danger}
             />
-          }
-        />
-      </Card>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      <View style={styles.linksWrap}>
-        <QuickLink
-          title="My Withdrawals"
-          icon="cash-outline"
-          onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals as any)}
-        />
+        <Card style={styles.card}>
+          <Text style={styles.label}>Phone</Text>
+          <TextInput
+            value={phone}
+            onChangeText={(v) => setPhone(normalizePhone(v))}
+            style={styles.input}
+            placeholder="07XXXXXXXX"
+            placeholderTextColor={COLORS.textMuted}
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+          />
 
-        <QuickLink
-          title="Notifications"
-          icon="notifications-outline"
-          onPress={() => router.push(NOTIFICATIONS_ROUTE as any)}
-        />
-      </View>
-    </ScrollView>
+          <Text style={styles.label}>Amount</Text>
+          <TextInput
+            value={amount}
+            onChangeText={(v) => setAmount(sanitizeAmount(v))}
+            style={styles.input}
+            placeholder="e.g. 1500"
+            placeholderTextColor={COLORS.textMuted}
+            keyboardType="numeric"
+          />
+
+          <Text style={styles.label}>Source</Text>
+          <View style={styles.sources}>
+            {SOURCES.map((s) => {
+              const active = source === s;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  onPress={() => setSource(s)}
+                  activeOpacity={0.88}
+                  style={[styles.source, active && styles.sourceActive]}
+                >
+                  <Text style={[styles.sourceText, active && styles.sourceTextActive]}>
+                    {s}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.amountBox}>
+            <Text style={styles.amountLabel}>Requested</Text>
+            <Text style={styles.amountValue}>{money(Number(amount || 0))}</Text>
+          </View>
+
+          <Button
+            title={
+              !allowed
+                ? "Complete KYC"
+                : submitting
+                ? "Submitting..."
+                : "Request Withdrawal"
+            }
+            onPress={
+              !allowed
+                ? () => router.push(ROUTES.tabs.profileKyc as any)
+                : handleSubmit
+            }
+            disabled={!allowed ? false : !canSubmit}
+            leftIcon={
+              <Ionicons
+                name={!allowed ? "shield-outline" : "send-outline"}
+                size={18}
+                color={COLORS.white}
+              />
+            }
+          />
+        </Card>
+
+        <View style={styles.linksWrap}>
+          <QuickLink
+            title="My Withdrawals"
+            icon="cash-outline"
+            onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals as any)}
+          />
+
+          <QuickLink
+            title="Notifications"
+            icon="notifications-outline"
+            onPress={() => router.push(NOTIFICATIONS_ROUTE as any)}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -365,7 +379,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl,
   },
 
   center: {

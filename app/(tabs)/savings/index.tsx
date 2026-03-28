@@ -1,4 +1,5 @@
 // app/(tabs)/savings/index.tsx
+
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -11,6 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -32,7 +37,6 @@ const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
 const TEXT_MAIN = "#0F172A";
 const TEXT_MUTED = "#64748B";
 const HERO_TOP = "#0F766E";
-const HERO_BOTTOM = "#1D4ED8";
 const SOFT_GREEN = "#ECFDF5";
 const SOFT_BLUE = "#EFF6FF";
 const SOFT_AMBER = "#FFF7ED";
@@ -61,15 +65,15 @@ function SummaryTile({
     tone === "success"
       ? COLORS.success
       : tone === "warning"
-      ? COLORS.warning
-      : TEXT_MAIN;
+        ? COLORS.warning
+        : TEXT_MAIN;
 
   const bgColor =
     tone === "success"
       ? SOFT_GREEN
       : tone === "warning"
-      ? SOFT_AMBER
-      : SURFACE;
+        ? SOFT_AMBER
+        : SURFACE;
 
   return (
     <View style={[styles.summaryTile, { backgroundColor: bgColor }]}>
@@ -117,6 +121,8 @@ function ActionRow({
 }
 
 export default function SavingsIndexScreen() {
+  const insets = useSafeAreaInsets();
+
   const [user, setUser] = useState<any>(null);
   const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,8 +131,8 @@ export default function SavingsIndexScreen() {
 
   const kycComplete = isKycComplete(user);
 
-  const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profileKyc as any);
+  const goToProfile = useCallback(() => {
+    router.push(ROUTES.tabs.profile as any);
   }, []);
 
   const goToDeposit = useCallback(() => {
@@ -148,7 +154,7 @@ export default function SavingsIndexScreen() {
     if (!account?.id) return;
 
     if (!kycComplete) {
-      goToKyc();
+      goToProfile();
       return;
     }
 
@@ -162,7 +168,7 @@ export default function SavingsIndexScreen() {
         title: account.name || "Savings",
       },
     });
-  }, [account, kycComplete, goToKyc]);
+  }, [account, kycComplete, goToProfile]);
 
   const goToHistory = useCallback(() => {
     if (!account?.id) return;
@@ -224,191 +230,221 @@ export default function SavingsIndexScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading your community savings...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.loadingText}>
+            Loading your community savings...
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>Please login to access your savings.</Text>
-        </Card>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>
+              Please login to access your savings.
+            </Text>
+          </Card>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!account) {
     return (
-      <View style={styles.container}>
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>
-            {error || "Unable to load your savings right now."}
-          </Text>
-        </Card>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <View style={styles.container}>
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>
+              {error || "Unable to load your savings right now."}
+            </Text>
+          </Card>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="people-outline" size={24} color={COLORS.white} />
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
+            </View>
+
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroEyebrow}>UNITED CARE</Text>
+              <Text style={styles.heroTitle}>
+                {account.name || "Community Savings"}
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                Save steadily, stay prepared, and grow together with your
+                community.
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.heroTextWrap}>
-            <Text style={styles.heroEyebrow}>UNITED CARE</Text>
-            <Text style={styles.heroTitle}>
-              {account.name || "Community Savings"}
-            </Text>
-            <Text style={styles.heroSubtitle}>
-              Save steadily, stay prepared, and grow together with your community.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.heroBalanceBox}>
-          <Text style={styles.heroBalanceLabel}>Available to use</Text>
-          <Text style={styles.heroBalanceValue}>{available}</Text>
-        </View>
-
-        <View style={styles.heroMetaRow}>
-          <View style={styles.heroMetaPill}>
-            <Ionicons
-              name="leaf-outline"
-              size={14}
-              color="rgba(255,255,255,0.9)"
-            />
-            <Text style={styles.heroMetaText}>Steady growth</Text>
+          <View style={styles.heroBalanceBox}>
+            <Text style={styles.heroBalanceLabel}>Available now</Text>
+            <Text style={styles.heroBalanceValue}>{available}</Text>
           </View>
 
-          <View style={styles.heroMetaPill}>
-            <Ionicons
-              name="heart-outline"
-              size={14}
-              color="rgba(255,255,255,0.9)"
-            />
-            <Text style={styles.heroMetaText}>Community first</Text>
-          </View>
-        </View>
-
-        <View style={styles.heroActions}>
-          <Button
-            title="Contribute to Savings"
-            onPress={goToDeposit}
-            leftIcon={
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroMetaPill}>
               <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={COLORS.white}
+                name="leaf-outline"
+                size={14}
+                color="rgba(255,255,255,0.9)"
               />
-            }
-          />
-        </View>
-      </View>
+              <Text style={styles.heroMetaText}>Steady growth</Text>
+            </View>
 
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+            <View style={styles.heroMetaPill}>
+              <Ionicons
+                name="heart-outline"
+                size={14}
+                color="rgba(255,255,255,0.9)"
+              />
+              <Text style={styles.heroMetaText}>Community first</Text>
+            </View>
+          </View>
 
-      {!kycComplete ? (
-        <Card style={styles.noticeCard} onPress={goToKyc}>
-          <View style={styles.noticeIcon}>
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={18}
-              color={COLORS.info}
+          <View style={styles.heroActions}>
+            <Button
+              title="Save"
+              onPress={goToDeposit}
+              leftIcon={
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={COLORS.white}
+                />
+              }
             />
           </View>
+        </View>
 
-          <View style={styles.noticeBody}>
-            <Text style={styles.noticeTitle}>Complete your profile verification</Text>
-            <Text style={styles.noticeText}>
-              Your savings are active. Verification is only needed before withdrawal.
-            </Text>
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
+
+        {!kycComplete ? (
+          <Card style={styles.noticeCard} onPress={goToProfile}>
+            <View style={styles.noticeIcon}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={COLORS.info}
+              />
+            </View>
+
+            <View style={styles.noticeBody}>
+              <Text style={styles.noticeTitle}>Profile completion</Text>
+              <Text style={styles.noticeText}>
+                Saving is open. Profile completion is only needed before
+                withdrawal.
+              </Text>
+            </View>
+
+            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+          </Card>
+        ) : null}
+
+        <Section title="Overview">
+          <View style={styles.summaryGrid}>
+            <SummaryTile label="Total saved" value={balance} />
+            <SummaryTile
+              label="Available now"
+              value={available}
+              tone="success"
+            />
+            <SummaryTile label="Set aside" value={reserved} tone="warning" />
+          </View>
+        </Section>
+
+        <Section title="Continue">
+          <View style={styles.actionList}>
+            <ActionRow
+              title="Save"
+              subtitle="Add more to your savings."
+              icon="add-circle-outline"
+              iconBg={`${COLORS.primary}16`}
+              iconColor={COLORS.primary}
+              onPress={goToDeposit}
+            />
+
+            <ActionRow
+              title="History"
+              subtitle="See your savings journey and past activity."
+              icon="time-outline"
+              iconBg={`${COLORS.info}16`}
+              iconColor={COLORS.info}
+              onPress={goToHistory}
+            />
+
+            <ActionRow
+              title="Withdraw"
+              subtitle={
+                kycComplete
+                  ? "Request money from your savings."
+                  : "Complete your profile before withdrawal."
+              }
+              icon="arrow-up-circle-outline"
+              iconBg={`${COLORS.success}16`}
+              iconColor={kycComplete ? COLORS.success : COLORS.info}
+              onPress={goToWithdraw}
+            />
+          </View>
+        </Section>
+
+        <Card style={styles.communityCard}>
+          <View style={styles.communityCardTop}>
+            <View style={styles.communityIconWrap}>
+              <Ionicons
+                name="sparkles-outline"
+                size={18}
+                color={COLORS.primary}
+              />
+            </View>
+            <Text style={styles.communityTitle}>Why savings matter here</Text>
           </View>
 
-          <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+          <Text style={styles.communityText}>
+            Small, consistent saving helps members stay ready for goals, family
+            needs, and future opportunities. Every step adds to your stability.
+          </Text>
         </Card>
-      ) : null}
-
-      <Section title="Your Savings Overview">
-        <View style={styles.summaryGrid}>
-          <SummaryTile label="Total Saved" value={balance} />
-          <SummaryTile label="Available Now" value={available} tone="success" />
-          <SummaryTile label="Set Aside" value={reserved} tone="warning" />
-        </View>
-      </Section>
-
-      <Section title="What would you like to do?">
-        <View style={styles.actionList}>
-          <ActionRow
-            title="Contribute"
-            subtitle="Add to your personal savings."
-            icon="add-circle-outline"
-            iconBg={`${COLORS.primary}16`}
-            iconColor={COLORS.primary}
-            onPress={goToDeposit}
-          />
-
-          <ActionRow
-            title="View History"
-            subtitle="See your savings journey and past activity."
-            icon="time-outline"
-            iconBg={`${COLORS.info}16`}
-            iconColor={COLORS.info}
-            onPress={goToHistory}
-          />
-
-          <ActionRow
-            title="Withdraw"
-            subtitle={
-              kycComplete
-                ? "Request money from your savings."
-                : "Verification is needed before withdrawal."
-            }
-            icon="arrow-up-circle-outline"
-            iconBg={`${COLORS.success}16`}
-            iconColor={kycComplete ? COLORS.success : COLORS.info}
-            onPress={goToWithdraw}
-          />
-        </View>
-      </Section>
-
-      <Card style={styles.communityCard}>
-        <View style={styles.communityCardTop}>
-          <View style={styles.communityIconWrap}>
-            <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} />
-          </View>
-          <Text style={styles.communityTitle}>Why savings matter here</Text>
-        </View>
-
-        <Text style={styles.communityText}>
-          Small, consistent saving helps members stay ready for goals, family
-          needs, and future opportunities. Every step adds to your stability.
-        </Text>
-      </Card>
-
-      <View style={{ height: 20 }} />
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -416,7 +452,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: 24,
   },
 
   loadingWrap: {

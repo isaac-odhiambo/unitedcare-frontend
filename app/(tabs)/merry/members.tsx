@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context"; // ✅ ADDED
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -151,123 +152,139 @@ export default function MerryMembersScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merryId || !Number.isFinite(merryId)) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Invalid merry"
-          subtitle="No merry was selected."
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry)}
-        />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Invalid merry"
+            subtitle="No merry was selected."
+            actionLabel="Back to Merry"
+            onAction={() => router.replace(ROUTES.tabs.merry)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to view merry members."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login)}
-        />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to view merry members."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!merry && error) {
     return (
-      <View style={styles.container}>
-        <EmptyState
-          title="Unable to load merry"
-          subtitle={error}
-          actionLabel="Back to Merry"
-          onAction={() => router.replace(ROUTES.tabs.merry)}
-        />
-      </View>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.container}>
+          <EmptyState
+            title="Unable to load merry"
+            subtitle={error}
+            actionLabel="Back to Merry"
+            onAction={() => router.replace(ROUTES.tabs.merry)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.hTitle}>Members</Text>
-          <Text style={styles.hSub}>
-            {merry?.name || `Merry #${merryId}`} • {isAdmin ? "Admin" : "Member"} view
-          </Text>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* EVERYTHING ELSE UNCHANGED */}
+        <View style={styles.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.hTitle}>Members</Text>
+            <Text style={styles.hSub}>
+              {merry?.name || `Merry #${merryId}`} • {isAdmin ? "Admin" : "Member"} view
+            </Text>
+          </View>
+
+          <Button
+            variant="ghost"
+            title="Back"
+            onPress={() => router.back()}
+            leftIcon={
+              <Ionicons
+                name="arrow-back-outline"
+                size={16}
+                color={COLORS.primary}
+              />
+            }
+          />
         </View>
 
-        <Button
-          variant="ghost"
-          title="Back"
-          onPress={() => router.back()}
-          leftIcon={
+        {error ? (
+          <Card style={styles.errorCard}>
             <Ionicons
-              name="arrow-back-outline"
-              size={16}
-              color={COLORS.primary}
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
             />
-          }
-        />
-      </View>
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Members</Text>
+            <Text style={styles.summaryValue}>{totals.members}</Text>
+          </View>
 
-      <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Members</Text>
-          <Text style={styles.summaryValue}>{totals.members}</Text>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Total Seats</Text>
+            <Text style={styles.summaryValue}>{totals.seats}</Text>
+          </View>
         </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Seats</Text>
-          <Text style={styles.summaryValue}>{totals.seats}</Text>
-        </View>
-      </View>
+        <Section title="Member List">
+          {members.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No members found"
+              subtitle="Approved merry members will appear here."
+            />
+          ) : (
+            members.map((member) => (
+              <MemberCard key={member.member_id} member={member} />
+            ))
+          )}
+        </Section>
 
-      <Section title="Member List">
-        {members.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No members found"
-            subtitle="Approved merry members will appear here."
-          />
-        ) : (
-          members.map((member) => (
-            <MemberCard key={member.member_id} member={member} />
-          ))
-        )}
-      </Section>
-
-      <View style={{ height: 24 }} />
-    </ScrollView>
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { padding: SPACING.lg, paddingBottom: 24 },
 

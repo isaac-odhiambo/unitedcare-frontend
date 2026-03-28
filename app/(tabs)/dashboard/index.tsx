@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -30,6 +31,12 @@ import {
   TYPE,
 } from "@/constants/theme";
 import {
+  getGroupIdFromMembership,
+  getGroupNameFromMembership,
+  GroupMembership,
+  listGroupMemberships,
+} from "@/services/groups";
+import {
   getMyGuaranteeRequests,
   getMyLoans,
   Loan,
@@ -41,13 +48,11 @@ import {
   MyAllMerryDueSummaryResponse,
 } from "@/services/merry";
 import {
-  canJoinGroup,
-  canJoinMerry,
   canRequestLoan,
   getMe,
   isAdminUser,
   isKycComplete,
-  MeResponse,
+  MeResponse
 } from "@/services/profile";
 import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
 import { getSessionUser, SessionUser } from "@/services/session";
@@ -55,6 +60,8 @@ import { getSessionUser, SessionUser } from "@/services/session";
 type DashboardUser = Partial<MeResponse> &
   Partial<SessionUser> & {
     member_number?: string | number;
+    full_name?: string;
+    name?: string;
   };
 
 type NoticeItem = {
@@ -121,7 +128,9 @@ function getActiveLoan(loansData: Loan[]) {
   return (
     loansData.find((loan) => {
       const status = String(loan?.status || "").toUpperCase();
-      return ["APPROVED", "ACTIVE", "DISBURSED"].includes(status);
+      return ["APPROVED", "ACTIVE", "DISBURSED", "UNDER_REPAYMENT"].includes(
+        status
+      );
     }) || null
   );
 }
@@ -146,32 +155,36 @@ function getToneColors(
 ) {
   const map = {
     primary: {
-      iconBg: "rgba(14, 94, 111, 0.10)",
+      iconBg: COLORS.primaryLight,
+      icon: COLORS.primary,
+      border: "rgba(14, 94, 111, 0.12)",
+      accent: COLORS.primary,
+      cardTint: "rgba(14, 94, 111, 0.03)",
+      valueBg: "rgba(14, 94, 111, 0.06)",
+    },
+    success: {
+      iconBg: COLORS.secondaryLight,
+      icon: COLORS.secondary,
+      border: "rgba(22, 163, 74, 0.12)",
+      accent: COLORS.secondary,
+      cardTint: "rgba(22, 163, 74, 0.03)",
+      valueBg: "rgba(22, 163, 74, 0.06)",
+    },
+    warning: {
+      iconBg: COLORS.accentLight,
+      icon: COLORS.accentDark,
+      border: "rgba(242, 140, 40, 0.14)",
+      accent: COLORS.accentDark,
+      cardTint: "rgba(242, 140, 40, 0.03)",
+      valueBg: "rgba(242, 140, 40, 0.07)",
+    },
+    info: {
+      iconBg: COLORS.primaryLight,
       icon: COLORS.primary,
       border: "rgba(14, 94, 111, 0.10)",
       accent: COLORS.primary,
-      soft: COLORS.primarySoft,
-    },
-    success: {
-      iconBg: "rgba(22, 163, 74, 0.10)",
-      icon: COLORS.secondary,
-      border: "rgba(22, 163, 74, 0.10)",
-      accent: COLORS.secondary,
-      soft: COLORS.secondarySoft,
-    },
-    warning: {
-      iconBg: "rgba(245, 158, 11, 0.12)",
-      icon: COLORS.warning,
-      border: "rgba(245, 158, 11, 0.10)",
-      accent: COLORS.warning,
-      soft: COLORS.warningSoft,
-    },
-    info: {
-      iconBg: "rgba(37, 99, 235, 0.10)",
-      icon: COLORS.info,
-      border: "rgba(37, 99, 235, 0.10)",
-      accent: COLORS.info,
-      soft: COLORS.infoSoft,
+      cardTint: "rgba(14, 94, 111, 0.025)",
+      valueBg: "rgba(14, 94, 111, 0.05)",
     },
   };
 
@@ -226,7 +239,7 @@ function SummaryCard({
 
   return (
     <TouchableOpacity
-      activeOpacity={0.92}
+      activeOpacity={0.94}
       onPress={onPress}
       disabled={!onPress}
       style={[
@@ -237,22 +250,40 @@ function SummaryCard({
         },
       ]}
     >
+      <View
+        style={[
+          styles.summaryCardGlow,
+          { backgroundColor: colors.cardTint },
+        ]}
+      />
+
       <View style={styles.summaryTop}>
         <View style={[styles.summaryIconWrap, { backgroundColor: colors.iconBg }]}>
           <Ionicons name={icon} size={18} color={colors.icon} />
         </View>
 
         {onPress ? (
-          <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={COLORS.textMuted}
-          />
+          <View style={styles.summaryChevronWrap}>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={COLORS.textMuted}
+            />
+          </View>
         ) : null}
       </View>
 
       <Text style={styles.summaryTitle}>{title}</Text>
-      <Text style={[styles.summaryValue, { color: colors.accent }]}>{value}</Text>
+
+      <View
+        style={[
+          styles.summaryValueWrap,
+          { backgroundColor: colors.valueBg },
+        ]}
+      >
+        <Text style={[styles.summaryValue, { color: colors.accent }]}>{value}</Text>
+      </View>
+
       <Text style={styles.summarySubtitle}>{subtitle}</Text>
     </TouchableOpacity>
   );
@@ -285,10 +316,18 @@ function SpaceCard({
         styles.spaceCard,
         {
           borderColor: colors.border,
+          backgroundColor: COLORS.white,
         },
       ]}
       variant="default"
     >
+      <View
+        style={[
+          styles.spaceCardGlow,
+          { backgroundColor: colors.cardTint },
+        ]}
+      />
+
       <View style={styles.spaceHead}>
         <View style={[styles.spaceIcon, { backgroundColor: colors.iconBg }]}>
           <Ionicons name={icon} size={20} color={colors.icon} />
@@ -324,9 +363,22 @@ function NoticeCard({ item }: { item: NoticeItem }) {
   return (
     <Card
       onPress={item.onPress}
-      style={[styles.noticeCard, { borderColor: colors.border }]}
+      style={[
+        styles.noticeCard,
+        {
+          borderColor: colors.border,
+          backgroundColor: COLORS.white,
+        },
+      ]}
       variant="default"
     >
+      <View
+        style={[
+          styles.noticeStripe,
+          { backgroundColor: colors.accent },
+        ]}
+      />
+
       <View style={[styles.noticeIcon, { backgroundColor: colors.iconBg }]}>
         <Ionicons name={item.icon} size={18} color={colors.icon} />
       </View>
@@ -363,7 +415,7 @@ function SmallLink({
 }) {
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
+      activeOpacity={0.92}
       onPress={onPress}
       style={[
         styles.smallLink,
@@ -377,13 +429,15 @@ function SmallLink({
         <View
           style={[
             styles.smallLinkIcon,
-            danger && { backgroundColor: "rgba(220, 38, 38, 0.10)" },
+            danger
+              ? { backgroundColor: "rgba(220, 38, 38, 0.10)" }
+              : { backgroundColor: COLORS.primaryLight },
           ]}
         >
           <Ionicons
             name={icon}
             size={15}
-            color={danger ? "#DC2626" : COLORS.primary}
+            color={danger ? COLORS.error : COLORS.primary}
           />
         </View>
         <Text
@@ -398,7 +452,7 @@ function SmallLink({
       <Ionicons
         name="chevron-forward"
         size={16}
-        color={danger ? "#DC2626" : COLORS.textMuted}
+        color={danger ? COLORS.error : COLORS.textMuted}
       />
     </TouchableOpacity>
   );
@@ -416,21 +470,14 @@ export default function DashboardScreen() {
   const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
   const [heroSavings, setHeroSavings] = useState("—");
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>(
-    []
-  );
+  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
   const [merrySummary, setMerrySummary] =
     useState<MyAllMerryDueSummaryResponse | null>(null);
+  const [groupMemberships, setGroupMemberships] = useState<GroupMembership[]>([]);
 
-  const isAdmin = isAdminUser(user);
-  const kycComplete = isKycComplete(user);
-  const loanAllowed = canRequestLoan(user);
-  const groupAllowed = canJoinGroup(user);
-  const merryAllowed = canJoinMerry(user);
-
-  const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profileKyc as any);
-  }, []);
+  const isAdmin = isAdminUser(user as any);
+  const kycComplete = isKycComplete(user as any);
+  const loanAllowed = canRequestLoan(user as any);
 
   const openFirstMerryFlow = useCallback(() => {
     const items = merrySummary?.items ?? [];
@@ -489,6 +536,18 @@ export default function DashboardScreen() {
     });
   }, []);
 
+  const openGroupContributionFlow = useCallback((groupId?: number | null) => {
+    if (!groupId) {
+      router.push(ROUTES.tabs.groups as any);
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/groups/contribute" as any,
+      params: { groupId: String(groupId) },
+    });
+  }, []);
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -500,6 +559,7 @@ export default function DashboardScreen() {
         loansResult,
         merrySummaryResult,
         guaranteeResult,
+        membershipsResult,
       ] = await Promise.allSettled([
         getSessionUser(),
         getMe(),
@@ -507,6 +567,7 @@ export default function DashboardScreen() {
         getMyLoans(),
         getMyAllMerryDueSummary(),
         getMyGuaranteeRequests(),
+        listGroupMemberships(),
       ]);
 
       const sessionUser =
@@ -536,6 +597,11 @@ export default function DashboardScreen() {
         merrySummaryResult.status === "fulfilled"
           ? merrySummaryResult.value
           : null
+      );
+      setGroupMemberships(
+        membershipsResult.status === "fulfilled" && Array.isArray(membershipsResult.value)
+          ? membershipsResult.value
+          : []
       );
     } finally {
       setLoading(false);
@@ -585,6 +651,21 @@ export default function DashboardScreen() {
   );
   const activeLoan = useMemo(() => getActiveLoan(loans), [loans]);
 
+  const activeGroupMemberships = useMemo(
+    () => groupMemberships.filter((m: any) => !!m?.is_active),
+    [groupMemberships]
+  );
+
+  const firstActiveGroupId = useMemo(() => {
+    const first = activeGroupMemberships[0];
+    return first ? Number(getGroupIdFromMembership(first)) : null;
+  }, [activeGroupMemberships]);
+
+  const firstActiveGroupName = useMemo(() => {
+    const first = activeGroupMemberships[0];
+    return first ? getGroupNameFromMembership(first) : "Community group";
+  }, [activeGroupMemberships]);
+
   const memberNumber = useMemo(() => {
     const raw = user?.member_number;
     if (raw === undefined || raw === null || raw === "") return "";
@@ -604,6 +685,11 @@ export default function DashboardScreen() {
     return toNumber(raw);
   }, [merrySummary]);
 
+  const hasActiveMerry = useMemo(() => {
+    const items = merrySummary?.items ?? [];
+    return items.length > 0;
+  }, [merrySummary]);
+
   const merryAmountValue = useMemo(() => {
     if (merryWalletBalance > 0 && merryDueNow <= 0) {
       return formatKes(merryWalletBalance);
@@ -613,29 +699,37 @@ export default function DashboardScreen() {
       return fmtKES(merrySummary?.total_required_now);
     }
 
-    const items = merrySummary?.items ?? [];
-    if (items.length > 0) return "Active";
-
-    return "No merry yet";
+    return "Active";
   }, [merryWalletBalance, merryDueNow, merrySummary]);
 
   const merrySubtitle = useMemo(() => {
-    const items = merrySummary?.items ?? [];
     if (merryDueNow > 0) return "Contribution waiting";
     if (merryWalletBalance > 0) return "Positive merry wallet";
-    if (items.length > 0)
-      return `${items.length} active space${items.length > 1 ? "s" : ""}`;
-    return "Join and contribute together";
-  }, [merryDueNow, merryWalletBalance, merrySummary]);
+    return "Your merry space is active";
+  }, [merryDueNow, merryWalletBalance]);
+
+  const hasActiveGroups = activeGroupMemberships.length > 0;
+
+  const groupSummaryValue = useMemo(() => {
+    if (!hasActiveGroups) return "—";
+    return `${activeGroupMemberships.length}`;
+  }, [activeGroupMemberships.length, hasActiveGroups]);
+
+  const groupSummarySubtitle = useMemo(() => {
+    if (!hasActiveGroups) return "";
+    if (activeGroupMemberships.length === 1) {
+      return `${firstActiveGroupName}`;
+    }
+    return `${activeGroupMemberships.length} active group spaces`;
+  }, [activeGroupMemberships.length, firstActiveGroupName, hasActiveGroups]);
 
   const communityCount = useMemo(() => {
-    const merryCount = Array.isArray(merrySummary?.items)
-      ? merrySummary!.items.length
-      : 0;
+    const merryCount = hasActiveMerry ? 1 : 0;
     const savingsCount = savingsAccounts.length > 0 ? 1 : 0;
+    const groupCount = hasActiveGroups ? 1 : 0;
     const supportCount = activeLoan ? 1 : 0;
-    return merryCount + savingsCount + supportCount;
-  }, [merrySummary, savingsAccounts.length, activeLoan]);
+    return merryCount + savingsCount + groupCount + supportCount;
+  }, [hasActiveMerry, savingsAccounts.length, hasActiveGroups, activeLoan]);
 
   const noticeItems = useMemo<NoticeItem[]>(() => {
     const items: NoticeItem[] = [];
@@ -648,7 +742,37 @@ export default function DashboardScreen() {
         icon: "shield-checkmark-outline",
         tone: "info",
         actionLabel: "Open",
-        onPress: () => router.push(ROUTES.tabs.profileKyc as any),
+        onPress: () => router.push(ROUTES.tabs.profile as any),
+      });
+    }
+
+    if (hasActiveMerry && merryDueNow > 0) {
+      items.push({
+        id: "merry-due",
+        title: "Merry contribution waiting",
+        subtitle: `${fmtKES(merrySummary?.total_required_now)} is ready for contribution.`,
+        icon: "repeat-outline",
+        tone: "success",
+        actionLabel: "Contribute",
+        onPress: openFirstMerryFlow,
+      });
+    }
+
+    if (hasActiveGroups) {
+      items.push({
+        id: "group-space",
+        title:
+          activeGroupMemberships.length === 1
+            ? "Group contribution space"
+            : `${activeGroupMemberships.length} group spaces active`,
+        subtitle:
+          activeGroupMemberships.length === 1
+            ? `Open ${firstActiveGroupName} and continue contributing.`
+            : "Open your groups and continue participating.",
+        icon: "people-outline",
+        tone: "primary",
+        actionLabel: "Open",
+        onPress: () => router.push(ROUTES.tabs.groupsMemberships as any),
       });
     }
 
@@ -687,321 +811,382 @@ export default function DashboardScreen() {
       });
     }
 
-    return items.slice(0, 3);
-  }, [guaranteeRequests.length, kycComplete, loans]);
+    return items.slice(0, 4);
+  }, [
+    activeGroupMemberships.length,
+    firstActiveGroupName,
+    guaranteeRequests.length,
+    hasActiveGroups,
+    hasActiveMerry,
+    kycComplete,
+    loans,
+    merryDueNow,
+    merrySummary,
+    openFirstMerryFlow,
+  ]);
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please log in to continue."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please log in to continue."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <View style={styles.brandIcon}>
-            <Ionicons
-              name="people-circle-outline"
-              size={24}
-              color={COLORS.white}
-            />
+    <SafeAreaView style={styles.page} edges={["top"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary, COLORS.secondary]}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="automatic"
+      >
+        <View style={styles.topBar}>
+          <View style={styles.topBarLeft}>
+            <View style={styles.brandIcon}>
+              <Ionicons
+                name="people-circle-outline"
+                size={24}
+                color={COLORS.white}
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandTitle}>United Care</Text>
+              <Text style={styles.brandSubtitle}>
+                Community self-help home
+              </Text>
+            </View>
           </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.brandTitle}>United Care</Text>
-            <Text style={styles.brandSubtitle}>Community self-help home</Text>
-          </View>
-        </View>
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={onRefresh}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="refresh-outline" size={18} color={COLORS.primary} />
+            </TouchableOpacity>
 
-        <View style={styles.topBarActions}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={onRefresh}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="refresh-outline" size={18} color={COLORS.primary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={handleLogout}
-            disabled={loggingOut}
-            style={styles.iconBtn}
-          >
-            <Ionicons
-              name="log-out-outline"
-              size={18}
-              color={loggingOut ? COLORS.textMuted : "#DC2626"}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <Card style={styles.heroCard} variant="elevated">
-        <View style={styles.heroDecorOne} />
-        <View style={styles.heroDecorTwo} />
-
-        <View style={styles.heroHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroTag}>
-              {isAdmin ? "COMMUNITY LEAD" : "COMMUNITY MEMBER"}
-            </Text>
-            <Text style={styles.heroTitle}>
-              {greetingText}, {memberName}
-            </Text>
-            <Text style={styles.heroCaption}>
-              Save together, support each other, and keep your community active.
-            </Text>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={handleLogout}
+              disabled={loggingOut}
+              style={styles.iconBtn}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={18}
+                color={loggingOut ? COLORS.textMuted : COLORS.error}
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.heroIdentityRow}>
-          <View style={styles.heroMetaPill}>
-            <Ionicons name="ellipse" size={8} color="#8CF0C7" />
-            <Text style={styles.heroMetaText}>
-              {formatUserStatus(user?.status)}
-            </Text>
+        <Card style={styles.heroCard} variant="elevated">
+          <View style={styles.heroDecorOne} />
+          <View style={styles.heroDecorTwo} />
+          <View style={styles.heroDecorThree} />
+
+          <View style={styles.heroHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heroTag}>
+                {isAdmin ? "COMMUNITY LEAD" : "COMMUNITY MEMBER"}
+              </Text>
+              <Text style={styles.heroTitle}>
+                {greetingText}, {memberName}
+              </Text>
+              <Text style={styles.heroCaption}>
+                Save together, support each other, and keep your community active.
+              </Text>
+            </View>
           </View>
 
-          {memberNumber ? (
+          <View style={styles.heroIdentityRow}>
+            <View style={styles.heroMetaPill}>
+              <Ionicons name="ellipse" size={8} color="#8CF0C7" />
+              <Text style={styles.heroMetaText}>
+                {formatUserStatus(user?.status)}
+              </Text>
+            </View>
+
+            {memberNumber ? (
+              <View style={styles.heroMetaPill}>
+                <Ionicons
+                  name="card-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.92)"
+                />
+                <Text style={styles.heroMetaText}>#{memberNumber}</Text>
+              </View>
+            ) : null}
+
             <View style={styles.heroMetaPill}>
               <Ionicons
-                name="card-outline"
+                name="people-outline"
                 size={14}
                 color="rgba(255,255,255,0.92)"
               />
-              <Text style={styles.heroMetaText}>#{memberNumber}</Text>
+              <Text style={styles.heroMetaText}>
+                {communityCount} active area{communityCount === 1 ? "" : "s"}
+              </Text>
             </View>
-          ) : null}
-
-          <View style={styles.heroMetaPill}>
-            <Ionicons
-              name="people-outline"
-              size={14}
-              color="rgba(255,255,255,0.92)"
-            />
-            <Text style={styles.heroMetaText}>
-              {communityCount} active area{communityCount === 1 ? "" : "s"}
-            </Text>
           </View>
-        </View>
-      </Card>
+        </Card>
 
-      <Section title="Summary">
-        <View
-          style={[styles.summaryGrid, isWideScreen && styles.summaryGridWide]}
-        >
-          <View style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}>
-            <SummaryCard
-              title="Savings"
-              value={heroSavings}
-              subtitle={
-                savingsAccounts.length > 0
-                  ? "Your available savings"
-                  : "Start your savings journey"
-              }
-              icon="wallet-outline"
-              tone="primary"
-              onPress={() => router.push(ROUTES.tabs.savings as any)}
-            />
-          </View>
+        <Section title="Overview">
+          <View
+            style={[styles.summaryGrid, isWideScreen && styles.summaryGridWide]}
+          >
+            {hasActiveMerry ? (
+              <View
+                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
+              >
+                <SummaryCard
+                  title="Merry"
+                  value={merryAmountValue}
+                  subtitle={merrySubtitle}
+                  icon="repeat-outline"
+                  tone="success"
+                  onPress={() => router.push(ROUTES.tabs.merry as any)}
+                />
+              </View>
+            ) : null}
 
-          <View style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}>
-            <SummaryCard
-              title="Merry"
-              value={merryAmountValue}
-              subtitle={merrySubtitle}
-              icon="repeat-outline"
-              tone="success"
-              onPress={() =>
-                merryAllowed ? router.push(ROUTES.tabs.merry as any) : goToKyc()
-              }
-            />
-          </View>
-
-          {activeLoan ? (
             <View
               style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
             >
               <SummaryCard
-                title="Support"
-                value={formatKes(totalOutstandingLoans)}
-                subtitle="Current active support"
-                icon="heart-outline"
-                tone="warning"
-                onPress={() =>
-                  router.push({
-                    pathname: "/(tabs)/loans/[id]" as any,
-                    params: { id: String(activeLoan.id) },
-                  })
+                title="Savings"
+                value={heroSavings}
+                subtitle={
+                  savingsAccounts.length > 0
+                    ? "Your available savings"
+                    : "Start your savings journey"
                 }
+                icon="wallet-outline"
+                tone="primary"
+                onPress={() => router.push(ROUTES.tabs.savings as any)}
               />
             </View>
-          ) : null}
-        </View>
-      </Section>
 
-      <Section title="Continue">
-        <View style={[styles.spaceGrid, isWideScreen && styles.spaceGridWide]}>
-          <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-            <SpaceCard
-              title="Merry space"
-              subtitle="Keep your merry contribution current and your place active."
-              icon="repeat-outline"
-              tone="success"
-              primaryLabel="Contribute"
-              secondaryLabel="Open"
-              onPrimary={() => {
-                if (!merryAllowed) {
-                  goToKyc();
-                  return;
-                }
-                openFirstMerryFlow();
-              }}
-              onSecondary={() => {
-                if (!merryAllowed) {
-                  goToKyc();
-                  return;
-                }
-                router.push(ROUTES.tabs.merry as any);
-              }}
-            />
-          </View>
+            {hasActiveGroups ? (
+              <View
+                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
+              >
+                <SummaryCard
+                  title="Groups"
+                  value={groupSummaryValue}
+                  subtitle={groupSummarySubtitle}
+                  icon="people-outline"
+                  tone="info"
+                  onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
+                />
+              </View>
+            ) : null}
 
-          <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-            <SpaceCard
-              title="Savings space"
-              subtitle="Add to your wallet and grow your shared discipline."
-              icon="wallet-outline"
-              tone="primary"
-              primaryLabel="Add"
-              secondaryLabel="Open"
-              onPrimary={() => {
-                if (!kycComplete) {
-                  goToKyc();
-                  return;
-                }
-                openSavingsFlow(primarySavingsAccount);
-              }}
-              onSecondary={() => router.push(ROUTES.tabs.savings as any)}
-            />
-          </View>
-
-          <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-            <SpaceCard
-              title="Groups"
-              subtitle="Join, follow, and participate in your community groups."
-              icon="people-outline"
-              tone="info"
-              primaryLabel="Open"
-              secondaryLabel={groupAllowed ? "Browse" : "Profile"}
-              onPrimary={() =>
-                groupAllowed
-                  ? router.push(ROUTES.tabs.groups as any)
-                  : goToKyc()
-              }
-              onSecondary={() =>
-                groupAllowed
-                  ? router.push(ROUTES.tabs.groups as any)
-                  : router.push(ROUTES.tabs.profileKyc as any)
-              }
-            />
-          </View>
-
-          {activeLoan ? (
-            <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-              <SpaceCard
-                title="Support space"
-                subtitle="View your active support details or make a contribution."
-                icon="heart-outline"
-                tone="warning"
-                primaryLabel="Add"
-                secondaryLabel="Open"
-                onPrimary={() => {
-                  if (!loanAllowed) {
-                    goToKyc();
-                    return;
+            {activeLoan ? (
+              <View
+                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
+              >
+                <SummaryCard
+                  title="Support"
+                  value={formatKes(totalOutstandingLoans)}
+                  subtitle="Current active support"
+                  icon="heart-outline"
+                  tone="warning"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/loans/[id]" as any,
+                      params: { id: String(activeLoan.id) },
+                    })
                   }
-                  openLoanPaymentFlow(activeLoan);
-                }}
-                onSecondary={() =>
-                  router.push({
-                    pathname: "/(tabs)/loans/[id]" as any,
-                    params: { id: String(activeLoan.id) },
-                  })
-                }
-              />
-            </View>
-          ) : null}
-        </View>
-      </Section>
-
-      {noticeItems.length > 0 ? (
-        <Section title="Updates">
-          <View style={styles.noticeWrap}>
-            {noticeItems.map((item) => (
-              <NoticeCard key={item.id} item={item} />
-            ))}
+                />
+              </View>
+            ) : null}
           </View>
         </Section>
-      ) : null}
 
-      <Section title="Account">
-        <View style={styles.smallLinksWrap}>
-          <SmallLink
-            title="Notifications"
-            icon="notifications-outline"
-            onPress={() => router.push("/(tabs)/notifications" as any)}
-          />
+        <Section title="Continue">
+          <View style={[styles.spaceGrid, isWideScreen && styles.spaceGridWide]}>
+            {hasActiveMerry ? (
+              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
+                <SpaceCard
+                  title="Merry space"
+                  subtitle={
+                    merryDueNow > 0
+                      ? `${fmtKES(merrySummary?.total_required_now)} is ready for contribution.`
+                      : "Open your merry space and keep participating."
+                  }
+                  icon="repeat-outline"
+                  tone="success"
+                  primaryLabel="Contribute"
+                  secondaryLabel="Open"
+                  onPrimary={openFirstMerryFlow}
+                  onSecondary={() => router.push(ROUTES.tabs.merry as any)}
+                />
+              </View>
+            ) : null}
 
-          <SmallLink
-            title="Profile"
-            icon="person-outline"
-            onPress={() => router.push(ROUTES.tabs.profile as any)}
-          />
+            <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
+              <SpaceCard
+                title="Savings space"
+                subtitle={
+                  savingsAccounts.length > 0
+                    ? "Keep growing your savings balance."
+                    : "Start setting something aside for your future."
+                }
+                icon="wallet-outline"
+                tone="primary"
+                primaryLabel="Save"
+                secondaryLabel="Open"
+                onPrimary={() => openSavingsFlow(primarySavingsAccount)}
+                onSecondary={() => router.push(ROUTES.tabs.savings as any)}
+              />
+            </View>
 
-          {isAdmin ? (
+            {hasActiveGroups ? (
+              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
+                <SpaceCard
+                  title="Group space"
+                  subtitle={
+                    activeGroupMemberships.length === 1
+                      ? `Continue with ${firstActiveGroupName}.`
+                      : "Open your group spaces and continue participating."
+                  }
+                  icon="people-outline"
+                  tone="info"
+                  primaryLabel="Contribute"
+                  secondaryLabel="Open"
+                  onPrimary={() => openGroupContributionFlow(firstActiveGroupId)}
+                  onSecondary={() => router.push(ROUTES.tabs.groupsMemberships as any)}
+                />
+              </View>
+            ) : null}
+
+            {activeLoan ? (
+              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
+                <SpaceCard
+                  title="Support space"
+                  subtitle="View your active support details or make a contribution."
+                  icon="heart-outline"
+                  tone="warning"
+                  primaryLabel="Add"
+                  secondaryLabel="View"
+                  onPrimary={() => {
+                    if (!loanAllowed) {
+                      router.push(ROUTES.tabs.profile as any);
+                      return;
+                    }
+                    openLoanPaymentFlow(activeLoan);
+                  }}
+                  onSecondary={() =>
+                    router.push({
+                      pathname: "/(tabs)/loans/[id]" as any,
+                      params: { id: String(activeLoan.id) },
+                    })
+                  }
+                />
+              </View>
+            ) : null}
+          </View>
+        </Section>
+
+        <Section title="Updates">
+          <View style={styles.noticeWrap}>
+            {noticeItems.length > 0 ? (
+              noticeItems.map((item) => <NoticeCard key={item.id} item={item} />)
+            ) : (
+              <Card style={styles.noticeCard} variant="default">
+                <View
+                  style={[
+                    styles.noticeStripe,
+                    { backgroundColor: COLORS.primary },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.noticeIcon,
+                    { backgroundColor: COLORS.primaryLight },
+                  ]}
+                >
+                  <Ionicons
+                    name="notifications-outline"
+                    size={18}
+                    color={COLORS.primary}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.noticeTitle}>No new updates</Text>
+                  <Text style={styles.noticeSubtitle}>
+                    Your latest account updates will appear here.
+                  </Text>
+                </View>
+              </Card>
+            )}
+          </View>
+        </Section>
+
+        <Section title="Account">
+          <View style={styles.smallLinksWrap}>
             <SmallLink
-              title="Admin tools"
-              icon="shield-checkmark-outline"
-              onPress={() => router.push(ROUTES.tabs.groups as any)}
+              title="Notifications"
+              icon="notifications-outline"
+              onPress={() => router.push("/(tabs)/notifications" as any)}
             />
-          ) : null}
 
-          <SmallLink
-            title={loggingOut ? "Logging out..." : "Log out"}
-            icon="log-out-outline"
-            onPress={handleLogout}
-            danger
-          />
-        </View>
-      </Section>
+            <SmallLink
+              title="Profile"
+              icon="person-outline"
+              onPress={() => router.push(ROUTES.tabs.profile as any)}
+            />
 
-      <View style={{ height: 12 }} />
-    </ScrollView>
+            {isAdmin ? (
+              <SmallLink
+                title="Admin tools"
+                icon="shield-checkmark-outline"
+                onPress={() => router.push(ROUTES.tabs.groups as any)}
+              />
+            ) : null}
+
+            <SmallLink
+              title={loggingOut ? "Logging out..." : "Log out"}
+              icon="log-out-outline"
+              onPress={handleLogout}
+              danger
+            />
+          </View>
+        </Section>
+
+        <View style={{ height: 12 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -1012,7 +1197,7 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
   },
 
@@ -1029,6 +1214,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
+    paddingTop: SPACING.xs,
   },
 
   topBarLeft: {
@@ -1074,16 +1260,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
+    borderColor: "rgba(14, 94, 111, 0.10)",
+    ...SHADOW.soft,
   },
 
   heroCard: {
     ...P.dashboardHero,
-    borderRadius: 30,
+    borderRadius: 28,
     overflow: "hidden",
     marginBottom: SPACING.lg,
     paddingBottom: SPACING.md,
-    minHeight: 205,
+    minHeight: 196,
   },
 
   heroDecorOne: {
@@ -1091,19 +1278,29 @@ const styles = StyleSheet.create({
     width: 190,
     height: 190,
     borderRadius: 999,
-    top: -60,
-    right: -35,
+    top: -58,
+    right: -30,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   heroDecorTwo: {
     position: "absolute",
-    width: 130,
-    height: 130,
+    width: 120,
+    height: 120,
     borderRadius: 999,
-    bottom: -30,
-    left: -15,
+    bottom: -24,
+    left: -8,
     backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  heroDecorThree: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 999,
+    bottom: -120,
+    right: -20,
+    backgroundColor: "rgba(22, 163, 74, 0.16)",
   },
 
   heroHeaderRow: {
@@ -1115,13 +1312,13 @@ const styles = StyleSheet.create({
 
   heroTag: {
     ...TYPE.caption,
-    color: "rgba(255,255,255,0.78)",
+    color: "rgba(255,255,255,0.82)",
     fontWeight: "900",
-    letterSpacing: 1,
+    letterSpacing: 1.1,
   },
 
   heroTitle: {
-    ...TYPE.h1,
+    ...TYPE.title,
     color: COLORS.white,
     marginTop: 8,
     fontWeight: "900",
@@ -1133,14 +1330,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: "700",
     lineHeight: 20,
-    maxWidth: "92%",
+    maxWidth: "96%",
   },
 
   heroIdentityRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
-    marginTop: SPACING.lg,
+    marginTop: SPACING.md,
   },
 
   heroMetaPill: {
@@ -1151,6 +1348,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: RADIUS.round,
     backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   heroMetaText: {
@@ -1178,11 +1377,22 @@ const styles = StyleSheet.create({
   },
 
   summaryCard: {
-    minHeight: 148,
+    minHeight: 154,
     borderWidth: 1,
     borderRadius: 24,
     padding: SPACING.md,
     justifyContent: "space-between",
+    overflow: "hidden",
+    ...SHADOW.soft,
+  },
+
+  summaryCardGlow: {
+    position: "absolute",
+    right: -24,
+    top: -24,
+    width: 110,
+    height: 110,
+    borderRadius: 999,
   },
 
   summaryTop: {
@@ -1199,6 +1409,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  summaryChevronWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.04)",
+  },
+
   summaryTitle: {
     ...TYPE.caption,
     color: COLORS.textMuted,
@@ -1206,17 +1425,23 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
 
+  summaryValueWrap: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+
   summaryValue: {
-    fontSize: 24,
-    lineHeight: 30,
+    ...TYPE.title,
     fontWeight: "900",
-    marginTop: 6,
   },
 
   summarySubtitle: {
     ...TYPE.subtext,
     color: COLORS.textMuted,
-    marginTop: 6,
+    marginTop: 8,
     lineHeight: 18,
   },
 
@@ -1243,7 +1468,18 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     backgroundColor: COLORS.white,
-    height: "100%",
+    minHeight: 170,
+    overflow: "hidden",
+    ...SHADOW.soft,
+  },
+
+  spaceCardGlow: {
+    position: "absolute",
+    top: -28,
+    right: -20,
+    width: 120,
+    height: 120,
+    borderRadius: 999,
   },
 
   spaceHead: {
@@ -1285,12 +1521,23 @@ const styles = StyleSheet.create({
 
   noticeCard: {
     padding: SPACING.md,
+    paddingLeft: SPACING.lg,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
     backgroundColor: COLORS.white,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
+    overflow: "hidden",
+    ...SHADOW.soft,
+  },
+
+  noticeStripe: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
 
   noticeIcon: {
@@ -1325,16 +1572,17 @@ const styles = StyleSheet.create({
   },
 
   smallLink: {
-    minHeight: 52,
+    minHeight: 54,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: 18,
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
+    borderColor: "rgba(14, 94, 111, 0.10)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    ...SHADOW.soft,
   },
 
   smallLinkLeft: {
@@ -1350,7 +1598,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(14, 94, 111, 0.08)",
   },
 
   smallLinkText: {
