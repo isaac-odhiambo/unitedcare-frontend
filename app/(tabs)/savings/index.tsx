@@ -32,11 +32,14 @@ import {
 } from "@/services/savings";
 import { saveSessionUser } from "@/services/session";
 
-const SURFACE = "#F8FAFC";
-const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
+const SURFACE = "rgba(255,255,255,0.96)";
+const SURFACE_SOFT = "rgba(248,250,252,0.92)";
+const CARD_BORDER = "rgba(255,255,255,0.10)";
+const INNER_BORDER = "rgba(15, 23, 42, 0.06)";
 const TEXT_MAIN = "#0F172A";
-const TEXT_MUTED = "#64748B";
-const HERO_TOP = "#0F766E";
+const TEXT_SOFT = "#64748B";
+const PAGE_BG = "#062C49";
+const HERO_BG = "rgba(12,106,128,0.48)";
 const SOFT_GREEN = "#ECFDF5";
 const SOFT_BLUE = "#EFF6FF";
 const SOFT_AMBER = "#FFF7ED";
@@ -73,10 +76,11 @@ function SummaryTile({
       ? SOFT_GREEN
       : tone === "warning"
         ? SOFT_AMBER
-        : SURFACE;
+        : SURFACE_SOFT;
 
   return (
     <View style={[styles.summaryTile, { backgroundColor: bgColor }]}>
+      <View style={styles.summaryTileGlow} />
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={[styles.summaryValue, { color: valueColor }]}>{value}</Text>
     </View>
@@ -106,6 +110,7 @@ function ActionRow({
       onPress={onPress}
       style={styles.actionRow}
     >
+      <View style={styles.actionRowGlow} />
       <View style={[styles.actionIconWrap, { backgroundColor: iconBg }]}>
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
@@ -115,7 +120,7 @@ function ActionRow({
         <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+      <Ionicons name="chevron-forward" size={18} color={TEXT_SOFT} />
     </TouchableOpacity>
   );
 }
@@ -145,7 +150,7 @@ export default function SavingsIndexScreen() {
         purpose: "SAVINGS_DEPOSIT",
         accountId: String(account.id),
         reference: buildSavingsReference(account.id),
-        title: account.name || "Savings",
+        title: account.name || "Savings Club",
       },
     });
   }, [account]);
@@ -165,7 +170,7 @@ export default function SavingsIndexScreen() {
         purpose: "SAVINGS_WITHDRAWAL",
         accountId: String(account.id),
         reference: buildSavingsReference(account.id),
-        title: account.name || "Savings",
+        title: account.name || "Savings Club",
       },
     });
   }, [account, kycComplete, goToProfile]);
@@ -232,7 +237,7 @@ export default function SavingsIndexScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color="#8CF0C7" />
           <Text style={styles.loadingText}>
             Loading your community savings...
           </Text>
@@ -244,10 +249,10 @@ export default function SavingsIndexScreen() {
   if (!user) {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+        <View style={styles.centerWrap}>
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>
-              Please login to access your savings.
+              Please login to access your savings space.
             </Text>
           </Card>
         </View>
@@ -258,10 +263,10 @@ export default function SavingsIndexScreen() {
   if (!account) {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+        <View style={styles.centerWrap}>
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>
-              {error || "Unable to load your savings right now."}
+              {error || "Unable to load your savings space right now."}
             </Text>
           </Card>
         </View>
@@ -278,13 +283,28 @@ export default function SavingsIndexScreen() {
           { paddingBottom: Math.max(insets.bottom + 24, 32) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.heroCard}>
+          <View style={styles.heroOrbOne} />
+          <View style={styles.heroOrbTwo} />
+          <View style={styles.heroOrbThree} />
+
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
               <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
@@ -293,17 +313,17 @@ export default function SavingsIndexScreen() {
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroEyebrow}>UNITED CARE</Text>
               <Text style={styles.heroTitle}>
-                {account.name || "Community Savings"}
+                {account.name || "Savings Club"}
               </Text>
               <Text style={styles.heroSubtitle}>
-                Save steadily, stay prepared, and grow together with your
-                community.
+                Save together, stay ready, and support your community when
+                needed.
               </Text>
             </View>
           </View>
 
           <View style={styles.heroBalanceBox}>
-            <Text style={styles.heroBalanceLabel}>Available now</Text>
+            <Text style={styles.heroBalanceLabel}>Ready to use</Text>
             <Text style={styles.heroBalanceValue}>{available}</Text>
           </View>
 
@@ -329,7 +349,7 @@ export default function SavingsIndexScreen() {
 
           <View style={styles.heroActions}>
             <Button
-              title="Save"
+              title="Contribute"
               onPress={goToDeposit}
               leftIcon={
                 <Ionicons
@@ -350,6 +370,7 @@ export default function SavingsIndexScreen() {
 
         {!kycComplete ? (
           <Card style={styles.noticeCard} onPress={goToProfile}>
+            <View style={styles.noticeGlow} />
             <View style={styles.noticeIcon}>
               <Ionicons
                 name="shield-checkmark-outline"
@@ -361,32 +382,32 @@ export default function SavingsIndexScreen() {
             <View style={styles.noticeBody}>
               <Text style={styles.noticeTitle}>Profile completion</Text>
               <Text style={styles.noticeText}>
-                Saving is open. Profile completion is only needed before
-                withdrawal.
+                Contributing is open. Profile completion is only needed before
+                requesting support.
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+            <Ionicons name="chevron-forward" size={18} color={TEXT_SOFT} />
           </Card>
         ) : null}
 
         <Section title="Overview">
           <View style={styles.summaryGrid}>
-            <SummaryTile label="Total saved" value={balance} />
+            <SummaryTile label="Total contributions" value={balance} />
             <SummaryTile
-              label="Available now"
+              label="Ready to use"
               value={available}
               tone="success"
             />
-            <SummaryTile label="Set aside" value={reserved} tone="warning" />
+            <SummaryTile label="Reserved" value={reserved} tone="warning" />
           </View>
         </Section>
 
         <Section title="Continue">
           <View style={styles.actionList}>
             <ActionRow
-              title="Save"
-              subtitle="Add more to your savings."
+              title="Contribute"
+              subtitle="Add your share to the community savings."
               icon="add-circle-outline"
               iconBg={`${COLORS.primary}16`}
               iconColor={COLORS.primary}
@@ -403,11 +424,11 @@ export default function SavingsIndexScreen() {
             />
 
             <ActionRow
-              title="Withdraw"
+              title="Request support"
               subtitle={
                 kycComplete
-                  ? "Request money from your savings."
-                  : "Complete your profile before withdrawal."
+                  ? "Request support from your savings when needed."
+                  : "Complete your profile before requesting support."
               }
               icon="arrow-up-circle-outline"
               iconBg={`${COLORS.success}16`}
@@ -418,6 +439,7 @@ export default function SavingsIndexScreen() {
         </Section>
 
         <Card style={styles.communityCard}>
+          <View style={styles.communityGlow} />
           <View style={styles.communityCardTop}>
             <View style={styles.communityIconWrap}>
               <Ionicons
@@ -442,39 +464,131 @@ export default function SavingsIndexScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
   },
 
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
+  },
+
+  centerWrap: {
+    flex: 1,
+    justifyContent: "center",
+    padding: SPACING.md,
+    backgroundColor: PAGE_BG,
   },
 
   content: {
     padding: SPACING.md,
+    position: "relative",
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
     paddingHorizontal: SPACING.lg,
   },
 
   loadingText: {
     marginTop: SPACING.sm,
-    color: TEXT_MUTED,
+    color: "rgba(255,255,255,0.75)",
     fontFamily: FONT.regular,
     fontSize: 12,
   },
 
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
   heroCard: {
+    position: "relative",
+    overflow: "hidden",
     borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    backgroundColor: HERO_TOP,
+    backgroundColor: HERO_BG,
+    borderWidth: 1,
+    borderColor: "rgba(176, 243, 234, 0.10)",
     ...SHADOW.strong,
+  },
+
+  heroOrbOne: {
+    position: "absolute",
+    right: -36,
+    top: -20,
+    width: 170,
+    height: 170,
+    borderRadius: 999,
+    backgroundColor: "rgba(38, 208, 214, 0.18)",
+  },
+
+  heroOrbTwo: {
+    position: "absolute",
+    left: -12,
+    bottom: -35,
+    width: 145,
+    height: 145,
+    borderRadius: 999,
+    backgroundColor: "rgba(42, 206, 180, 0.16)",
+  },
+
+  heroOrbThree: {
+    position: "absolute",
+    right: 60,
+    bottom: -55,
+    width: 210,
+    height: 150,
+    borderRadius: 999,
+    backgroundColor: "rgba(102, 212, 109, 0.15)",
   },
 
   heroTop: {
@@ -588,15 +702,32 @@ const styles = StyleSheet.create({
   },
 
   noticeCard: {
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: SURFACE,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: INNER_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
     marginBottom: SPACING.lg,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+
+  noticeGlow: {
+    position: "absolute",
+    right: -18,
+    top: -10,
+    width: 90,
+    height: 90,
+    borderRadius: 999,
+    backgroundColor: "rgba(12,106,128,0.05)",
   },
 
   noticeIcon: {
@@ -620,7 +751,7 @@ const styles = StyleSheet.create({
 
   noticeText: {
     marginTop: 4,
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
@@ -631,14 +762,31 @@ const styles = StyleSheet.create({
   },
 
   summaryTile: {
+    position: "relative",
+    overflow: "hidden",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: INNER_BORDER,
     padding: SPACING.md,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+
+  summaryTileGlow: {
+    position: "absolute",
+    right: -18,
+    top: -18,
+    width: 80,
+    height: 80,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.28)",
   },
 
   summaryLabel: {
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
   },
@@ -655,14 +803,31 @@ const styles = StyleSheet.create({
   },
 
   actionRow: {
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: SURFACE,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: INNER_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+
+  actionRowGlow: {
+    position: "absolute",
+    left: -20,
+    bottom: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: "rgba(12,106,128,0.04)",
   },
 
   actionIconWrap: {
@@ -685,19 +850,36 @@ const styles = StyleSheet.create({
 
   actionSubtitle: {
     marginTop: 4,
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
   },
 
   communityCard: {
+    position: "relative",
+    overflow: "hidden",
     marginTop: SPACING.sm,
-    backgroundColor: SOFT_BLUE,
+    backgroundColor: "rgba(239,246,255,0.96)",
     borderWidth: 1,
     borderColor: "rgba(37, 99, 235, 0.08)",
     borderRadius: 22,
     padding: SPACING.md,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+
+  communityGlow: {
+    position: "absolute",
+    right: -18,
+    bottom: -24,
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: "rgba(37, 99, 235, 0.06)",
   },
 
   communityCardTop: {
@@ -723,7 +905,7 @@ const styles = StyleSheet.create({
   },
 
   communityText: {
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 19,

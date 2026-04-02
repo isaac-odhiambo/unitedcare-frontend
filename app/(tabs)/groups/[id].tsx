@@ -8,17 +8,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 
 import {
   createGroupJoinRequest,
@@ -71,7 +69,86 @@ function getJoinActionLabel(joinPolicy: string) {
   return "Space closed";
 }
 
-/* ----------------------------------------------- */
+function SectionTitle({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
+function GlassButton({
+  title,
+  onPress,
+  disabled,
+  primary = false,
+  leftIcon,
+}: {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+  primary?: boolean;
+  leftIcon?: React.ReactNode;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.buttonBase,
+        primary ? styles.buttonPrimary : styles.buttonSecondary,
+        disabled ? styles.buttonDisabled : null,
+      ]}
+    >
+      {leftIcon ? <View style={styles.buttonIcon}>{leftIcon}</View> : null}
+      <Text
+        style={[
+          styles.buttonText,
+          primary ? styles.buttonTextPrimary : styles.buttonTextSecondary,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function InfoCard({
+  title,
+  text,
+  icon,
+  success = false,
+  action,
+}: {
+  title: string;
+  text: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  success?: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.infoCard}>
+      <View style={styles.infoTop}>
+        <View
+          style={[
+            styles.infoIconWrap,
+            success ? styles.infoIconWrapSuccess : styles.infoIconWrapWarning,
+          ]}
+        >
+          <Ionicons
+            name={icon}
+            size={18}
+            color={success ? "#379B4A" : "#0C6A80"}
+          />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.infoTitle}>{title}</Text>
+          <Text style={styles.infoText}>{text}</Text>
+        </View>
+      </View>
+
+      {action ? <View style={{ marginTop: SPACING.md }}>{action}</View> : null}
+    </View>
+  );
+}
 
 export default function GroupDetailScreen() {
   const params = useLocalSearchParams();
@@ -87,10 +164,6 @@ export default function GroupDetailScreen() {
   const [joining, setJoining] = useState(false);
 
   const [user, setUser] = useState<any>(null);
-
-  /* ----------------------------------------------- */
-  /* LOAD DATA */
-  /* ----------------------------------------------- */
 
   const load = useCallback(async () => {
     try {
@@ -166,10 +239,6 @@ export default function GroupDetailScreen() {
     }
   };
 
-  /* ----------------------------------------------- */
-  /* JOIN LOGIC */
-  /* ----------------------------------------------- */
-
   const kycComplete = isKycComplete(user);
   const joinAllowed = canJoinGroup(user);
 
@@ -244,10 +313,6 @@ export default function GroupDetailScreen() {
     );
   };
 
-  /* ----------------------------------------------- */
-  /* UI DERIVED */
-  /* ----------------------------------------------- */
-
   const headerSubtitle = useMemo(() => {
     return `${getGroupTypeLabel(group)} • ${getJoinPolicyLabel(group?.join_policy)}`;
   }, [group]);
@@ -256,39 +321,39 @@ export default function GroupDetailScreen() {
     if (joined) {
       return {
         text: "JOINED",
-        bg: "rgba(46,125,50,0.14)",
-        color: COLORS.success,
+        bg: "rgba(140,240,199,0.18)",
+        color: "#FFFFFF",
       };
     }
 
     if (pending) {
       return {
         text: "REQUESTED",
-        bg: "rgba(245,158,11,0.14)",
-        color: COLORS.warning,
+        bg: "rgba(255,204,102,0.18)",
+        color: "#FFFFFF",
       };
     }
 
     if (isClosed) {
       return {
         text: "CLOSED",
-        bg: "rgba(107,114,128,0.14)",
-        color: COLORS.gray,
+        bg: "rgba(255,255,255,0.12)",
+        color: "#FFFFFF",
       };
     }
 
     if (isApproval) {
       return {
         text: "REVIEW",
-        bg: "rgba(242,140,40,0.14)",
-        color: COLORS.accent || COLORS.warning,
+        bg: "rgba(12,192,183,0.18)",
+        color: "#FFFFFF",
       };
     }
 
     return {
       text: "AVAILABLE",
-      bg: "rgba(37,99,235,0.14)",
-      color: COLORS.primary,
+      bg: "rgba(236,251,255,0.18)",
+      color: "#FFFFFF",
     };
   }, [joined, pending, isClosed, isApproval]);
 
@@ -296,7 +361,7 @@ export default function GroupDetailScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.center}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -318,27 +383,35 @@ export default function GroupDetailScreen() {
     );
   }
 
-  /* ----------------------------------------------- */
-  /* UI */
-  /* ----------------------------------------------- */
-
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.hero}>
           <View style={styles.heroGlowPrimary} />
           <View style={styles.heroGlowAccent} />
+          <View style={styles.heroGlowThird} />
 
           <View style={styles.heroTopRow}>
             <View style={styles.heroIconWrap}>
-              <Ionicons name="people-outline" size={20} color={COLORS.white} />
+              <Ionicons name="people-outline" size={20} color="#FFFFFF" />
             </View>
 
             <View style={[styles.statusPill, { backgroundColor: badgeInfo.bg }]}>
@@ -348,12 +421,13 @@ export default function GroupDetailScreen() {
             </View>
           </View>
 
+          <Text style={styles.heroTag}>COMMUNITY SPACE</Text>
           <Text style={styles.title}>{group.name}</Text>
           <Text style={styles.sub}>{headerSubtitle}</Text>
 
           <View style={styles.heroMetaRow}>
             <View style={styles.heroMetaPill}>
-              <Ionicons name="people-outline" size={14} color={COLORS.white} />
+              <Ionicons name="people-outline" size={14} color="#FFFFFF" />
               <Text style={styles.heroMetaText}>
                 {group.member_count ?? "—"} member
                 {Number(group.member_count || 0) === 1 ? "" : "s"}
@@ -361,7 +435,7 @@ export default function GroupDetailScreen() {
             </View>
 
             <View style={styles.heroMetaPill}>
-              <Ionicons name="wallet-outline" size={14} color={COLORS.white} />
+              <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
               <Text style={styles.heroMetaText}>
                 {getContributionLabel(group)}
               </Text>
@@ -370,13 +444,13 @@ export default function GroupDetailScreen() {
         </View>
 
         {!joined && !pending ? (
-          <Card style={styles.joinCard}>
+          <View style={styles.joinCard}>
             <View style={styles.joinCardTop}>
               <View style={styles.joinIconWrap}>
                 <Ionicons
                   name={isOpen ? "person-add-outline" : "git-pull-request-outline"}
                   size={18}
-                  color={COLORS.primary}
+                  color="#0C6A80"
                 />
               </View>
 
@@ -393,70 +467,46 @@ export default function GroupDetailScreen() {
             </View>
 
             <View style={{ marginTop: SPACING.md }}>
-              <Button
+              <GlassButton
                 title={joining ? "Please wait..." : joinLabel}
                 onPress={handleJoin}
                 disabled={joining || isClosed}
+                primary
               />
             </View>
-          </Card>
+          </View>
         ) : null}
 
         {pending ? (
-          <Card style={styles.infoCard}>
-            <View style={styles.infoTop}>
-              <View style={styles.infoIconWrap}>
-                <Ionicons
-                  name="time-outline"
-                  size={18}
-                  color={COLORS.warning}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.infoTitle}>Request sent</Text>
-                <Text style={styles.infoText}>
-                  Your request is waiting for review. You will be able to take part
-                  once it is approved.
-                </Text>
-              </View>
-            </View>
-          </Card>
+          <InfoCard
+            title="Request sent"
+            text="Your request is waiting for review. You will be able to take part once it is approved."
+            icon="time-outline"
+          />
         ) : null}
 
         {joined ? (
-          <Card style={styles.infoCardSuccess}>
-            <View style={styles.infoTop}>
-              <View style={styles.infoIconWrapSuccess}>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={18}
-                  color={COLORS.success}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.infoTitle}>You are part of this space</Text>
-                <Text style={styles.infoText}>
-                  You can contribute and follow the activity of this community space.
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ marginTop: SPACING.md }}>
-              <Button
+          <InfoCard
+            title="You are part of this space"
+            text="You can contribute and follow the activity of this community space."
+            icon="checkmark-circle-outline"
+            success
+            action={
+              <GlassButton
                 title="Contribute"
                 onPress={() =>
                   router.push(ROUTES.dynamic.groupContribute(groupId) as any)
                 }
-                leftIcon={
-                  <Ionicons name="cash-outline" size={18} color="white" />
-                }
+                primary
+                leftIcon={<Ionicons name="cash-outline" size={18} color="#0C6A80" />}
               />
-            </View>
-          </Card>
+            }
+          />
         ) : null}
 
-        <Section title="Activity">
-          {rows.length === 0 ? (
+        <SectionTitle title="Activity" />
+        {rows.length === 0 ? (
+          <View style={styles.emptyCard}>
             <EmptyState
               icon="time-outline"
               title="No activity yet"
@@ -466,72 +516,71 @@ export default function GroupDetailScreen() {
                   : "Activity will appear here once you become part of this space."
               }
             />
-          ) : (
-            rows.map((r, i) => (
-              <Card key={i} style={styles.row}>
-                <View style={styles.rowLeft}>
-                  <View style={styles.rowIconWrap}>
-                    <Ionicons name="cash-outline" size={16} color={COLORS.primary} />
-                  </View>
-
-                  <View>
-                    <Text style={styles.amount}>{formatKes(r.amount)}</Text>
-                    <Text style={styles.meta}>{fmtDate(r.created_at)}</Text>
-                  </View>
+          </View>
+        ) : (
+          rows.map((r, i) => (
+            <View key={i} style={styles.row}>
+              <View style={styles.rowLeft}>
+                <View style={styles.rowIconWrap}>
+                  <Ionicons name="cash-outline" size={16} color="#0A6E8A" />
                 </View>
-              </Card>
-            ))
-          )}
-        </Section>
 
-        <Section title="About this space">
-          <Card style={styles.about}>
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Type</Text>
-              <Text style={styles.aboutValue}>{getGroupTypeLabel(group)}</Text>
-            </View>
-
-            <View style={styles.aboutDivider} />
-
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Join policy</Text>
-              <Text style={styles.aboutValue}>
-                {getJoinPolicyLabel(group.join_policy)}
-              </Text>
-            </View>
-
-            <View style={styles.aboutDivider} />
-
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Members</Text>
-              <Text style={styles.aboutValue}>{group.member_count ?? "—"}</Text>
-            </View>
-
-            <View style={styles.aboutDivider} />
-
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Contribution</Text>
-              <Text style={styles.aboutValue}>{getContributionLabel(group)}</Text>
-            </View>
-
-            <View style={styles.aboutDivider} />
-
-            <View style={styles.aboutRow}>
-              <Text style={styles.aboutLabel}>Created</Text>
-              <Text style={styles.aboutValue}>{fmtDate(group.created_at)}</Text>
-            </View>
-
-            {group.description ? (
-              <>
-                <View style={styles.aboutDivider} />
                 <View>
-                  <Text style={styles.aboutLabel}>Description</Text>
-                  <Text style={styles.descriptionText}>{group.description}</Text>
+                  <Text style={styles.amount}>{formatKes(r.amount)}</Text>
+                  <Text style={styles.meta}>{fmtDate(r.created_at)}</Text>
                 </View>
-              </>
-            ) : null}
-          </Card>
-        </Section>
+              </View>
+            </View>
+          ))
+        )}
+
+        <SectionTitle title="About this space" />
+        <View style={styles.about}>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>Type</Text>
+            <Text style={styles.aboutValue}>{getGroupTypeLabel(group)}</Text>
+          </View>
+
+          <View style={styles.aboutDivider} />
+
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>Join policy</Text>
+            <Text style={styles.aboutValue}>
+              {getJoinPolicyLabel(group.join_policy)}
+            </Text>
+          </View>
+
+          <View style={styles.aboutDivider} />
+
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>Members</Text>
+            <Text style={styles.aboutValue}>{group.member_count ?? "—"}</Text>
+          </View>
+
+          <View style={styles.aboutDivider} />
+
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>Contribution</Text>
+            <Text style={styles.aboutValue}>{getContributionLabel(group)}</Text>
+          </View>
+
+          <View style={styles.aboutDivider} />
+
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutLabel}>Created</Text>
+            <Text style={styles.aboutValue}>{fmtDate(group.created_at)}</Text>
+          </View>
+
+          {group.description ? (
+            <>
+              <View style={styles.aboutDivider} />
+              <View>
+                <Text style={styles.aboutLabel}>Description</Text>
+                <Text style={styles.descriptionText}>{group.description}</Text>
+              </View>
+            </>
+          ) : null}
+        </View>
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -544,12 +593,12 @@ export default function GroupDetailScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -561,24 +610,75 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   centerWrap: {
     flex: 1,
     justifyContent: "center",
     padding: SPACING.lg,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 140,
+    right: 18,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 8,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   hero: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
     padding: SPACING.lg,
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    borderRadius: 28,
     marginBottom: SPACING.lg,
-    ...SHADOW.card,
+    borderWidth: 1,
+    borderColor: "rgba(189, 244, 255, 0.15)",
   },
 
   heroGlowPrimary: {
@@ -598,7 +698,17 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThird: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTopRow: {
@@ -609,9 +719,9 @@ const styles = StyleSheet.create({
   },
 
   heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.16)",
@@ -628,9 +738,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+  },
+
   title: {
-    color: COLORS.white,
-    fontSize: 20,
+    color: "#FFFFFF",
+    fontSize: 22,
     fontFamily: FONT.bold,
   },
 
@@ -660,19 +782,67 @@ const styles = StyleSheet.create({
   },
 
   heroMetaText: {
-    color: COLORS.white,
+    color: "#FFFFFF",
     fontSize: 11,
     fontFamily: FONT.bold,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+
+  buttonBase: {
+    minHeight: 46,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+  },
+
+  buttonPrimary: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  buttonSecondary: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+
+  buttonIcon: {
+    marginRight: 8,
+  },
+
+  buttonText: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+  },
+
+  buttonTextPrimary: {
+    color: "#0C6A80",
+  },
+
+  buttonTextSecondary: {
+    color: "#FFFFFF",
   },
 
   joinCard: {
     padding: SPACING.md,
     marginBottom: SPACING.lg,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   joinCardTop: {
@@ -682,24 +852,24 @@ const styles = StyleSheet.create({
   },
 
   joinIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(37,99,235,0.10)",
+    backgroundColor: "rgba(236, 251, 255, 0.90)",
   },
 
   joinCardTitle: {
-    fontSize: 13,
-    color: COLORS.text,
+    fontSize: 14,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
     marginBottom: 4,
   },
 
   joinCardText: {
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
     lineHeight: 18,
     fontFamily: FONT.regular,
   },
@@ -707,21 +877,10 @@ const styles = StyleSheet.create({
   infoCard: {
     padding: SPACING.md,
     marginBottom: SPACING.lg,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
-  },
-
-  infoCardSuccess: {
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   infoTop: {
@@ -731,42 +890,51 @@ const styles = StyleSheet.create({
   },
 
   infoIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(245,158,11,0.12)",
+  },
+
+  infoIconWrapWarning: {
+    backgroundColor: "rgba(236, 251, 255, 0.90)",
   },
 
   infoIconWrapSuccess: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(46,125,50,0.12)",
+    backgroundColor: "rgba(236,255,235,0.92)",
   },
 
   infoTitle: {
-    fontSize: 13,
-    color: COLORS.text,
+    fontSize: 14,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
     marginBottom: 4,
   },
 
   infoText: {
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
     lineHeight: 18,
     fontFamily: FONT.regular,
+  },
+
+  emptyCard: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    marginBottom: SPACING.lg,
   },
 
   row: {
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    borderRadius: 22,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(189, 244, 255, 0.15)",
   },
 
   rowLeft: {
@@ -776,31 +944,33 @@ const styles = StyleSheet.create({
   },
 
   rowIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(37,99,235,0.10)",
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
   },
 
   amount: {
     fontFamily: FONT.bold,
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontSize: 13,
   },
 
   meta: {
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
     marginTop: 4,
     fontFamily: FONT.regular,
   },
 
   about: {
     padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    ...SHADOW.card,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   aboutRow: {
@@ -813,12 +983,12 @@ const styles = StyleSheet.create({
 
   aboutDivider: {
     height: 1,
-    backgroundColor: "rgba(15,23,42,0.06)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   aboutLabel: {
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
     fontFamily: FONT.regular,
   },
 
@@ -826,7 +996,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: "right",
     fontSize: 12,
-    color: COLORS.text,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
   },
 
@@ -834,7 +1004,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
     fontFamily: FONT.regular,
   },
 });

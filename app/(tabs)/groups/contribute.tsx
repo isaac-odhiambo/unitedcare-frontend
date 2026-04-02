@@ -2,11 +2,10 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import { getGroup, Group } from "@/services/groups";
 
 type Params = {
@@ -40,6 +39,7 @@ export default function GroupContributeScreen() {
       redirectedRef.current = true;
 
       const groupName = String(loadedGroup?.name || "Community space").trim();
+
       const narration = groupName
         ? `${groupName} contribution`
         : "Community contribution";
@@ -89,29 +89,40 @@ export default function GroupContributeScreen() {
     }, [loadAndContinue])
   );
 
+  /* ----------------------------------------------- */
+  /* LOADING UI (COMMUNITY STYLE) */
+  /* ----------------------------------------------- */
+
   if (loading) {
     return (
       <View style={styles.page}>
-        <Card style={styles.loadingCard}>
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobBottom} />
+
+        <View style={styles.card}>
           <View style={styles.iconWrap}>
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color="#0C6A80" />
           </View>
 
-          <Text style={styles.loadingTitle}>Preparing your contribution</Text>
-          <Text style={styles.loadingText}>
-            Opening the payment screen for this community space.
+          <Text style={styles.title}>Preparing your contribution</Text>
+          <Text style={styles.subtitle}>
+            Opening your community contribution space...
           </Text>
-        </Card>
+        </View>
       </View>
     );
   }
+
+  /* ----------------------------------------------- */
+  /* FAILED UI */
+  /* ----------------------------------------------- */
 
   if (failed) {
     return (
       <View style={styles.page}>
         <EmptyState
           title="Unable to open contribution"
-          subtitle="We could not prepare the payment screen for this community space."
+          subtitle="We could not prepare your community contribution space right now."
           actionLabel="Back to space"
           onAction={() => {
             if (Number.isFinite(groupId) && groupId > 0) {
@@ -125,64 +136,90 @@ export default function GroupContributeScreen() {
     );
   }
 
+  /* ----------------------------------------------- */
+  /* FALLBACK (VERY SHORT — USER WON'T SEE LONG) */
+  /* ----------------------------------------------- */
+
   return (
     <View style={styles.page}>
-      <Card style={styles.loadingCard}>
+      <View style={styles.card}>
         <View style={styles.iconWrap}>
-          <ActivityIndicator color={COLORS.white} />
+          <ActivityIndicator color="#0C6A80" />
         </View>
 
-        <Text style={styles.loadingTitle}>Preparing your contribution</Text>
-        <Text style={styles.loadingText}>
-          Opening the payment screen for this community space.
+        <Text style={styles.title}>Preparing your contribution</Text>
+        <Text style={styles.subtitle}>
+          Taking you to your community contribution screen...
         </Text>
-      </Card>
+      </View>
     </View>
   );
 }
 
+/* ----------------------------------------------- */
+/* STYLES (DASHBOARD MATCH) */
+/* ----------------------------------------------- */
+
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
     padding: SPACING.lg,
     justifyContent: "center",
   },
 
-  loadingCard: {
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    left: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  card: {
     padding: SPACING.lg,
-    borderRadius: RADIUS.xl || RADIUS.lg,
-    backgroundColor: COLORS.card || "#14202f",
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.12)",
     alignItems: "center",
-    overflow: "hidden",
-    ...SHADOW.card,
   },
 
   iconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(236, 251, 255, 0.90)",
   },
 
-  loadingTitle: {
+  title: {
     marginTop: SPACING.md,
     fontSize: 16,
     fontFamily: FONT.bold,
-    color: COLORS.text,
+    color: "#FFFFFF",
     textAlign: "center",
   },
 
-  loadingText: {
+  subtitle: {
     marginTop: 6,
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.82)",
     textAlign: "center",
   },
 });

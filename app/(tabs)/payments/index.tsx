@@ -7,7 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 import {
   SafeAreaView,
@@ -20,7 +20,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { COLORS, FONT, SHADOW, SPACING } from "@/constants/theme";
 import {
   getApiErrorMessage,
   getMyLedger,
@@ -39,14 +39,38 @@ import { getSessionUser, saveSessionUser, SessionUser } from "@/services/session
 
 type PaymentsUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const SURFACE = "#F4F6F8";
-const SURFACE_2 = "#EEF2F6";
-const SURFACE_3 = "#E8EDF3";
-const BORDER = "#D9E1EA";
-const CARD_BORDER = "rgba(15, 23, 42, 0.06)";
-const TEXT_MAIN = "#0F172A";
-const TEXT_SOFT = "#334155";
-const TEXT_MUTED = "#64748B";
+const PAGE_BG = "#0B5D4B";
+const PAGE_BG_DARK = "#084C3D";
+const BRAND = "#0C6A80";
+const WHITE = "#FFFFFF";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
+const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.76)";
+
+const TEXT_MAIN = "#17323B";
+const TEXT_SOFT = "#4A6470";
+const TEXT_MUTED = "#6F8791";
+
+const SURFACE_LIGHT = "#F5FBF8";
+const SURFACE_LIGHT_2 = "#ECF8F3";
+const SURFACE_LIGHT_3 = "#E5F5EF";
+
+const CARD_SOFT = "rgba(255,255,255,0.10)";
+const CARD_SOFT_BORDER = "rgba(255,255,255,0.12)";
+
+const CARD_GREEN = "#E8F6EF";
+const CARD_GREEN_BORDER = "#D3ECDD";
+
+const CARD_BLUE = "#EAF6FA";
+const CARD_BLUE_BORDER = "#D7EDF4";
+
+const CARD_MINT = "#EDF9F6";
+const CARD_MINT_BORDER = "#D8F0EA";
+
+const CARD_WARM = "#F8F4EA";
+const CARD_WARM_BORDER = "#ECE1C7";
+
+const CARD_ALERT = "rgba(239, 68, 68, 0.14)";
+const CARD_ALERT_BORDER = "rgba(239,68,68,0.22)";
 
 function money(v: string | number | null | undefined) {
   const n = Number(v ?? 0);
@@ -85,7 +109,12 @@ function statusBadgeColor(status: string) {
 function StatusPill({ label }: { label: string }) {
   const bg = statusBadgeColor(label);
   return (
-    <View style={[styles.pill, { borderColor: `${bg}30`, backgroundColor: `${bg}12` }]}>
+    <View
+      style={[
+        styles.pill,
+        { borderColor: `${bg}30`, backgroundColor: `${bg}12` },
+      ]}
+    >
       <View style={[styles.pillDot, { backgroundColor: bg }]} />
       <Text style={[styles.pillText, { color: bg }]}>{label}</Text>
     </View>
@@ -96,12 +125,12 @@ function categoryLabel(category?: string) {
   const c = String(category || "").toUpperCase();
 
   if (c === "SAVINGS") return "Savings";
-  if (c === "LOANS") return "Loans";
+  if (c === "LOANS") return "Support";
   if (c === "MERRY") return "Merry";
   if (c === "GROUP") return "Group";
   if (c === "WITHDRAWAL") return "Withdrawal";
   if (c === "WITHDRAWAL_FEE") return "Withdrawal Fee";
-  if (c === "TRANSACTION_FEE") return "Transaction Fee";
+  if (c === "TRANSACTION_FEE") return "Service Fee";
   return c || "Other";
 }
 
@@ -115,14 +144,16 @@ function SmallAction({
   icon,
   onPress,
   tone,
+  cardStyle,
 }: {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   tone: string;
+  cardStyle?: any;
 }) {
   return (
-    <Card onPress={onPress} style={styles.smallActionCard} variant="default">
+    <Card onPress={onPress} style={[styles.smallActionCard, cardStyle]} variant="default">
       <View style={[styles.smallActionIconWrap, { backgroundColor: `${tone}18` }]}>
         <Ionicons name={icon} size={18} color={tone} />
       </View>
@@ -175,11 +206,11 @@ export default function PaymentsIndexScreen() {
 
   const successNotice = useMemo(() => {
     if (params.deposited === "1") {
-      return params.notice || `Deposit started for ${money(params.amount)}.`;
+      return params.notice || `Your contribution request for ${money(params.amount)} has started.`;
     }
 
     if (params.requested === "1") {
-      return params.notice || "Withdrawal request submitted.";
+      return params.notice || "Your withdrawal request has been received.";
     }
 
     return "";
@@ -309,7 +340,7 @@ export default function PaymentsIndexScreen() {
     const lastAmount = lastTxn?.amount ?? "0";
     const lastLabel = lastTxn
       ? `${categoryLabel(lastTxn.category)} • ${money(lastAmount)}`
-      : "No activity";
+      : "No activity yet";
 
     return {
       lastLabel,
@@ -324,7 +355,8 @@ export default function PaymentsIndexScreen() {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color="#DFFCF1" />
+          <Text style={styles.loadingText}>Loading your community activity...</Text>
         </View>
       </SafeAreaView>
     );
@@ -336,7 +368,7 @@ export default function PaymentsIndexScreen() {
         <View style={styles.page}>
           <EmptyState
             title="Not signed in"
-            subtitle="Please login to access payments."
+            subtitle="Please login to continue with your community activity."
             actionLabel="Go to Login"
             onAction={() => router.replace(ROUTES.auth.login as any)}
           />
@@ -354,34 +386,45 @@ export default function PaymentsIndexScreen() {
           { paddingBottom: Math.max(insets.bottom + 30, 36) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#DFFCF1"
+            colors={["#DFFCF1", "#A8F0CC"]}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.heroCard}>
           <View style={styles.heroGlowOne} />
           <View style={styles.heroGlowTwo} />
 
           <View style={styles.heroTop}>
             <View style={{ flex: 1, paddingRight: SPACING.md }}>
-              <Text style={styles.heroEyebrow}>PAYMENTS</Text>
+              <Text style={styles.heroEyebrow}>COMMUNITY ACTIVITY</Text>
               <Text style={styles.heroTitle}>{formatDisplayName(user)}</Text>
               <Text style={styles.heroSubtitle}>
-                {isAdmin ? "Admin payments view" : "Member payments view"}
+                {isAdmin ? "Community overview (Admin)" : "Your community activity"}
               </Text>
             </View>
 
             <View style={styles.heroAvatar}>
-              <Ionicons name="card-outline" size={24} color={COLORS.white} />
+              <Ionicons name="layers-outline" size={24} color={WHITE} />
             </View>
           </View>
 
           <View style={styles.heroFooter}>
             <View style={styles.heroPill}>
-              <Text style={styles.heroPillText}>In {overview.totalIn}</Text>
+              <Text style={styles.heroPillText}>Added {overview.totalIn}</Text>
             </View>
             <View style={styles.heroPill}>
-              <Text style={styles.heroPillText}>Out {overview.totalOut}</Text>
+              <Text style={styles.heroPillText}>Moved out {overview.totalOut}</Text>
             </View>
             <View style={styles.heroPill}>
               <Text style={styles.heroPillText}>
@@ -421,19 +464,22 @@ export default function PaymentsIndexScreen() {
         ) : null}
 
         {!kycComplete ? (
-          <Section title="Verification" subtitle="Withdrawals need completed KYC.">
+          <Section
+            title="Verification"
+            subtitle="Withdrawals need completed KYC."
+          >
             <Card style={styles.noticeCard} onPress={goToKyc}>
               <View style={styles.noticeIcon}>
                 <Ionicons
                   name="shield-checkmark-outline"
                   size={18}
-                  color={COLORS.info}
+                  color="#0A6E8A"
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.noticeTitle}>Complete account verification</Text>
+                <Text style={styles.noticeTitle}>Complete your verification</Text>
                 <Text style={styles.noticeText}>
-                  Deposits and ledger access are available now.
+                  You can still add contributions and view activity as you continue.
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
@@ -441,7 +487,7 @@ export default function PaymentsIndexScreen() {
           </Section>
         ) : null}
 
-        <Section title="Overview" subtitle="Latest activity and withdrawal status.">
+        <Section title="Overview" subtitle="Your recent activity and progress.">
           <Card style={styles.overviewCard}>
             <InfoRow label="Latest" value={overview.lastLabel} />
             <InfoRow
@@ -452,24 +498,26 @@ export default function PaymentsIndexScreen() {
             <InfoRow
               label="Processing withdrawals"
               value={String(overview.processingCount)}
-              valueColor={overview.processingCount > 0 ? COLORS.info : TEXT_MAIN}
+              valueColor={overview.processingCount > 0 ? BRAND : TEXT_MAIN}
             />
           </Card>
         </Section>
 
-        <Section title="Actions" subtitle="Main payment tools.">
+        <Section title="Quick Actions" subtitle="What would you like to do?">
           <View style={styles.smallActionsGrid}>
             <SmallAction
-              title="Deposit"
+              title="Add Contribution"
               icon="arrow-down-circle-outline"
-              tone={COLORS.primary}
+              tone="#0B6A80"
+              cardStyle={styles.actionSavings}
               onPress={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
             />
 
             <SmallAction
-              title={withdrawAllowed ? "Withdraw" : "KYC First"}
+              title={withdrawAllowed ? "Withdraw" : "Complete KYC"}
               icon={withdrawAllowed ? "arrow-up-circle-outline" : "shield-outline"}
-              tone={withdrawAllowed ? COLORS.success : COLORS.warning}
+              tone={withdrawAllowed ? "#379B4A" : COLORS.warning}
+              cardStyle={withdrawAllowed ? styles.actionMerry : styles.actionWarning}
               onPress={() =>
                 withdrawAllowed
                   ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
@@ -478,16 +526,18 @@ export default function PaymentsIndexScreen() {
             />
 
             <SmallAction
-              title="Ledger"
+              title="Activity Summary"
               icon="list-outline"
-              tone={COLORS.info}
+              tone="#0A6E8A"
+              cardStyle={styles.actionGroups}
               onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
             />
 
             <SmallAction
               title="Withdrawals"
               icon="cash-outline"
-              tone={withdrawAllowed ? COLORS.primary : COLORS.warning}
+              tone={withdrawAllowed ? "#148C84" : COLORS.warning}
+              cardStyle={withdrawAllowed ? styles.actionSupport : styles.actionWarning}
               onPress={() =>
                 withdrawAllowed
                   ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
@@ -498,18 +548,19 @@ export default function PaymentsIndexScreen() {
         </Section>
 
         <Section
-          title="Recent Transactions"
+          title="Recent Activity"
+          subtitle="A short preview of your latest entries."
           right={
             <Button
               variant="ghost"
-              title="See all"
+              title="Open full ledger"
               onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
             />
           }
         >
           {ledger?.length ? (
             <View style={{ gap: SPACING.sm }}>
-              {ledger.slice(0, 6).map((row) => {
+              {ledger.slice(0, 3).map((row) => {
                 const isCredit = String(row.entry_type).toUpperCase() === "CREDIT";
                 const amtColor = isCredit ? COLORS.success : COLORS.danger;
                 const ref = typeof row.reference === "string" ? row.reference : "";
@@ -518,7 +569,10 @@ export default function PaymentsIndexScreen() {
                 return (
                   <Card
                     key={row.id}
-                    style={[styles.txCard, feeRow && styles.feeTxCard]}
+                    style={[
+                      styles.txCard,
+                      feeRow ? styles.feeTxCard : styles.standardTxCard,
+                    ]}
                   >
                     <View style={styles.txTop}>
                       <View style={{ flex: 1 }}>
@@ -538,7 +592,7 @@ export default function PaymentsIndexScreen() {
                     </View>
 
                     {feeRow ? (
-                      <Text style={styles.feeHint}>System fee</Text>
+                      <Text style={styles.feeHint}>Service fee</Text>
                     ) : null}
                   </Card>
                 );
@@ -546,9 +600,9 @@ export default function PaymentsIndexScreen() {
             </View>
           ) : (
             <EmptyState
-              title="No transactions yet"
-              subtitle="Your payment activity will appear here."
-              actionLabel="Deposit"
+              title="No activity yet"
+              subtitle="Your community activity will appear here."
+              actionLabel="Add Contribution"
               onAction={() => router.push(ROUTES.tabs.paymentsDeposit as any)}
             />
           )}
@@ -570,7 +624,7 @@ export default function PaymentsIndexScreen() {
         >
           {withdrawals?.length ? (
             <View style={{ gap: SPACING.sm }}>
-              {withdrawals.slice(0, 4).map((w) => (
+              {withdrawals.slice(0, 3).map((w) => (
                 <Card key={w.id} style={styles.wdCard}>
                   <View style={styles.wdTop}>
                     <View style={{ flex: 1 }}>
@@ -592,7 +646,7 @@ export default function PaymentsIndexScreen() {
             </View>
           ) : (
             <EmptyState
-              title="No withdrawals"
+              title="No withdrawals yet"
               subtitle="Your withdrawal requests will appear here."
               actionLabel={withdrawAllowed ? "Request withdrawal" : "Complete KYC"}
               onAction={() =>
@@ -611,27 +665,87 @@ export default function PaymentsIndexScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
   },
 
   content: {
     padding: SPACING.md,
+    position: "relative",
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
+  },
+
+  loadingText: {
+    marginTop: SPACING.sm,
+    color: TEXT_ON_DARK,
+    fontFamily: FONT.regular,
+    fontSize: 12,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(175, 245, 214, 0.08)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(183, 255, 232, 0.06)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.40)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
 
   heroCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl,
+    backgroundColor: CARD_SOFT,
+    borderRadius: 24,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     overflow: "hidden",
-    ...SHADOW.strong,
+    borderWidth: 1,
+    borderColor: CARD_SOFT_BORDER,
+    ...SHADOW.card,
   },
 
   heroGlowOne: {
@@ -639,7 +753,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.07)",
     top: -60,
     right: -40,
   },
@@ -649,7 +763,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(168, 240, 204, 0.08)",
     bottom: -30,
     left: -20,
   },
@@ -661,7 +775,7 @@ const styles = StyleSheet.create({
   },
 
   heroEyebrow: {
-    color: "rgba(255,255,255,0.78)",
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.bold,
     fontSize: 11,
     letterSpacing: 1,
@@ -669,7 +783,7 @@ const styles = StyleSheet.create({
 
   heroTitle: {
     marginTop: 6,
-    color: COLORS.white,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 24,
     lineHeight: 30,
@@ -677,7 +791,7 @@ const styles = StyleSheet.create({
 
   heroSubtitle: {
     marginTop: 8,
-    color: "rgba(255,255,255,0.86)",
+    color: TEXT_ON_DARK,
     fontFamily: FONT.regular,
     fontSize: 13,
     lineHeight: 19,
@@ -686,12 +800,12 @@ const styles = StyleSheet.create({
   heroAvatar: {
     width: 54,
     height: 54,
-    borderRadius: RADIUS.round,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.20)",
+    borderColor: "rgba(255,255,255,0.16)",
   },
 
   heroFooter: {
@@ -704,63 +818,63 @@ const styles = StyleSheet.create({
   heroPill: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   heroPillText: {
-    color: COLORS.white,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 11,
   },
 
   successCard: {
-    backgroundColor: "#F1FAF2",
+    backgroundColor: CARD_GREEN,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.18)",
-    borderRadius: RADIUS.xl,
+    borderColor: CARD_GREEN_BORDER,
+    borderRadius: 20,
   },
 
   successIcon: {
     width: 38,
     height: 38,
-    borderRadius: RADIUS.md,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(34,197,94,0.12)",
+    backgroundColor: "rgba(236, 255, 235, 0.86)",
   },
 
   successText: {
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: COLORS.success,
+    color: TEXT_MAIN,
   },
 
   errorCard: {
-    backgroundColor: "#FFF4F4",
+    backgroundColor: CARD_ALERT,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.18)",
-    borderRadius: RADIUS.xl,
+    borderColor: CARD_ALERT_BORDER,
+    borderRadius: 20,
   },
 
   errorIcon: {
     width: 38,
     height: 38,
-    borderRadius: RADIUS.md,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(239,68,68,0.10)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
   errorText: {
@@ -768,25 +882,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: COLORS.danger,
+    color: WHITE,
   },
 
   noticeCard: {
-    backgroundColor: SURFACE,
+    backgroundColor: CARD_BLUE,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
-    borderRadius: RADIUS.xl,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: CARD_BLUE_BORDER,
   },
 
   noticeIcon: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: `${COLORS.info}18`,
+    borderRadius: 14,
+    backgroundColor: "rgba(236, 251, 255, 0.92)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -802,15 +916,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
   },
 
   overviewCard: {
-    backgroundColor: SURFACE,
+    backgroundColor: SURFACE_LIGHT_2,
     padding: SPACING.md,
-    borderRadius: RADIUS.xl,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: "#DDEFE7",
   },
 
   infoRow: {
@@ -822,7 +936,7 @@ const styles = StyleSheet.create({
   },
 
   infoLabel: {
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
   },
@@ -843,43 +957,70 @@ const styles = StyleSheet.create({
 
   smallActionCard: {
     width: "48.5%",
-    backgroundColor: SURFACE,
-    borderRadius: RADIUS.xl,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     minHeight: 72,
+    ...SHADOW.card,
+  },
+
+  actionSavings: {
+    backgroundColor: CARD_MINT,
+    borderColor: CARD_MINT_BORDER,
+  },
+
+  actionMerry: {
+    backgroundColor: CARD_GREEN,
+    borderColor: CARD_GREEN_BORDER,
+  },
+
+  actionGroups: {
+    backgroundColor: CARD_BLUE,
+    borderColor: CARD_BLUE_BORDER,
+  },
+
+  actionSupport: {
+    backgroundColor: SURFACE_LIGHT_3,
+    borderColor: "#D8ECE5",
+  },
+
+  actionWarning: {
+    backgroundColor: CARD_WARM,
+    borderColor: CARD_WARM_BORDER,
   },
 
   smallActionIconWrap: {
     width: 40,
     height: 40,
-    borderRadius: RADIUS.md,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
 
   smallActionText: {
     flex: 1,
-    color: TEXT_SOFT,
+    color: TEXT_MAIN,
     fontFamily: FONT.bold,
     fontSize: 13,
   },
 
   txCard: {
-    backgroundColor: SURFACE,
     padding: SPACING.md,
-    borderRadius: RADIUS.xl,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+  },
+
+  standardTxCard: {
+    backgroundColor: SURFACE_LIGHT,
+    borderColor: "#D8ECE5",
   },
 
   feeTxCard: {
-    borderColor: `${COLORS.warning}40`,
-    backgroundColor: SURFACE_2,
+    borderColor: CARD_WARM_BORDER,
+    backgroundColor: CARD_WARM,
   },
 
   txTop: {
@@ -899,7 +1040,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     fontFamily: FONT.regular,
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
   },
 
   txAmount: {
@@ -911,15 +1052,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 11,
     fontFamily: FONT.regular,
-    color: COLORS.warning,
+    color: "#9A5B00",
   },
 
   wdCard: {
-    backgroundColor: SURFACE_3,
+    backgroundColor: SURFACE_LIGHT,
     padding: SPACING.md,
-    borderRadius: RADIUS.xl,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: "#D8ECE5",
   },
 
   wdTop: {
@@ -939,7 +1080,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     fontFamily: FONT.regular,
-    color: TEXT_MUTED,
+    color: TEXT_SOFT,
   },
 
   wdAmount: {
@@ -954,7 +1095,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
+    borderRadius: 999,
     borderWidth: 1,
   },
 

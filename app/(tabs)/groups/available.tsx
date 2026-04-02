@@ -8,16 +8,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import {
   createGroupJoinRequest,
   getApiErrorMessage,
@@ -26,12 +24,7 @@ import {
   listGroupMemberships,
   listMyGroupJoinRequests,
 } from "@/services/groups";
-import {
-  canJoinGroup,
-  getMe,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
+import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type AvailableGroupsUser = Partial<MeResponse> & Partial<SessionUser>;
@@ -74,27 +67,27 @@ function StatusPill({
   const toneStyles =
     tone === "member"
       ? {
-          bg: "rgba(46,125,50,0.12)",
-          color: COLORS.success,
+          bg: "rgba(140,240,199,0.18)",
+          color: "#FFFFFF",
         }
       : tone === "pending"
       ? {
-          bg: "rgba(245,158,11,0.12)",
-          color: COLORS.warning,
+          bg: "rgba(255,204,102,0.18)",
+          color: "#FFFFFF",
         }
       : tone === "review"
       ? {
-          bg: "rgba(242,140,40,0.12)",
-          color: COLORS.accent || COLORS.warning,
+          bg: "rgba(12,192,183,0.18)",
+          color: "#FFFFFF",
         }
       : tone === "open"
       ? {
-          bg: "rgba(37,99,235,0.12)",
-          color: COLORS.primary,
+          bg: "rgba(236,251,255,0.18)",
+          color: "#FFFFFF",
         }
       : {
-          bg: "rgba(107,114,128,0.12)",
-          color: COLORS.gray,
+          bg: "rgba(255,255,255,0.12)",
+          color: "#FFFFFF",
         };
 
   return (
@@ -110,14 +103,12 @@ function GroupCard({
   group,
   joined,
   pending,
-  canRequestJoin,
   busy,
   onJoin,
 }: {
   group: Group;
   joined: boolean;
   pending: boolean;
-  canRequestJoin: boolean;
   busy: boolean;
   onJoin: (group: Group) => void;
 }) {
@@ -125,23 +116,24 @@ function GroupCard({
 
   const joinButtonLabel =
     joinPolicy === "OPEN"
-      ? "Join now"
+      ? "Join this space"
       : joinPolicy === "APPROVAL"
-      ? "Request to join"
-      : "Closed";
+      ? "Send request"
+      : "Not open";
 
   const footerText =
     joinPolicy === "OPEN"
       ? "Open for new members"
       : joinPolicy === "APPROVAL"
-      ? "Joins are reviewed first"
+      ? "Requests are reviewed before joining"
       : "Not open right now";
 
   const showJoinButton = !joined && !pending;
-  const buttonDisabled = !canRequestJoin || busy || joinPolicy === "CLOSED";
+  const buttonDisabled = busy || joinPolicy === "CLOSED";
 
   return (
-    <Card
+    <TouchableOpacity
+      activeOpacity={0.94}
       onPress={() => router.push(ROUTES.dynamic.groupDetail(group.id) as any)}
       style={styles.groupCard}
     >
@@ -150,7 +142,7 @@ function GroupCard({
 
       <View style={styles.cardTopRow}>
         <View style={styles.groupIconWrap}>
-          <Ionicons name="people-outline" size={18} color={COLORS.white} />
+          <Ionicons name="people-outline" size={18} color="#0A6E8A" />
         </View>
 
         <View style={styles.groupTextWrap}>
@@ -163,11 +155,7 @@ function GroupCard({
         </View>
 
         <View style={styles.arrowWrap}>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color={COLORS.textMuted || COLORS.gray}
-          />
+          <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
         </View>
       </View>
 
@@ -212,19 +200,27 @@ function GroupCard({
           <Text style={styles.cardFooterText}>Enter space</Text>
           <Text style={styles.cardFooterSub}>{footerText}</Text>
         </View>
-        <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+        <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
       </View>
 
       {showJoinButton ? (
         <View style={styles.joinActionWrap}>
-          <Button
-            title={busy ? "Please wait..." : joinButtonLabel}
+          <TouchableOpacity
+            activeOpacity={0.92}
             onPress={() => onJoin(group)}
             disabled={buttonDisabled}
-          />
+            style={[
+              styles.joinButton,
+              buttonDisabled ? styles.joinButtonDisabled : styles.joinButtonActive,
+            ]}
+          >
+            <Text style={styles.joinButtonText}>
+              {busy ? "Please wait..." : joinButtonLabel}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : null}
-    </Card>
+    </TouchableOpacity>
   );
 }
 
@@ -237,9 +233,6 @@ export default function AvailableGroupsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [submittingGroupId, setSubmittingGroupId] = useState<number | null>(null);
   const [error, setError] = useState("");
-
-  const kycComplete = isKycComplete(user);
-  const joinAllowed = canJoinGroup(user);
 
   const load = useCallback(async () => {
     try {
@@ -361,38 +354,23 @@ export default function AvailableGroupsScreen() {
 
   const handleJoin = useCallback(
     async (group: Group) => {
-      if (!joinAllowed) {
-        Alert.alert(
-          "Community spaces",
-          "Complete your profile before joining a community space.",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Open profile",
-              onPress: () => router.push(ROUTES.tabs.profile as any),
-            },
-          ]
-        );
-        return;
-      }
-
       const joinPolicy = String(group.join_policy || "").toUpperCase().trim();
 
       if (joinPolicy === "CLOSED") {
-        Alert.alert("Community spaces", "This space is not open right now.");
+        Alert.alert("Community space", "This space is not open right now.");
         return;
       }
 
       const isOpen = joinPolicy === "OPEN";
       const title = isOpen ? "Join community space" : "Send join request";
       const message = isOpen
-        ? `Would you like to join ${group.name} now?`
+        ? `Would you like to be part of ${group.name}?`
         : `Would you like to request to join ${group.name}?`;
 
       Alert.alert(title, message, [
         { text: "Cancel", style: "cancel" },
         {
-          text: isOpen ? "Join now" : "Send request",
+          text: isOpen ? "Join this space" : "Send request",
           onPress: async () => {
             try {
               setSubmittingGroupId(group.id);
@@ -403,16 +381,16 @@ export default function AvailableGroupsScreen() {
               });
 
               Alert.alert(
-                "Community spaces",
+                "Community space",
                 res?.message ||
                   (isOpen
-                    ? "You joined the space successfully."
-                    : "Your request has been submitted.")
+                    ? "You are now part of the space."
+                    : "Your request has been sent successfully.")
               );
 
               await load();
             } catch (e: any) {
-              Alert.alert("Community spaces", getApiErrorMessage(e));
+              Alert.alert("Community space", getApiErrorMessage(e));
             } finally {
               setSubmittingGroupId(null);
             }
@@ -420,13 +398,13 @@ export default function AvailableGroupsScreen() {
         },
       ]);
     },
-    [joinAllowed, load]
+    [load]
   );
 
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color="#8CF0C7" />
       </View>
     );
   }
@@ -449,24 +427,38 @@ export default function AvailableGroupsScreen() {
       style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#8CF0C7"
+          colors={["#8CF0C7", "#0CC0B7"]}
+        />
       }
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobMiddle} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
+
       <View style={styles.heroCard}>
         <View style={styles.heroGlowOne} />
         <View style={styles.heroGlowTwo} />
+        <View style={styles.heroGlowThree} />
 
         <View style={styles.heroTop}>
           <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTag}>COMMUNITY SPACES</Text>
             <Text style={styles.heroTitle}>Open community spaces</Text>
             <Text style={styles.heroSubtitle}>
-              Explore spaces where members save, support each other, and grow together.
+              Explore spaces where members support each other, contribute together,
+              and grow as a community.
             </Text>
           </View>
 
           <View style={styles.heroIconWrap}>
-            <Ionicons name="people-outline" size={22} color={COLORS.white} />
+            <Ionicons name="people-outline" size={22} color="#FFFFFF" />
           </View>
         </View>
 
@@ -489,66 +481,36 @@ export default function AvailableGroupsScreen() {
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+        <View style={styles.errorCard}>
+          <View style={styles.errorIconWrap}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+          </View>
           <Text style={styles.errorText}>{error}</Text>
-        </Card>
+        </View>
       ) : null}
 
-      {!kycComplete ? (
-        <Card style={styles.noticeCard}>
-          <View style={styles.noticeTop}>
-            <View style={styles.noticeIconWrap}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color={COLORS.warning}
-              />
-            </View>
+      <Text style={styles.sectionTitle}>Browse spaces</Text>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.noticeTitle}>Complete profile to join</Text>
-              <Text style={styles.noticeText}>
-                You can explore community spaces now. Complete your profile before joining.
-              </Text>
-            </View>
-          </View>
-
-          <View style={{ marginTop: SPACING.md }}>
-            <Button
-              title="Complete profile"
-              variant="secondary"
-              onPress={() => router.push(ROUTES.tabs.profile as any)}
-            />
-          </View>
-        </Card>
-      ) : null}
-
-      <Section title="Browse spaces">
-        {groups.length === 0 ? (
+      {groups.length === 0 ? (
+        <View style={styles.emptyHolder}>
           <EmptyState
             icon="people-outline"
             title="No spaces found"
             subtitle="Community spaces created by admins will appear here."
           />
-        ) : (
-          groups.map((group) => (
-            <GroupCard
-              key={group.id}
-              group={group}
-              joined={joinedGroupIds.includes(group.id)}
-              pending={pendingJoinGroupIds.includes(group.id)}
-              canRequestJoin={joinAllowed}
-              busy={submittingGroupId === group.id}
-              onJoin={handleJoin}
-            />
-          ))
-        )}
-      </Section>
+        </View>
+      ) : (
+        groups.map((group) => (
+          <GroupCard
+            key={group.id}
+            group={group}
+            joined={joinedGroupIds.includes(group.id)}
+            pending={pendingJoinGroupIds.includes(group.id)}
+            busy={submittingGroupId === group.id}
+            onJoin={handleJoin}
+          />
+        ))
+      )}
 
       <View style={{ height: 28 }} />
     </ScrollView>
@@ -558,7 +520,7 @@ export default function AvailableGroupsScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -570,17 +532,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    ...SHADOW.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   heroGlowOne: {
@@ -600,13 +613,35 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
   heroIconWrap: {
@@ -621,7 +656,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 22,
     fontFamily: FONT.bold,
-    color: COLORS.white,
+    color: "#FFFFFF",
   },
 
   heroSubtitle: {
@@ -641,7 +676,7 @@ const styles = StyleSheet.create({
   heroStatPill: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
+    borderRadius: 18,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
   },
@@ -655,7 +690,7 @@ const styles = StyleSheet.create({
   heroStatValue: {
     marginTop: 4,
     fontSize: 16,
-    color: COLORS.white,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
   },
 
@@ -665,57 +700,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
-    backgroundColor: "rgba(220,53,69,0.08)",
+    backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(220,53,69,0.18)",
-    borderRadius: RADIUS.lg,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 22,
   },
 
-  errorText: {
-    flex: 1,
-    color: COLORS.danger,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  noticeCard: {
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
-  },
-
-  noticeTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  noticeIconWrap: {
+  errorIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(245,158,11,0.12)",
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
 
-  noticeTitle: {
-    fontSize: 13,
-    color: COLORS.text,
-    fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  noticeText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
+  errorText: {
+    flex: 1,
+    color: "#FFFFFF",
     fontFamily: FONT.regular,
+    fontSize: 12,
     lineHeight: 18,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+    marginTop: 4,
   },
 
   groupCard: {
@@ -723,11 +736,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(189, 244, 255, 0.15)",
   },
 
   cardGlowPrimary: {
@@ -737,7 +749,7 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 52.5,
-    backgroundColor: "rgba(37,99,235,0.04)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   cardGlowAccent: {
@@ -747,7 +759,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(242,140,40,0.06)",
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   cardTopRow: {
@@ -761,7 +773,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
     marginRight: 12,
   },
 
@@ -773,14 +785,14 @@ const styles = StyleSheet.create({
   groupTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   groupMeta: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
   },
 
   groupDescription: {
@@ -788,7 +800,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
   },
 
   arrowWrap: {
@@ -797,13 +809,13 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.04)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
   infoBox: {
     marginTop: SPACING.md,
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 18,
     padding: SPACING.sm,
   },
 
@@ -817,13 +829,13 @@ const styles = StyleSheet.create({
 
   infoDivider: {
     height: 1,
-    backgroundColor: "rgba(15,23,42,0.05)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   infoLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
   },
 
   infoValue: {
@@ -831,7 +843,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   badgesRow: {
@@ -856,21 +868,21 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
   cardFooterText: {
-    color: COLORS.primary,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
     fontSize: 12,
   },
 
   cardFooterSub: {
     marginTop: 4,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.regular,
     fontSize: 11,
     lineHeight: 16,
@@ -878,5 +890,39 @@ const styles = StyleSheet.create({
 
   joinActionWrap: {
     marginTop: SPACING.md,
+  },
+
+  joinButton: {
+    minHeight: 46,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  joinButtonActive: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  joinButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    opacity: 0.65,
+  },
+
+  joinButtonText: {
+    color: "#0C6A80",
+    fontFamily: FONT.bold,
+    fontSize: 13,
+  },
+
+  emptyHolder: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 });

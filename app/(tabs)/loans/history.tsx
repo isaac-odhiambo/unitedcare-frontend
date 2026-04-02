@@ -1,4 +1,5 @@
 // app/(tabs)/loans/history.tsx
+
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -17,7 +18,7 @@ import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import { getApiErrorMessage, getMyLoans, Loan } from "@/services/loans";
 
@@ -30,10 +31,7 @@ function toNum(value?: string | number | null) {
 
 function fmtKES(amount?: string | number | null) {
   const n = toNum(amount);
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return `KES ${n.toLocaleString("en-KE")}`;
 }
 
 function fmtDate(value?: string | null) {
@@ -53,22 +51,22 @@ function getStatusTone(status?: string | null) {
   const value = String(status || "").toUpperCase();
 
   if (value === "COMPLETED") {
-    return { text: COLORS.secondary, bg: "rgba(22, 163, 74, 0.10)" };
+    return { text: "#8CF0C7", bg: "rgba(140,240,199,0.18)" };
   }
 
   if (["PENDING", "UNDER_REVIEW"].includes(value)) {
-    return { text: COLORS.warning, bg: "rgba(245, 158, 11, 0.12)" };
+    return { text: "#FFD166", bg: "rgba(255,204,102,0.18)" };
   }
 
   if (["REJECTED", "CANCELLED", "DEFAULTED"].includes(value)) {
-    return { text: COLORS.danger, bg: "rgba(239, 68, 68, 0.10)" };
+    return { text: "#FF6B6B", bg: "rgba(220,53,69,0.18)" };
   }
 
-  return { text: COLORS.primary, bg: "rgba(14, 94, 111, 0.10)" };
+  return { text: "#FFFFFF", bg: "rgba(255,255,255,0.12)" };
 }
 
 function getLoanTitle(loan: Loan) {
-  return loan.product_detail?.name || loan.product_name || `Loan #${loan.id}`;
+  return loan.product_detail?.name || loan.product_name || `Support #${loan.id}`;
 }
 
 /* ---------------- ROW ---------------- */
@@ -78,13 +76,16 @@ function LoanRow({ loan }: { loan: Loan }) {
 
   return (
     <TouchableOpacity
-      activeOpacity={0.88}
+      activeOpacity={0.9}
       onPress={() => router.push(ROUTES.dynamic.loanDetail(loan.id) as any)}
       style={styles.row}
     >
+      <View style={styles.rowGlow1} />
+      <View style={styles.rowGlow2} />
+
       <View style={styles.rowLeft}>
         <View style={styles.iconWrap}>
-          <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+          <Ionicons name="document-text-outline" size={18} color="#0A6E8A" />
         </View>
 
         <View style={styles.rowContent}>
@@ -92,7 +93,7 @@ function LoanRow({ loan }: { loan: Loan }) {
             {getLoanTitle(loan)}
           </Text>
 
-          <Text style={styles.rowSubtitle} numberOfLines={1}>
+          <Text style={styles.rowSubtitle}>
             {fmtKES(loan.principal)} • {fmtDate(loan.created_at)}
           </Text>
         </View>
@@ -105,7 +106,7 @@ function LoanRow({ loan }: { loan: Loan }) {
           </Text>
         </View>
 
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
       </View>
     </TouchableOpacity>
   );
@@ -161,9 +162,9 @@ export default function LoanHistoryScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <SafeAreaView style={styles.safe}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -172,38 +173,38 @@ export default function LoanHistoryScreen() {
   /* ---------------- UI ---------------- */
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.safe}>
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        showsVerticalScrollIndicator={false}
       >
+        {/* BACKGROUND BLOBS */}
+        <View style={styles.bgBlob1} />
+        <View style={styles.bgBlob2} />
+
+        {/* HEADER */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Loan History</Text>
+          <Text style={styles.headerTitle}>Support history</Text>
           <Text style={styles.headerSubtitle}>
-            Your past and current loan records
+            Your past and current community support
           </Text>
         </View>
 
         {error ? (
-          <Card style={styles.errorCard} variant="default">
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={COLORS.danger}
-            />
+          <Card style={styles.errorCard}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
 
         {sortedLoans.length === 0 ? (
           <EmptyState
-            title="No loan records yet"
-            subtitle="Your loan records will appear here."
-            actionLabel="Back to Loans"
+            title="No activity yet"
+            subtitle="Your community support history will appear here."
+            actionLabel="Back"
             onAction={() => router.replace(ROUTES.tabs.loans as any)}
           />
         ) : (
@@ -214,7 +215,7 @@ export default function LoanHistoryScreen() {
           </View>
         )}
 
-        <View style={{ height: 12 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -225,24 +226,43 @@ export default function LoanHistoryScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl,
   },
 
   loadingWrap: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    alignItems: "center",
+    backgroundColor: "#0C6A80",
+  },
+
+  bgBlob1: {
+    position: "absolute",
+    top: -100,
+    right: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  bgBlob2: {
+    position: "absolute",
+    bottom: -100,
+    left: -60,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   header: {
@@ -250,33 +270,29 @@ const styles = StyleSheet.create({
   },
 
   headerTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "900",
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   headerSubtitle: {
     marginTop: 4,
-    fontSize: 14,
-    color: COLORS.textMuted,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
   },
 
   errorCard: {
-    padding: SPACING.md,
-    borderRadius: 18,
-    backgroundColor: "#FFF4F4",
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.12)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
     marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    gap: SPACING.sm,
+    backgroundColor: "rgba(220,53,69,0.18)",
+    borderRadius: 18,
   },
 
   errorText: {
     flex: 1,
-    fontSize: 14,
-    color: COLORS.danger,
+    color: "#FFFFFF",
   },
 
   list: {
@@ -284,17 +300,37 @@ const styles = StyleSheet.create({
   },
 
   row: {
-    minHeight: 68,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
+    position: "relative",
+    overflow: "hidden",
+    minHeight: 70,
+    padding: SPACING.md,
+    borderRadius: 20,
+    backgroundColor: "rgba(49,180,217,0.22)",
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.08)",
+    borderColor: "rgba(189,244,255,0.15)",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    ...SHADOW.soft,
+  },
+
+  rowGlow1: {
+    position: "absolute",
+    top: -20,
+    right: -20,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  rowGlow2: {
+    position: "absolute",
+    bottom: -20,
+    left: -20,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   rowLeft: {
@@ -304,29 +340,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(236,251,255,0.9)",
+  },
+
   rowContent: {
     flex: 1,
   },
 
-  iconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(14, 94, 111, 0.08)",
-  },
-
   rowTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   rowSubtitle: {
     marginTop: 3,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.75)",
   },
 
   rowRight: {
@@ -338,11 +374,11 @@ const styles = StyleSheet.create({
   statusPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
+    borderRadius: 999,
   },
 
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
 });

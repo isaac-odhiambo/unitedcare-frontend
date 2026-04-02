@@ -61,12 +61,12 @@ function getTxnTitle(row: SavingsHistoryRow) {
   const txnType = String(row.txn_type || "").toUpperCase();
 
   if (row.narration) return row.narration;
-  if (txnType === "DEPOSIT") return "Deposit";
+  if (txnType === "DEPOSIT") return "Contribution added";
   if (txnType === "WITHDRAWAL") return "Withdrawal";
-  if (txnType === "ADJUSTMENT") return "Adjustment";
-  if (txnType === "AUTO_DEDUCT") return "Auto deduction";
+  if (txnType === "ADJUSTMENT") return "Update";
+  if (txnType === "AUTO_DEDUCT") return "Automatic deduction";
 
-  return "Transaction";
+  return "Activity";
 }
 
 function getTxnTone(row: SavingsHistoryRow) {
@@ -102,8 +102,8 @@ function TypePill({ account }: { account: SavingsAccount }) {
   const type = String(account.account_type || "").toUpperCase();
   const locked = isSavingsLocked(account);
 
-  let bg = "rgba(37, 99, 235, 0.10)";
-  let color = COLORS.info;
+  let bg = "rgba(12, 106, 128, 0.10)";
+  let color = "#0C6A80";
   let label = getSavingsTypeLabel(type);
 
   if (type === "FIXED") {
@@ -131,7 +131,7 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
       <View style={[styles.banner, styles.bannerDanger]}>
         <Ionicons name="alert-circle-outline" size={16} color={COLORS.danger} />
         <Text style={[styles.bannerText, { color: COLORS.danger }]}>
-          This savings wallet is inactive.
+          This savings space is currently inactive.
         </Text>
       </View>
     );
@@ -157,7 +157,7 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
         color={COLORS.success}
       />
       <Text style={[styles.bannerText, { color: COLORS.success }]}>
-        Savings wallet is active.
+        Your savings space is active and ready.
       </Text>
     </View>
   );
@@ -177,7 +177,7 @@ function SummaryCard({
       ? COLORS.success
       : tone === "danger"
         ? COLORS.danger
-        : COLORS.dark;
+        : "#0F172A";
 
   return (
     <View style={styles.summaryCard}>
@@ -197,7 +197,7 @@ function AccountCard({ account }: { account: SavingsAccount }) {
           <Text style={styles.accountName} numberOfLines={1}>
             {account.name || "My Savings"}
           </Text>
-          <Text style={styles.accountMeta}>Personal savings wallet</Text>
+          <Text style={styles.accountMeta}>Your personal community savings space</Text>
         </View>
 
         <TypePill account={account} />
@@ -207,26 +207,26 @@ function AccountCard({ account }: { account: SavingsAccount }) {
 
       <View style={styles.metricsGrid}>
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Balance</Text>
+          <Text style={styles.metricLabel}>Total saved</Text>
           <Text style={styles.metricValue}>{formatKes(account.balance)}</Text>
         </View>
 
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Available</Text>
+          <Text style={styles.metricLabel}>Ready to use</Text>
           <Text style={styles.metricValue}>
             {formatKes(account.available_balance)}
           </Text>
         </View>
 
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Reserved</Text>
+          <Text style={styles.metricLabel}>Set aside</Text>
           <Text style={styles.metricValue}>
             {formatKes(account.reserved_amount)}
           </Text>
         </View>
 
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Status</Text>
+          <Text style={styles.metricLabel}>Space status</Text>
           <Text style={styles.metricValue}>
             {account.is_active ? "Active" : "Inactive"}
           </Text>
@@ -292,7 +292,7 @@ export default function SavingsHistoryScreen() {
         if (!myAccount?.id) {
           setAccount(null);
           setTransactions([]);
-          setError("No savings wallet found.");
+          setError("No savings space found.");
           return;
         }
         accountId = myAccount.id;
@@ -369,8 +369,8 @@ export default function SavingsHistoryScreen() {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading savings history...</Text>
+          <ActivityIndicator size="small" color="#C7FFF2" />
+          <Text style={styles.loadingText}>Loading your savings space...</Text>
         </View>
       </SafeAreaView>
     );
@@ -381,7 +381,7 @@ export default function SavingsHistoryScreen() {
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.page}>
           <EmptyState
-            title="Unable to load savings"
+            title="Unable to open savings space"
             subtitle={error}
             actionLabel="Back to Savings"
             onAction={() => router.replace(ROUTES.tabs.savings)}
@@ -401,29 +401,39 @@ export default function SavingsHistoryScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#C7FFF2"
+            colors={["#C7FFF2", "#8CF0C7"]}
+          />
         }
       >
-        <View style={styles.header}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.title}>Savings History</Text>
-            <Text style={styles.subtitle}>
-              Review your savings balance and activity.
-            </Text>
-          </View>
+        <View style={styles.heroCard}>
+          <View style={styles.heroGlowOne} />
+          <View style={styles.heroGlowTwo} />
 
-          <Button
-            title="Back"
-            variant="ghost"
-            onPress={() => router.back()}
-            leftIcon={
-              <Ionicons
-                name="arrow-back-outline"
-                size={16}
-                color={COLORS.primary}
-              />
-            }
-          />
+          <View style={styles.header}>
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.title}>Savings Activity</Text>
+              <Text style={styles.subtitle}>
+                Follow your community saving journey and recent activity in one place.
+              </Text>
+            </View>
+
+            <Button
+              title="Back"
+              variant="ghost"
+              onPress={() => router.back()}
+              leftIcon={
+                <Ionicons
+                  name="arrow-back-outline"
+                  size={16}
+                  color="#FFFFFF"
+                />
+              }
+            />
+          </View>
         </View>
 
         {error ? (
@@ -431,7 +441,7 @@ export default function SavingsHistoryScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={18}
-              color={COLORS.danger}
+              color="#FFFFFF"
             />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
@@ -439,29 +449,29 @@ export default function SavingsHistoryScreen() {
 
         {account ? (
           <>
-            <Section title="Wallet">
+            <Section title="Your savings space">
               <AccountCard account={account} />
             </Section>
 
             <View style={styles.summaryGrid}>
               <SummaryCard
-                label="Deposits"
+                label="Added by you"
                 value={formatKes(totals.credits)}
                 tone="success"
               />
               <SummaryCard
-                label="Withdrawals"
+                label="Taken out"
                 value={formatKes(totals.debits)}
                 tone="danger"
               />
             </View>
 
             <Section
-              title="Transactions"
+              title="Recent activity"
               right={
                 <View style={styles.sectionActions}>
                   <Button
-                    title="Deposit"
+                    title="Add"
                     variant="ghost"
                     onPress={() =>
                       router.push({
@@ -500,9 +510,9 @@ export default function SavingsHistoryScreen() {
               {transactions.length === 0 ? (
                 <EmptyState
                   icon="receipt-outline"
-                  title="No transactions yet"
-                  subtitle="Deposits and withdrawals on your savings wallet will appear here."
-                  actionLabel="Deposit"
+                  title="No activity yet"
+                  subtitle="When you add to savings or make a withdrawal, it will appear here."
+                  actionLabel="Add to Savings"
                   onAction={() =>
                     router.push({
                       pathname: ROUTES.tabs.paymentsDeposit as any,
@@ -525,8 +535,8 @@ export default function SavingsHistoryScreen() {
           </>
         ) : (
           <EmptyState
-            title="No savings wallet"
-            subtitle="Your savings activity will appear here once the wallet is available."
+            title="No savings space"
+            subtitle="Your community saving activity will appear here once your space is ready."
             actionLabel="Back to Savings"
             onAction={() => router.replace(ROUTES.tabs.savings)}
           />
@@ -539,7 +549,7 @@ export default function SavingsHistoryScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -548,7 +558,7 @@ const styles = StyleSheet.create({
 
   loadingWrap: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SPACING.lg,
@@ -558,11 +568,41 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.88)",
+  },
+
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    marginBottom: SPACING.lg,
+    padding: SPACING.lg,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroGlowOne: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -40,
+    right: -30,
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: "rgba(140, 240, 199, 0.10)",
+    bottom: -20,
+    left: -10,
   },
 
   header: {
-    marginBottom: SPACING.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
@@ -574,16 +614,16 @@ const styles = StyleSheet.create({
 
   title: {
     fontFamily: FONT.bold,
-    fontSize: 20,
-    color: COLORS.dark,
+    fontSize: 22,
+    color: "#FFFFFF",
   },
 
   subtitle: {
     marginTop: 6,
     fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "rgba(255,255,255,0.86)",
   },
 
   errorCard: {
@@ -593,8 +633,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: "rgba(211, 47, 47, 0.14)",
-    backgroundColor: "rgba(211, 47, 47, 0.05)",
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(211, 47, 47, 0.18)",
+    borderRadius: RADIUS.lg,
   },
 
   errorText: {
@@ -602,11 +643,16 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.danger,
+    color: "#FFFFFF",
   },
 
   accountCard: {
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(12,106,128,0.08)",
+    ...SHADOW.card,
   },
 
   accountHead: {
@@ -623,14 +669,14 @@ const styles = StyleSheet.create({
   accountName: {
     fontFamily: FONT.bold,
     fontSize: 16,
-    color: COLORS.dark,
+    color: "#0F172A",
   },
 
   accountMeta: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "#64748B",
   },
 
   typePill: {
@@ -689,22 +735,22 @@ const styles = StyleSheet.create({
     width: "48%",
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
-    backgroundColor: "rgba(0,0,0,0.02)",
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(12,106,128,0.08)",
   },
 
   metricLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: "#64748B",
   },
 
   metricValue: {
     marginTop: 6,
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
+    color: "#0F172A",
   },
 
   summaryGrid: {
@@ -715,10 +761,10 @@ const styles = StyleSheet.create({
 
   summaryCard: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#FFFFFF",
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(12,106,128,0.08)",
     padding: SPACING.md,
     ...SHADOW.card,
   },
@@ -726,7 +772,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "#64748B",
   },
 
   summaryValue: {
@@ -744,6 +790,11 @@ const styles = StyleSheet.create({
   txCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(12,106,128,0.08)",
+    ...SHADOW.card,
   },
 
   txRow: {
@@ -768,7 +819,7 @@ const styles = StyleSheet.create({
   txTitle: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
+    color: "#0F172A",
   },
 
   txMeta: {
@@ -776,7 +827,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: COLORS.gray,
+    color: "#64748B",
   },
 
   txAmount: {

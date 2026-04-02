@@ -18,7 +18,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, SHADOW, SPACING } from "@/constants/theme";
+import { SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
@@ -44,30 +44,31 @@ import {
 type LoanUser = Partial<MeResponse> & Partial<SessionUser>;
 
 const UI = {
-  bg: "#F3F8F7",
-  surface: "#FFFFFF",
-  surfaceSoft: "#F8FCFB",
-  border: "#D8E8E4",
+  page: "#0C6A80",
+  card: "rgba(255,255,255,0.10)",
+  cardStrong: "rgba(49, 180, 217, 0.22)",
+  border: "rgba(255,255,255,0.12)",
+  borderSoft: "rgba(189, 244, 255, 0.15)",
 
-  text: "#20313F",
-  textSoft: "#5E7282",
-  textMuted: "#7E90A0",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.84)",
+  textMuted: "rgba(255,255,255,0.74)",
 
-  primary: "#0F766E",
-  primaryDark: "#115E59",
-  primarySoft: "#DFF6F2",
+  primary: "#0C6A80",
+  primaryDark: "#09586A",
+  primarySoft: "rgba(236, 251, 255, 0.92)",
 
-  blue: "#2563EB",
-  blueSoft: "#EAF1FF",
+  blue: "#0A6E8A",
+  blueSoft: "rgba(236, 251, 255, 0.90)",
 
-  gold: "#D97706",
-  goldSoft: "#FFF4E4",
+  gold: "#B7791F",
+  goldSoft: "rgba(255, 204, 102, 0.18)",
 
-  green: "#15803D",
-  greenSoft: "#EAF8EF",
+  green: "#379B4A",
+  greenSoft: "rgba(140,240,199,0.18)",
 
   red: "#DC2626",
-  redSoft: "#FDEEEE",
+  redSoft: "rgba(220,53,69,0.18)",
 };
 
 function toNum(value?: string | number | null) {
@@ -129,23 +130,23 @@ function HeroCard({
       : "KES 0";
 
   const title = activeLoan
-    ? "My Support"
+    ? "My support"
     : !kycComplete
       ? "Complete profile"
       : showAvailableAmount
         ? "Support available"
-        : "Member Support";
+        : "Member support";
 
   const subtitle = activeLoan
-    ? "Use the actions below to add support or open details."
+    ? "Use the actions below to continue with this support."
     : !kycComplete
       ? "Finish verification to continue."
       : showAvailableAmount
         ? "You can continue from the options below."
-        : "Simple support options for members.";
+        : "Simple community support when needed.";
 
   const primaryLabel = activeLoan
-    ? "Pay now"
+    ? "Contribute now"
     : !kycComplete
       ? "Complete profile"
       : showAvailableAmount
@@ -153,20 +154,21 @@ function HeroCard({
         : "Open support";
 
   const secondaryLabel = activeLoan
-    ? "Details"
+    ? "View details"
     : !kycComplete
-      ? "Profile"
+      ? "Open profile"
       : "Past activity";
 
   return (
     <View style={styles.heroCard}>
       <View style={styles.heroGlowOne} />
       <View style={styles.heroGlowTwo} />
+      <View style={styles.heroGlowThree} />
 
       <View style={styles.heroTopRow}>
         <View style={styles.heroBadge}>
           <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
-          <Text style={styles.heroBadgeText}>Member Support</Text>
+          <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
         </View>
       </View>
 
@@ -244,7 +246,7 @@ function ActionRow({
             styles.actionIcon,
             {
               backgroundColor: tone.bg,
-              borderColor: "rgba(255,255,255,0.55)",
+              borderColor: "rgba(255,255,255,0.40)",
             },
           ]}
         >
@@ -457,7 +459,7 @@ export default function LoansIndexScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.primary} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -484,13 +486,24 @@ export default function LoansIndexScreen() {
         style={styles.page}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.header}>
           <Text style={styles.headerEyebrow}>UNITED CARE</Text>
-          <Text style={styles.headerTitle}>Member Support</Text>
+          <Text style={styles.headerTitle}>Member support</Text>
           <Text style={styles.headerSubtitle}>
             Simple community support for members when needed.
           </Text>
@@ -512,18 +525,18 @@ export default function LoansIndexScreen() {
                 <Ionicons
                   name="alert-circle-outline"
                   size={18}
-                  color={COLORS.danger}
+                  color="#FFFFFF"
                 />
               </View>
 
               <View style={styles.errorContent}>
                 <Text style={styles.errorText}>{error}</Text>
                 <View style={styles.errorActionRow}>
-                  <Text style={styles.errorActionText}>Open payment</Text>
+                  <Text style={styles.errorActionText}>Open contribution</Text>
                   <Ionicons
                     name="arrow-forward"
                     size={15}
-                    color={COLORS.danger}
+                    color="#FFFFFF"
                   />
                 </View>
               </View>
@@ -575,12 +588,12 @@ export default function LoansIndexScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: UI.bg,
+    backgroundColor: UI.page,
   },
 
   page: {
     flex: 1,
-    backgroundColor: UI.bg,
+    backgroundColor: UI.page,
   },
 
   content: {
@@ -592,11 +605,62 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: UI.bg,
+    backgroundColor: UI.page,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 140,
+    right: 18,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 8,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   header: {
     marginBottom: SPACING.md,
+    paddingTop: 4,
   },
 
   headerEyebrow: {
@@ -604,7 +668,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "900",
     letterSpacing: 1,
-    color: UI.primary,
+    color: "#DFFFE8",
   },
 
   headerTitle: {
@@ -626,10 +690,12 @@ const styles = StyleSheet.create({
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: UI.primary,
+    backgroundColor: UI.cardStrong,
     borderRadius: 28,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: UI.borderSoft,
     ...SHADOW.soft,
   },
 
@@ -651,6 +717,16 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTopRow: {
@@ -681,7 +757,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.82)",
+    color: UI.textSoft,
   },
 
   heroAmount: {
@@ -698,7 +774,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: "500",
-    color: "rgba(255,255,255,0.82)",
+    color: UI.textSoft,
     maxWidth: "92%",
   },
 
@@ -728,7 +804,7 @@ const styles = StyleSheet.create({
   },
 
   heroSecondaryBtn: {
-    minWidth: 110,
+    minWidth: 126,
     minHeight: 48,
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.14)",
@@ -749,7 +825,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: UI.redSoft,
     borderWidth: 1,
-    borderColor: "rgba(220,38,38,0.10)",
+    borderColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
@@ -762,7 +838,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   errorContent: {
@@ -773,7 +849,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: "600",
-    color: COLORS.danger,
+    color: "#FFFFFF",
   },
 
   errorActionRow: {
@@ -787,7 +863,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",
-    color: COLORS.danger,
+    color: "#FFFFFF",
   },
 
   actionsWrap: {
@@ -799,9 +875,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: 22,
-    backgroundColor: UI.surface,
+    backgroundColor: UI.card,
     borderWidth: 1,
-    borderColor: "rgba(15,118,110,0.06)",
+    borderColor: UI.border,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -860,14 +936,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: UI.redSoft,
     borderWidth: 1,
-    borderColor: "rgba(220,38,38,0.08)",
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   badgeText: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "900",
-    color: UI.red,
+    color: "#FFFFFF",
   },
 
   chevronWrap: {
@@ -876,6 +952,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F3F7F8",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 });

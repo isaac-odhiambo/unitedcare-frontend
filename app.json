@@ -15,7 +15,12 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0E5E6F"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.unitedcare"
     },
     "web": {
       "bundler": "metro",
@@ -28,7 +33,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash.png",
-          "imageWidth": 220,
+          "imageWidth": 320,
           "resizeMode": "contain",
           "backgroundColor": "#0E5E6F",
           "dark": {

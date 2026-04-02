@@ -1,5 +1,3 @@
-// app/(tabs)/groups/history.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -10,16 +8,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
@@ -64,8 +60,44 @@ function sortNewest(a?: string, b?: string) {
 
 function getNote(row: Partial<HistoryRow> | null | undefined): string {
   return String(
-    row?.narration || row?.note || row?.description || ""
+    row?.narration || (row as any)?.note || row?.description || ""
   ).trim();
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
+function SoftButton({
+  title,
+  onPress,
+  secondary = false,
+}: {
+  title: string;
+  onPress: () => void;
+  secondary?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      style={[
+        styles.softButton,
+        secondary ? styles.softButtonSecondary : styles.softButtonPrimary,
+      ]}
+    >
+      <Text
+        style={[
+          styles.softButtonText,
+          secondary
+            ? styles.softButtonTextSecondary
+            : styles.softButtonTextPrimary,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
 export default function GroupHistoryScreen() {
@@ -194,7 +226,7 @@ export default function GroupHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color="#8CF0C7" />
       </View>
     );
   }
@@ -204,16 +236,29 @@ export default function GroupHistoryScreen() {
       style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#8CF0C7"
+          colors={["#8CF0C7", "#0CC0B7"]}
+        />
       }
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobMiddle} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
+
       <View style={styles.heroCard}>
         <View style={styles.heroGlowOne} />
         <View style={styles.heroGlowTwo} />
+        <View style={styles.heroGlowThree} />
 
         <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
+            <Text style={styles.heroTag}>COMMUNITY HISTORY</Text>
             <Text style={styles.heroTitle}>Community contribution history</Text>
             <Text style={styles.heroSubtitle}>
               Follow how you have supported your community spaces over time.
@@ -221,60 +266,63 @@ export default function GroupHistoryScreen() {
           </View>
 
           <View style={styles.heroIconWrap}>
-            <Ionicons name="time-outline" size={22} color={COLORS.white} />
+            <Ionicons name="time-outline" size={22} color="#FFFFFF" />
           </View>
         </View>
 
         <View style={styles.heroStatsRow}>
           <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Total added</Text>
+            <Text style={styles.heroStatLabel}>Total contributed</Text>
             <Text style={styles.heroStatValue}>
               {formatKes(totals.totalAmount)}
             </Text>
           </View>
 
           <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Spaces</Text>
+            <Text style={styles.heroStatLabel}>Community spaces</Text>
             <Text style={styles.heroStatValue}>{totals.totalSpaces}</Text>
           </View>
 
           <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Entries</Text>
+            <Text style={styles.heroStatLabel}>Activities</Text>
             <Text style={styles.heroStatValue}>{totals.totalEntries}</Text>
           </View>
         </View>
 
         <View style={styles.heroActionsRow}>
-          <Button
-            title="Your spaces"
+          <SoftButton
+            title="My spaces"
             onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-            style={{ flex: 1 }}
           />
           <View style={{ width: SPACING.sm }} />
-          <Button
-            title="Explore spaces"
-            variant="secondary"
+          <SoftButton
+            title="Explore community"
+            secondary
             onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-            style={{ flex: 1 }}
           />
         </View>
       </View>
 
       {groupedRows.length === 0 ? (
-        <Section title="Activity">
-          <EmptyState
-            icon="time-outline"
-            title="No contribution history yet"
-            subtitle="Your community contribution activity will appear here once you begin contributing."
-          />
-        </Section>
+        <>
+          <SectionTitle title="Activity" />
+          <View style={styles.emptyHolder}>
+            <EmptyState
+              icon="time-outline"
+              title="No activity yet"
+              subtitle="Your contributions will appear here once you start supporting your community spaces."
+            />
+          </View>
+        </>
       ) : (
         groupedRows.map((group) => (
-          <Section key={group.groupId} title={group.groupName}>
-            <Card style={styles.groupSummaryCard}>
+          <View key={group.groupId} style={styles.groupSection}>
+            <SectionTitle title={group.groupName} />
+
+            <View style={styles.groupSummaryCard}>
               <View style={styles.groupSummaryTop}>
                 <View style={styles.groupSummaryIcon}>
-                  <Ionicons name="people-outline" size={18} color={COLORS.white} />
+                  <Ionicons name="people-outline" size={18} color="#0A6E8A" />
                 </View>
 
                 <View style={{ flex: 1 }}>
@@ -293,16 +341,15 @@ export default function GroupHistoryScreen() {
               </View>
 
               <View style={styles.groupSummaryActions}>
-                <Button
+                <SoftButton
                   title="Open space"
-                  variant="secondary"
+                  secondary
                   onPress={() =>
                     router.push(ROUTES.dynamic.groupDetail(group.groupId) as any)
                   }
-                  style={{ flex: 1 }}
                 />
                 <View style={{ width: SPACING.sm }} />
-                <Button
+                <SoftButton
                   title="Contribute"
                   onPress={() =>
                     router.push({
@@ -310,23 +357,22 @@ export default function GroupHistoryScreen() {
                       params: { groupId: String(group.groupId) },
                     })
                   }
-                  style={{ flex: 1 }}
                 />
               </View>
-            </Card>
+            </View>
 
             {group.rows.map((row) => {
               const noteText = getNote(row);
 
               return (
-                <Card key={`${group.groupId}-${row.id}`} style={styles.rowCard}>
+                <View key={`${group.groupId}-${row.id}`} style={styles.rowCard}>
                   <View style={styles.rowTop}>
                     <View style={styles.rowLeft}>
                       <View style={styles.rowIconWrap}>
                         <Ionicons
                           name="cash-outline"
                           size={16}
-                          color={COLORS.primary}
+                          color="#0A6E8A"
                         />
                       </View>
 
@@ -340,17 +386,15 @@ export default function GroupHistoryScreen() {
                     </View>
 
                     <View style={styles.addedPill}>
-                      <Text style={styles.addedPillText}>ADDED</Text>
+                      <Text style={styles.addedPillText}>CONTRIBUTED</Text>
                     </View>
                   </View>
 
-                  {noteText ? (
-                    <Text style={styles.note}>{noteText}</Text>
-                  ) : null}
-                </Card>
+                  {noteText ? <Text style={styles.note}>{noteText}</Text> : null}
+                </View>
               );
             })}
-          </Section>
+          </View>
         ))
       )}
 
@@ -362,7 +406,7 @@ export default function GroupHistoryScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -374,17 +418,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    ...SHADOW.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   heroGlowOne: {
@@ -404,13 +499,35 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
   heroIconWrap: {
@@ -425,7 +542,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 22,
     fontFamily: FONT.bold,
-    color: COLORS.white,
+    color: "#FFFFFF",
   },
 
   heroSubtitle: {
@@ -445,7 +562,7 @@ const styles = StyleSheet.create({
   heroStatPill: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
+    borderRadius: 18,
     padding: SPACING.sm,
   },
 
@@ -458,7 +575,7 @@ const styles = StyleSheet.create({
   heroStatValue: {
     marginTop: 4,
     fontSize: 16,
-    color: COLORS.white,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
   },
 
@@ -467,14 +584,66 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
   },
 
+  softButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  softButtonPrimary: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  softButtonSecondary: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+
+  softButtonText: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+  },
+
+  softButtonTextPrimary: {
+    color: "#0C6A80",
+  },
+
+  softButtonTextSecondary: {
+    color: "#FFFFFF",
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+
+  emptyHolder: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
+  groupSection: {
+    marginBottom: SPACING.sm,
+  },
+
   groupSummaryCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   groupSummaryTop: {
@@ -488,34 +657,34 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
     marginRight: 12,
   },
 
   groupSummaryTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   groupSummarySub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
   },
 
   groupSummaryAmountWrap: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "rgba(46,125,50,0.12)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   groupSummaryAmount: {
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.success,
+    color: "#FFFFFF",
   },
 
   groupSummaryActions: {
@@ -526,11 +695,10 @@ const styles = StyleSheet.create({
   rowCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(189, 244, 255, 0.15)",
   },
 
   rowTop: {
@@ -553,19 +721,19 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(37,99,235,0.10)",
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
   },
 
   amount: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   meta: {
     marginTop: 6,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
     fontFamily: FONT.regular,
     lineHeight: 18,
   },
@@ -573,11 +741,11 @@ const styles = StyleSheet.create({
   note: {
     marginTop: 10,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
     fontFamily: FONT.regular,
     lineHeight: 18,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: "rgba(255,255,255,0.10)",
     paddingTop: 10,
   },
 
@@ -585,12 +753,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(46,125,50,0.12)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   addedPillText: {
     fontFamily: FONT.bold,
     fontSize: 11,
-    color: COLORS.success,
+    color: "#FFFFFF",
   },
 });

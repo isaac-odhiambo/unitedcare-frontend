@@ -157,7 +157,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="loans/request" options={{ href: null }} />
       <Tabs.Screen name="loans/pay" options={{ href: null }} />
       <Tabs.Screen name="loans/add-guarantor" options={{ href: null }} />
-      <Tabs.Screen name="loans/gaurantees" options={{ href: null }} />
+      <Tabs.Screen name="loans/guarantees" options={{ href: null }} />
       <Tabs.Screen name="loans/guarantee-requests" options={{ href: null }} />
       <Tabs.Screen name="loans/[Id]" options={{ href: null }} />
       <Tabs.Screen name="loans/admin-approve" options={{ href: null }} />

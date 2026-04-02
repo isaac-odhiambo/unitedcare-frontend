@@ -50,35 +50,35 @@ function getStatusColors(status?: string | null) {
 
   if (s === "APPROVED") {
     return {
-      bg: "rgba(46, 125, 50, 0.12)",
-      color: COLORS.success,
+      bg: "rgba(140,240,199,0.18)",
+      color: "#FFFFFF",
     };
   }
 
   if (s === "COMPLETED") {
     return {
-      bg: "rgba(37, 99, 235, 0.12)",
-      color: COLORS.primary,
+      bg: "rgba(236,251,255,0.18)",
+      color: "#FFFFFF",
     };
   }
 
   if (s === "REJECTED" || s === "DEFAULTED" || s === "CANCELLED") {
     return {
-      bg: "rgba(211, 47, 47, 0.12)",
-      color: COLORS.danger,
+      bg: "rgba(220,53,69,0.18)",
+      color: "#FFFFFF",
     };
   }
 
   if (s === "UNDER_REVIEW") {
     return {
-      bg: "rgba(37, 99, 235, 0.12)",
-      color: COLORS.info,
+      bg: "rgba(12,192,183,0.18)",
+      color: "#FFFFFF",
     };
   }
 
   return {
-    bg: "rgba(242, 140, 40, 0.14)",
-    color: COLORS.accent,
+    bg: "rgba(255,204,102,0.18)",
+    color: "#FFFFFF",
   };
 }
 
@@ -105,12 +105,8 @@ function DetailRow({
 }) {
   return (
     <View style={styles.kvRow}>
-      <Text style={[styles.kLabel, strong && { color: COLORS.dark }]}>
-        {label}
-      </Text>
-      <Text style={[styles.kValue, strong && { fontFamily: FONT.bold }]}>
-        {value}
-      </Text>
+      <Text style={[styles.kLabel, strong && styles.kLabelStrong]}>{label}</Text>
+      <Text style={[styles.kValue, strong && styles.kValueStrong]}>{value}</Text>
     </View>
   );
 }
@@ -205,28 +201,24 @@ export default function LoanDetailScreen() {
       {
         label: "Support received",
         value: formatKes(loan?.principal),
-        highlight: false,
         tone: "primary",
         icon: "heart-outline" as const,
       },
       {
         label: "Balance remaining",
         value: formatKes(loan?.outstanding_balance ?? "0.00"),
-        highlight: true,
         tone: "warning",
         icon: "wallet-outline" as const,
       },
       {
         label: "Amount settled",
         value: formatKes(loan?.total_paid ?? "0.00"),
-        highlight: false,
         tone: "success",
         icon: "checkmark-circle-outline" as const,
       },
       {
         label: "Repayment period",
         value: loan?.term_weeks ? `${loan.term_weeks} week(s)` : "—",
-        highlight: false,
         tone: "info",
         icon: "calendar-outline" as const,
       },
@@ -237,7 +229,7 @@ export default function LoanDetailScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -246,7 +238,7 @@ export default function LoanDetailScreen() {
   if (!Number.isFinite(loanId) || loanId <= 0) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={[styles.center, { backgroundColor: COLORS.background }]}>
+        <View style={styles.center}>
           <EmptyState
             title="Support not available"
             subtitle="This support record could not be opened."
@@ -270,12 +262,24 @@ export default function LoanDetailScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.hero}>
           <View style={styles.heroGlowPrimary} />
           <View style={styles.heroGlowAccent} />
+          <View style={styles.heroGlowThird} />
 
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
@@ -285,6 +289,7 @@ export default function LoanDetailScreen() {
             {loan?.status ? <StatusPill status={loan.status} /> : null}
           </View>
 
+          <Text style={styles.heroTag}>SUPPORT DETAILS</Text>
           <Text style={styles.heroTitle}>Support details</Text>
           <Text style={styles.heroSub}>
             {productLabel(loan)}
@@ -317,7 +322,7 @@ export default function LoanDetailScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={18}
-              color={COLORS.danger}
+              color="#FFFFFF"
             />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
@@ -346,12 +351,12 @@ export default function LoanDetailScreen() {
 
               const iconBg =
                 item.tone === "success"
-                  ? "rgba(46, 125, 50, 0.12)"
+                  ? "rgba(236,255,235,0.92)"
                   : item.tone === "warning"
-                  ? "rgba(242, 140, 40, 0.14)"
+                  ? "rgba(255,244,228,0.92)"
                   : item.tone === "info"
-                  ? "rgba(37, 99, 235, 0.12)"
-                  : "rgba(37, 99, 235, 0.12)";
+                  ? "rgba(236,251,255,0.92)"
+                  : "rgba(236,251,255,0.92)";
 
               const iconColor =
                 item.tone === "success"
@@ -459,7 +464,7 @@ export default function LoanDetailScreen() {
                     <Text
                       style={[
                         styles.smallBadge,
-                        { color: g.accepted ? COLORS.success : COLORS.accent },
+                        { color: g.accepted ? "#8CF0C7" : "#FFD166" },
                       ]}
                     >
                       {g.accepted ? "ACCEPTED" : "PENDING"}
@@ -616,7 +621,7 @@ export default function LoanDetailScreen() {
             <Ionicons
               name="information-circle-outline"
               size={16}
-              color={COLORS.gray}
+              color="rgba(255,255,255,0.78)"
             />
             <Text style={styles.hintText}>
               Payment updates may take a short moment to reflect after
@@ -634,23 +639,81 @@ export default function LoanDetailScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: "#0C6A80",
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 24,
+  },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   center: {
     flex: 1,
     padding: SPACING.lg,
     justifyContent: "center",
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   hero: {
@@ -658,7 +721,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: RADIUS.xl,
     marginBottom: SPACING.lg,
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(189, 244, 255, 0.15)",
     padding: SPACING.lg,
     ...SHADOW.card,
   },
@@ -680,7 +745,17 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242, 140, 40, 0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThird: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTop: {
@@ -697,6 +772,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
   heroTitle: {
@@ -739,6 +826,9 @@ const styles = StyleSheet.create({
   card: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     ...SHADOW.card,
   },
 
@@ -754,23 +844,23 @@ const styles = StyleSheet.create({
   },
 
   summaryCardPrimary: {
-    backgroundColor: COLORS.white,
-    borderColor: "rgba(37, 99, 235, 0.10)",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   summaryCardSuccess: {
-    backgroundColor: "rgba(46, 125, 50, 0.05)",
-    borderColor: "rgba(46, 125, 50, 0.12)",
+    backgroundColor: "rgba(140,240,199,0.12)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   summaryCardWarning: {
-    backgroundColor: "rgba(242, 140, 40, 0.06)",
-    borderColor: "rgba(242, 140, 40, 0.14)",
+    backgroundColor: "rgba(255,204,102,0.12)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   summaryCardInfo: {
-    backgroundColor: "rgba(37, 99, 235, 0.05)",
-    borderColor: "rgba(37, 99, 235, 0.12)",
+    backgroundColor: "rgba(236,251,255,0.12)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   summaryTopRow: {
@@ -791,7 +881,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
     marginBottom: 6,
   },
 
@@ -801,19 +891,19 @@ const styles = StyleSheet.create({
   },
 
   summaryValuePrimary: {
-    color: COLORS.primary,
+    color: "#FFFFFF",
   },
 
   summaryValueSuccess: {
-    color: COLORS.success,
+    color: "#FFFFFF",
   },
 
   summaryValueWarning: {
-    color: COLORS.accent,
+    color: "#FFFFFF",
   },
 
   summaryValueInfo: {
-    color: COLORS.info,
+    color: "#FFFFFF",
   },
 
   errorCard: {
@@ -823,13 +913,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.10)",
     borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(220,53,69,0.18)",
   },
 
   errorText: {
     flex: 1,
-    color: COLORS.danger,
+    color: "#FFFFFF",
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
@@ -837,7 +928,7 @@ const styles = StyleSheet.create({
 
   muted: {
     fontFamily: FONT.regular,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
     fontSize: 12,
     lineHeight: 18,
   },
@@ -856,7 +947,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
+  },
+
+  kLabelStrong: {
+    color: "#FFFFFF",
   },
 
   kValue: {
@@ -864,7 +959,11 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.dark,
+    color: "#FFFFFF",
+  },
+
+  kValueStrong: {
+    fontFamily: FONT.bold,
   },
 
   listRow: {
@@ -880,26 +979,26 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "rgba(236,251,255,0.90)",
   },
 
   listTitle: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
+    color: "#FFFFFF",
   },
 
   listSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
   },
 
   listAmount: {
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.dark,
+    color: "#FFFFFF",
     textAlign: "right",
   },
 
@@ -907,7 +1006,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
     textAlign: "right",
   },
 
@@ -919,22 +1018,22 @@ const styles = StyleSheet.create({
   noteBox: {
     padding: SPACING.sm,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.background,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   noteTitle: {
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.dark,
+    color: "#FFFFFF",
     marginBottom: 4,
   },
 
   noteText: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.84)",
     lineHeight: 18,
   },
 
@@ -949,7 +1048,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
     lineHeight: 18,
   },
 

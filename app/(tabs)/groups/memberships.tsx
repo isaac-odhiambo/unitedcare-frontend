@@ -46,8 +46,8 @@ function roleTone(role?: string) {
 
   if (value === "ADMIN") {
     return {
-      bg: "rgba(37,99,235,0.12)",
-      color: COLORS.info || COLORS.primary,
+      bg: "rgba(236,251,255,0.18)",
+      color: "#FFFFFF",
       label: "LEAD",
       icon: "shield-checkmark-outline" as const,
     };
@@ -55,8 +55,8 @@ function roleTone(role?: string) {
 
   if (value === "TREASURER") {
     return {
-      bg: "rgba(245,158,11,0.12)",
-      color: COLORS.warning,
+      bg: "rgba(255,204,102,0.18)",
+      color: "#FFFFFF",
       label: "TREASURY",
       icon: "wallet-outline" as const,
     };
@@ -64,16 +64,16 @@ function roleTone(role?: string) {
 
   if (value === "SECRETARY") {
     return {
-      bg: "rgba(37,99,235,0.12)",
-      color: COLORS.primary,
+      bg: "rgba(12,192,183,0.18)",
+      color: "#FFFFFF",
       label: "SECRETARY",
       icon: "document-text-outline" as const,
     };
   }
 
   return {
-    bg: "rgba(37,99,235,0.12)",
-    color: COLORS.primary,
+    bg: "rgba(255,255,255,0.12)",
+    color: "#FFFFFF",
     label: "MEMBER",
     icon: "person-outline" as const,
   };
@@ -82,14 +82,14 @@ function roleTone(role?: string) {
 function statusTone(active: boolean) {
   return active
     ? {
-        bg: "rgba(46,125,50,0.12)",
-        color: COLORS.success,
+        bg: "rgba(140,240,199,0.18)",
+        color: "#FFFFFF",
         label: "ACTIVE",
         icon: "checkmark-circle-outline" as const,
       }
     : {
-        bg: "rgba(107,114,128,0.12)",
-        color: COLORS.gray,
+        bg: "rgba(255,255,255,0.12)",
+        color: "#FFFFFF",
         label: "INACTIVE",
         icon: "pause-circle-outline" as const,
       };
@@ -132,7 +132,7 @@ function MembershipCard({
 
       <View style={styles.cardTopRow}>
         <View style={styles.groupIconWrap}>
-          <Ionicons name="people-outline" size={18} color={COLORS.white} />
+          <Ionicons name="people-outline" size={18} color="#0A6E8A" />
         </View>
 
         <View style={styles.cardTextWrap}>
@@ -150,7 +150,7 @@ function MembershipCard({
           <Ionicons
             name="chevron-forward"
             size={18}
-            color={COLORS.textMuted}
+            color="#FFFFFF"
           />
         </View>
       </View>
@@ -174,7 +174,7 @@ function MembershipCard({
         <View
           style={[
             styles.infoDot,
-            { backgroundColor: membership.is_active ? COLORS.success : COLORS.gray },
+            { backgroundColor: membership.is_active ? "#DFFFE8" : "rgba(255,255,255,0.70)" },
           ]}
         />
         <Text style={styles.infoStripText}>
@@ -300,7 +300,7 @@ export default function GroupMembershipsScreen() {
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color="#8CF0C7" />
       </View>
     );
   }
@@ -323,16 +323,29 @@ export default function GroupMembershipsScreen() {
       style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#8CF0C7"
+          colors={["#8CF0C7", "#0CC0B7"]}
+        />
       }
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobMiddle} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
+
       <View style={styles.heroCard}>
         <View style={styles.heroGlowOne} />
         <View style={styles.heroGlowTwo} />
+        <View style={styles.heroGlowThree} />
 
         <View style={styles.heroTop}>
           <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTag}>YOUR SPACES</Text>
             <Text style={styles.heroTitle}>Your spaces</Text>
             <Text style={styles.heroSubtitle}>
               Open the community spaces you belong to and continue from there.
@@ -382,7 +395,7 @@ export default function GroupMembershipsScreen() {
           <Ionicons
             name="alert-circle-outline"
             size={18}
-            color={COLORS.danger}
+            color="#FFFFFF"
           />
           <Text style={styles.errorText}>{error}</Text>
         </Card>
@@ -420,7 +433,7 @@ export default function GroupMembershipsScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -432,16 +445,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderRadius: RADIUS.xl || RADIUS.lg,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     ...SHADOW.card,
   },
 
@@ -462,13 +527,35 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
   heroIconWrap: {
@@ -533,9 +620,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
-    backgroundColor: "rgba(220,53,69,0.08)",
+    backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(220,53,69,0.18)",
+    borderColor: "rgba(255,255,255,0.10)",
     borderRadius: RADIUS.lg,
   },
 
@@ -543,7 +630,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.danger,
+    color: "#FFFFFF",
     fontFamily: FONT.regular,
   },
 
@@ -552,10 +639,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.card || "#14202f",
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
     borderRadius: RADIUS.xl || RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(189, 244, 255, 0.15)",
     ...SHADOW.card,
   },
 
@@ -566,7 +653,7 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 52.5,
-    backgroundColor: "rgba(37,99,235,0.04)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   cardGlowAccent: {
@@ -576,7 +663,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(242,140,40,0.06)",
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   cardTopRow: {
@@ -590,7 +677,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
     marginRight: 12,
   },
 
@@ -602,14 +689,14 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   cardSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
   },
 
   arrowWrap: {
@@ -618,7 +705,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(15,23,42,0.04)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
 
   badgesRow: {
@@ -661,7 +748,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
   },
 
   cardFooter: {

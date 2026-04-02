@@ -51,17 +51,12 @@ function Pill({
 }) {
   const bg =
     tone === "ok"
-      ? "rgba(46, 125, 50, 0.12)"
+      ? "rgba(140,240,199,0.18)"
       : tone === "bad"
-      ? "rgba(211, 47, 47, 0.12)"
-      : "rgba(242, 140, 40, 0.14)";
+      ? "rgba(220,53,69,0.18)"
+      : "rgba(255,204,102,0.18)";
 
-  const color =
-    tone === "ok"
-      ? COLORS.success
-      : tone === "bad"
-      ? COLORS.danger
-      : COLORS.accent;
+  const color = "#FFFFFF";
 
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
@@ -86,9 +81,12 @@ function GuaranteeCard({
 
   return (
     <Card style={styles.itemCard}>
+      <View style={styles.cardGlowPrimary} />
+      <View style={styles.cardGlowAccent} />
+
       <View style={styles.topRow}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>Guarantee Request</Text>
+          <Text style={styles.title}>Support request</Text>
           <Text style={styles.sub}>Requested for {guarantorName}</Text>
         </View>
 
@@ -101,8 +99,8 @@ function GuaranteeCard({
 
       <View style={styles.grid}>
         <View style={styles.cell}>
-          <Text style={styles.label}>Loan</Text>
-          <Text style={styles.value}>Loan request</Text>
+          <Text style={styles.label}>Support</Text>
+          <Text style={styles.value}>Member support request</Text>
         </View>
         <View style={styles.cell}>
           <Text style={styles.label}>Reserved</Text>
@@ -132,15 +130,15 @@ function GuaranteeCard({
           <Ionicons
             name="checkmark-circle-outline"
             size={18}
-            color={COLORS.success}
+            color="#8CF0C7"
           />
-          <Text style={styles.acceptedText}>Guarantee accepted.</Text>
+          <Text style={styles.acceptedText}>Support accepted.</Text>
 
           <Text
             style={styles.link}
             onPress={() => router.push(`/(tabs)/loans/${item.loan}` as any)}
           >
-            View Loan
+            View support
           </Text>
         </View>
       ) : (
@@ -164,7 +162,7 @@ function GuaranteeCard({
       )}
 
       <Text style={styles.helpText}>
-        Reserved amount is applied by the system at loan approval after security
+        Reserved amount is applied by the system at approval after support
         coverage is computed.
       </Text>
     </Card>
@@ -216,12 +214,12 @@ export default function GuaranteesScreen() {
         setBusyId(id);
         setError("");
         const res = await acceptGuarantee(id);
-        Alert.alert("Success", res?.message || "Guarantee accepted.");
+        Alert.alert("Success", res?.message || "Support accepted.");
         await load();
       } catch (e: any) {
         const msg = getApiErrorMessage(e) || getErrorMessage(e);
         setError(msg);
-        Alert.alert("Accept Guarantee", msg);
+        Alert.alert("Accept support", msg);
       } finally {
         setBusyId(null);
       }
@@ -235,12 +233,12 @@ export default function GuaranteesScreen() {
         setBusyId(id);
         setError("");
         const res = await rejectGuarantee(id);
-        Alert.alert("Done", res?.message || "Guarantee rejected.");
+        Alert.alert("Done", res?.message || "Support rejected.");
         await load();
       } catch (e: any) {
         const msg = getApiErrorMessage(e) || getErrorMessage(e);
         setError(msg);
-        Alert.alert("Reject Guarantee", msg);
+        Alert.alert("Reject support", msg);
       } finally {
         setBusyId(null);
       }
@@ -254,22 +252,40 @@ export default function GuaranteesScreen() {
         style={styles.container}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.header}>
+          <View style={styles.headerGlowOne} />
+          <View style={styles.headerGlowTwo} />
+
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.hTitle}>Guarantee Requests</Text>
+            <Text style={styles.headerTag}>MEMBER SUPPORT</Text>
+            <Text style={styles.hTitle}>Support requests</Text>
             <Text style={styles.hSub}>
-              Accept or reject requests to guarantee a loan.
+              Accept or reject requests to support a member.
             </Text>
           </View>
-          <Ionicons
-            name="shield-checkmark-outline"
-            size={22}
-            color={COLORS.primary}
-          />
+
+          <View style={styles.headerIconWrap}>
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={22}
+              color={COLORS.white}
+            />
+          </View>
         </View>
 
         {error ? (
@@ -277,7 +293,7 @@ export default function GuaranteesScreen() {
             <Ionicons
               name="alert-circle-outline"
               size={18}
-              color={COLORS.danger}
+              color="#FFFFFF"
             />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
@@ -308,8 +324,8 @@ export default function GuaranteesScreen() {
           {!loading && accepted.length === 0 ? (
             <EmptyState
               icon="checkmark-done-outline"
-              title="No accepted guarantees"
-              subtitle="Accepted guarantees will appear here."
+              title="No accepted support"
+              subtitle="Accepted requests will appear here."
             />
           ) : (
             accepted.map((g) => (
@@ -333,17 +349,76 @@ export default function GuaranteesScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
+  container: {
+    flex: 1,
+    backgroundColor: "#0C6A80",
+  },
+
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: 24,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
+  },
 
   header: {
-    backgroundColor: COLORS.white,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(189, 244, 255, 0.15)",
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     flexDirection: "row",
@@ -352,24 +427,65 @@ const styles = StyleSheet.create({
     ...SHADOW.card,
   },
 
+  headerGlowOne: {
+    position: "absolute",
+    right: -28,
+    top: -20,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.09)",
+  },
+
+  headerGlowTwo: {
+    position: "absolute",
+    left: -20,
+    bottom: -26,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  headerTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+  },
+
+  headerIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+
   hTitle: {
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
+    fontSize: 20,
+    color: "#FFFFFF",
   },
 
   hSub: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.84)",
     lineHeight: 18,
   },
 
   muted: {
     marginTop: 6,
     fontFamily: FONT.regular,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
   },
 
   errorCard: {
@@ -379,21 +495,49 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(220,53,69,0.18)",
   },
 
   errorText: {
     flex: 1,
-    color: COLORS.danger,
+    color: "#FFFFFF",
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
   itemCard: {
+    position: "relative",
+    overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: RADIUS.xl,
     ...SHADOW.card,
+  },
+
+  cardGlowPrimary: {
+    position: "absolute",
+    top: -30,
+    right: -20,
+    width: 105,
+    height: 105,
+    borderRadius: 52.5,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+
+  cardGlowAccent: {
+    position: "absolute",
+    bottom: -22,
+    left: -18,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   topRow: {
@@ -405,14 +549,14 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.dark,
+    color: "#FFFFFF",
   },
 
   sub: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
     lineHeight: 18,
   },
 
@@ -429,14 +573,14 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
   },
 
   value: {
     marginTop: 6,
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: COLORS.dark,
+    color: "#FFFFFF",
   },
 
   actionsRow: {
@@ -456,20 +600,20 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.84)",
   },
 
   link: {
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: COLORS.primary,
+    color: "#8CF0C7",
   },
 
   note: {
     marginTop: 10,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.82)",
     lineHeight: 18,
   },
 
@@ -477,7 +621,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
     lineHeight: 18,
   },
 

@@ -8,16 +8,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import {
   cancelGroupJoinRequest,
   getApiErrorMessage,
@@ -51,8 +49,8 @@ function statusTone(status?: string): {
 
   if (value === "APPROVED") {
     return {
-      bg: "rgba(46,125,50,0.12)",
-      color: COLORS.success,
+      bg: "rgba(140,240,199,0.18)",
+      color: "#FFFFFF",
       label: "APPROVED",
       icon: "checkmark-circle-outline",
     };
@@ -60,26 +58,26 @@ function statusTone(status?: string): {
 
   if (value === "REJECTED") {
     return {
-      bg: "rgba(220,53,69,0.12)",
-      color: COLORS.danger,
-      label: "NOT APPROVED",
+      bg: "rgba(220,53,69,0.18)",
+      color: "#FFFFFF",
+      label: "NOT ACCEPTED",
       icon: "close-circle-outline",
     };
   }
 
   if (value === "CANCELLED") {
     return {
-      bg: "rgba(107,114,128,0.12)",
-      color: COLORS.gray,
-      label: "WITHDRAWN",
+      bg: "rgba(255,255,255,0.12)",
+      color: "#FFFFFF",
+      label: "CANCELLED",
       icon: "remove-circle-outline",
     };
   }
 
   return {
-    bg: "rgba(245,158,11,0.12)",
-    color: COLORS.warning,
-    label: "WAITING",
+    bg: "rgba(255,204,102,0.18)",
+    color: "#FFFFFF",
+    label: "UNDER REVIEW",
     icon: "time-outline",
   };
 }
@@ -97,6 +95,46 @@ function StatusPill({ status }: { status?: string }) {
   );
 }
 
+function SoftButton({
+  title,
+  onPress,
+  secondary = false,
+  disabled = false,
+}: {
+  title: string;
+  onPress: () => void;
+  secondary?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.softButton,
+        secondary ? styles.softButtonSecondary : styles.softButtonPrimary,
+        disabled ? styles.softButtonDisabled : null,
+      ]}
+    >
+      <Text
+        style={[
+          styles.softButtonText,
+          secondary
+            ? styles.softButtonTextSecondary
+            : styles.softButtonTextPrimary,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
 function JoinRequestCard({
   item,
   busy,
@@ -109,9 +147,10 @@ function JoinRequestCard({
   const isPending = String(item.status || "").toUpperCase().trim() === "PENDING";
   const groupId = Number(item.group_id ?? 0);
   const tone = statusTone(item.status);
+  const upperStatus = String(item.status || "").toUpperCase().trim();
 
   return (
-    <Card style={styles.itemCard}>
+    <View style={styles.itemCard}>
       <View style={styles.cardGlowPrimary} />
       <View style={styles.cardGlowAccent} />
 
@@ -120,7 +159,7 @@ function JoinRequestCard({
           <Ionicons
             name="git-pull-request-outline"
             size={18}
-            color={COLORS.white}
+            color="#0A6E8A"
           />
         </View>
 
@@ -148,7 +187,7 @@ function JoinRequestCard({
           <Ionicons
             name="calendar-outline"
             size={14}
-            color={COLORS.textMuted}
+            color="rgba(255,255,255,0.78)"
           />
           <Text style={styles.reviewedText}>
             Reviewed {fmtDate(item.reviewed_at)}
@@ -161,39 +200,37 @@ function JoinRequestCard({
         <Text style={styles.infoStripText}>
           {isPending
             ? "This request is still under review."
-            : String(item.status || "").toUpperCase() === "APPROVED"
-            ? "You can now open this community space."
-            : String(item.status || "").toUpperCase() === "REJECTED"
-            ? "This request was not approved."
+            : upperStatus === "APPROVED"
+            ? "You are now part of this space."
+            : upperStatus === "REJECTED"
+            ? "This request was not accepted."
             : "This request is no longer active."}
         </Text>
       </View>
 
       <View style={styles.cardFooter}>
-        <Button
+        <SoftButton
           title="Open space"
-          variant="secondary"
+          secondary
           onPress={() => {
             if (groupId > 0) {
               router.push(ROUTES.dynamic.groupDetail(groupId) as any);
             }
           }}
-          style={{ flex: 1 }}
         />
 
         {isPending ? (
           <>
             <View style={{ width: SPACING.sm }} />
-            <Button
-              title={busy ? "Please wait..." : "Withdraw"}
+            <SoftButton
+              title={busy ? "Please wait..." : "Cancel request"}
               onPress={() => onCancel(item)}
               disabled={busy}
-              style={{ flex: 1 }}
             />
           </>
         ) : null}
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -294,20 +331,20 @@ export default function GroupJoinRequestsScreen() {
 
     return {
       pending: grouped.pending.length,
-      history: grouped.history.length,
       approved,
+      history: grouped.history.length,
     };
   }, [grouped, rows]);
 
   const handleCancel = useCallback(
     async (item: GroupJoinRequest) => {
       Alert.alert(
-        "Withdraw request",
-        `Withdraw your request for ${item.group_name || `Space #${item.group_id}`}?`,
+        "Cancel request",
+        `Cancel your request for ${item.group_name || `Space #${item.group_id}`}?`,
         [
-          { text: "Keep it", style: "cancel" },
+          { text: "Stay", style: "cancel" },
           {
-            text: "Withdraw",
+            text: "Cancel request",
             style: "destructive",
             onPress: async () => {
               try {
@@ -330,7 +367,7 @@ export default function GroupJoinRequestsScreen() {
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color="#8CF0C7" />
       </View>
     );
   }
@@ -353,19 +390,33 @@ export default function GroupJoinRequestsScreen() {
       style={styles.page}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#8CF0C7"
+          colors={["#8CF0C7", "#0CC0B7"]}
+        />
       }
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobMiddle} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
+
       <View style={styles.heroCard}>
         <View style={styles.heroGlowOne} />
         <View style={styles.heroGlowTwo} />
+        <View style={styles.heroGlowThree} />
 
         <View style={styles.heroTop}>
           <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.heroTag}>COMMUNITY REQUESTS</Text>
             <Text style={styles.heroTitle}>Community requests</Text>
             <Text style={styles.heroSubtitle}>
-              Follow the spaces you have asked to join and see how each request is moving.
+              Follow the spaces you have asked to join and see how each request
+              is moving.
             </Text>
           </View>
 
@@ -373,14 +424,14 @@ export default function GroupJoinRequestsScreen() {
             <Ionicons
               name="git-pull-request-outline"
               size={22}
-              color={COLORS.white}
+              color="#FFFFFF"
             />
           </View>
         </View>
 
         <View style={styles.heroStatsRow}>
           <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Waiting</Text>
+            <Text style={styles.heroStatLabel}>Under review</Text>
             <Text style={styles.heroStatValue}>{stats.pending}</Text>
           </View>
 
@@ -397,41 +448,41 @@ export default function GroupJoinRequestsScreen() {
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+        <View style={styles.errorCard}>
+          <View style={styles.errorIconWrap}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+          </View>
           <Text style={styles.errorText}>{error}</Text>
-        </Card>
+        </View>
       ) : null}
 
-      <Section title="Waiting for review">
-        {grouped.pending.length === 0 ? (
+      <SectionTitle title="Waiting for review" />
+      {grouped.pending.length === 0 ? (
+        <View style={styles.emptyHolder}>
           <EmptyState
             icon="git-pull-request-outline"
             title="No waiting requests"
             subtitle="New community join requests will appear here."
           />
-        ) : (
-          grouped.pending.map((item) => (
-            <View
-              key={item.id}
-              style={{ opacity: submittingId === item.id ? 0.7 : 1 }}
-            >
-              <JoinRequestCard
-                item={item}
-                busy={submittingId === item.id}
-                onCancel={handleCancel}
-              />
-            </View>
-          ))
-        )}
-      </Section>
+        </View>
+      ) : (
+        grouped.pending.map((item) => (
+          <View
+            key={item.id}
+            style={{ opacity: submittingId === item.id ? 0.7 : 1 }}
+          >
+            <JoinRequestCard
+              item={item}
+              busy={submittingId === item.id}
+              onCancel={handleCancel}
+            />
+          </View>
+        ))
+      )}
 
       {grouped.history.length > 0 ? (
-        <Section title="Past updates">
+        <>
+          <SectionTitle title="Past updates" />
           {grouped.history.map((item) => (
             <JoinRequestCard
               key={item.id}
@@ -440,7 +491,7 @@ export default function GroupJoinRequestsScreen() {
               onCancel={handleCancel}
             />
           ))}
-        </Section>
+        </>
       ) : null}
 
       <View style={{ height: 28 }} />
@@ -451,7 +502,7 @@ export default function GroupJoinRequestsScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
   },
 
   content: {
@@ -463,17 +514,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    ...SHADOW.card,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   heroGlowOne: {
@@ -493,13 +595,35 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+
+  heroTag: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "#DFFFE8",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
   heroIconWrap: {
@@ -514,7 +638,7 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 22,
     fontFamily: FONT.bold,
-    color: COLORS.white,
+    color: "#FFFFFF",
   },
 
   heroSubtitle: {
@@ -534,7 +658,7 @@ const styles = StyleSheet.create({
   heroStatPill: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
+    borderRadius: 18,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
   },
@@ -548,7 +672,7 @@ const styles = StyleSheet.create({
   heroStatValue: {
     marginTop: 4,
     fontSize: 16,
-    color: COLORS.white,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
   },
 
@@ -558,18 +682,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
-    backgroundColor: "rgba(220,53,69,0.08)",
+    backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(220,53,69,0.18)",
-    borderRadius: RADIUS.lg,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 22,
+  },
+
+  errorIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
 
   errorText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.danger,
+    color: "#FFFFFF",
     fontFamily: FONT.regular,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+
+  emptyHolder: {
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    marginBottom: SPACING.md,
   },
 
   itemCard: {
@@ -577,11 +727,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: COLORS.card || "#14202f",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderRadius: 26,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW.card,
+    borderColor: "rgba(189, 244, 255, 0.15)",
   },
 
   cardGlowPrimary: {
@@ -591,7 +740,7 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 52.5,
-    backgroundColor: "rgba(37,99,235,0.04)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   cardGlowAccent: {
@@ -601,7 +750,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(242,140,40,0.06)",
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   cardTopRow: {
@@ -616,7 +765,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primary,
+    backgroundColor: "rgba(236, 251, 255, 0.88)",
   },
 
   cardTextWrap: {
@@ -627,27 +776,27 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: COLORS.text,
+    color: "#FFFFFF",
   },
 
   cardSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.78)",
   },
 
   noteBox: {
     marginTop: SPACING.sm,
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 18,
     padding: SPACING.sm,
   },
 
   noteLabel: {
     fontFamily: FONT.bold,
     fontSize: 11,
-    color: COLORS.text,
+    color: "#FFFFFF",
     marginBottom: 4,
   },
 
@@ -655,7 +804,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
   },
 
   reviewRow: {
@@ -668,7 +817,7 @@ const styles = StyleSheet.create({
   reviewedText: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
   },
 
   infoStrip: {
@@ -690,7 +839,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: COLORS.textMuted,
+    color: "rgba(255,255,255,0.84)",
   },
 
   cardFooter: {
@@ -711,5 +860,42 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 11,
     fontFamily: FONT.bold,
+  },
+
+  softButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  softButtonPrimary: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  softButtonSecondary: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+
+  softButtonDisabled: {
+    opacity: 0.65,
+  },
+
+  softButtonText: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+  },
+
+  softButtonTextPrimary: {
+    color: "#0C6A80",
+  },
+
+  softButtonTextSecondary: {
+    color: "#FFFFFF",
   },
 });

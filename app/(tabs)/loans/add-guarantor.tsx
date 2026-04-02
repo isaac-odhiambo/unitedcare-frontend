@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -8,16 +7,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
 import Section from "@/components/ui/Section";
 
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   addGuarantor,
@@ -107,7 +106,7 @@ export default function AddGuarantorScreen() {
   const submit = useCallback(async () => {
     try {
       if (!canSubmit) {
-        Alert.alert("Add Guarantor", "Select a valid guarantor first.");
+        Alert.alert("Support", "Select a member first.");
         return;
       }
 
@@ -120,12 +119,12 @@ export default function AddGuarantorScreen() {
         request_note: requestNote.trim(),
       });
 
-      Alert.alert("Success", res?.message || "Guarantor request sent.");
+      Alert.alert("Success", res?.message || "Request sent.");
       router.replace(`/(tabs)/loans/${Number(loanId)}` as any);
     } catch (e: any) {
       const msg = getApiErrorMessage(e) || getErrorMessage(e);
       setError(msg);
-      Alert.alert("Add Guarantor", msg);
+      Alert.alert("Support", msg);
     } finally {
       setSubmitting(false);
     }
@@ -133,249 +132,166 @@ export default function AddGuarantorScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={styles.page}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Add Guarantor</Text>
-        <Text style={styles.sub}>
-          Choose a member to receive a guarantor request for this loan.
+      {/* HEADER */}
+      <View style={styles.hero}>
+        <Text style={styles.heroTitle}>Add supporter</Text>
+        <Text style={styles.heroSub}>
+          Choose a community member to support this request
         </Text>
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={COLORS.danger}
-          />
+        <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
-        </Card>
+        </View>
       ) : null}
 
-      <Section title="Loan">
-        <Card style={styles.card}>
+      {/* LOAN */}
+      <Section title="Support">
+        <View style={styles.card}>
           <Input
-            label="Loan ID"
+            label="Support ID"
             value={loanId}
             onChangeText={setLoanId}
-            placeholder="e.g. 12"
             keyboardType="number-pad"
           />
-          <Text style={styles.note}>
-            This request will be attached to the selected loan.
-          </Text>
-        </Card>
+        </View>
       </Section>
 
-      <Section title="Find Guarantor">
-        <Card style={styles.card}>
+      {/* SEARCH */}
+      <Section title="Find member">
+        <View style={styles.card}>
           <Input
             label="Search member"
             value={search}
             onChangeText={setSearch}
             placeholder="Search by name"
           />
-
-          <Text style={styles.note}>
-            Pick a member from the list below. The backend will still validate
-            whether they can guarantee this loan.
-          </Text>
-        </Card>
+        </View>
       </Section>
 
-      <Section title="Candidates">
+      {/* LIST */}
+      <Section title="Members">
         {loadingCandidates ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={COLORS.primary} />
-          </View>
+          <ActivityIndicator color="#8CF0C7" />
         ) : candidates.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No candidates found"
-            subtitle="Try a different search term or pull to refresh."
-          />
+          <EmptyState title="No members found" />
         ) : (
-          candidates.map((candidate) => {
-            const selected = guarantorId === String(candidate.id);
+          candidates.map((c) => {
+            const selected = guarantorId === String(c.id);
 
             return (
-              <Card key={candidate.id} style={styles.itemCard}>
-                <View style={styles.rowTop}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={styles.itemTitle}>{candidate.full_name}</Text>
-                    <Text style={styles.itemSub}>Available member</Text>
-                  </View>
-
-                  {selected ? (
-                    <Text style={[styles.badge, { color: COLORS.success }]}>
-                      SELECTED
-                    </Text>
-                  ) : null}
-                </View>
-
-                <View style={styles.actionsRow}>
-                  <Button
-                    title={selected ? "Selected" : "Select"}
-                    onPress={() => selectCandidate(candidate)}
-                    variant={selected ? "secondary" : "primary"}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </Card>
+              <TouchableOpacity
+                key={c.id}
+                style={[
+                  styles.item,
+                  selected && { borderColor: "#8CF0C7" },
+                ]}
+                onPress={() => selectCandidate(c)}
+              >
+                <Text style={styles.itemTitle}>{c.full_name}</Text>
+                <Text style={styles.itemSub}>
+                  {selected ? "Selected" : "Tap to select"}
+                </Text>
+              </TouchableOpacity>
             );
           })
         )}
       </Section>
 
-      <Section title="Request Note">
-        <Card style={styles.card}>
+      {/* NOTE */}
+      <Section title="Note">
+        <View style={styles.card}>
           <Input
             label="Optional note"
             value={requestNote}
             onChangeText={setRequestNote}
-            placeholder="Add a short note for the guarantor"
           />
-          {selectedCandidate ? (
-            <Text style={styles.note}>
-              Selected guarantor: {selectedCandidate.full_name}
-            </Text>
-          ) : (
-            <Text style={styles.note}>No guarantor selected yet.</Text>
-          )}
-        </Card>
+        </View>
       </Section>
 
+      {/* ACTIONS */}
       <View style={styles.actions}>
         <Button
-          title={submitting ? "Sending..." : "Send Request"}
+          title={submitting ? "Sending..." : "Send request"}
           onPress={submit}
-          loading={submitting}
-          disabled={!canSubmit || submitting}
+          disabled={!canSubmit}
         />
-        <View style={{ height: SPACING.sm }} />
-        <Button
-          title="Cancel"
-          variant="secondary"
-          onPress={() => router.back()}
-          disabled={submitting}
-        />
+        <View style={{ height: 10 }} />
+        <Button title="Cancel" variant="secondary" onPress={() => router.back()} />
       </View>
-
-      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { padding: SPACING.lg, paddingBottom: 24 },
-
-  header: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    ...SHADOW.card,
+  page: {
+    flex: 1,
+    backgroundColor: "#0C6A80",
   },
 
-  title: {
+  content: {
+    padding: 16,
+  },
+
+  hero: {
+    marginBottom: 16,
+  },
+
+  heroTitle: {
+    fontSize: 22,
+    color: "#FFFFFF",
     fontFamily: FONT.bold,
-    fontSize: 18,
-    color: COLORS.dark,
   },
 
-  sub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-    lineHeight: 18,
+  heroSub: {
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 4,
   },
 
   card: {
-    padding: SPACING.md,
-    ...SHADOW.card,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
-  errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
+  item: {
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "rgba(49,180,217,0.22)",
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  errorText: {
-    flex: 1,
-    color: COLORS.danger,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  note: {
-    marginTop: 8,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.gray,
-  },
-
-  loadingWrap: {
-    paddingVertical: SPACING.xl,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  itemCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  rowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: SPACING.md,
+    borderColor: "rgba(189,244,255,0.15)",
   },
 
   itemTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: COLORS.dark,
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 
   itemSub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: COLORS.gray,
-  },
-
-  badge: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
-  },
-
-  actionsRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 4,
   },
 
   actions: {
-    marginTop: SPACING.lg,
+    marginTop: 20,
+  },
+
+  errorBox: {
+    padding: 12,
+    backgroundColor: "rgba(220,53,69,0.18)",
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+
+  errorText: {
+    color: "#FFFFFF",
   },
 });

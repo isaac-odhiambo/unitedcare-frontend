@@ -1,6 +1,6 @@
 // app/(tabs)/profile/index.tsx
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SPACING } from "@/constants/theme";
+import { FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { clearAuthTokens, getErrorMessage } from "@/services/api";
 import {
   canJoinGroup,
@@ -143,7 +143,7 @@ export default function ProfileHome() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color="#8CF0C7" />
         <Text style={styles.loadingText}>Loading profile…</Text>
       </View>
     );
@@ -171,34 +171,68 @@ export default function ProfileHome() {
   const displayEmail = user?.email ?? "—";
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Ionicons name="person-outline" size={22} color={COLORS.primary} />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 24 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.backgroundBlobTop} />
+      <View style={styles.backgroundBlobMiddle} />
+      <View style={styles.backgroundBlobBottom} />
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
+
+      <View style={styles.heroCard}>
+        <View style={styles.heroGlowOne} />
+        <View style={styles.heroGlowTwo} />
+        <View style={styles.heroGlowThree} />
+
+        <View style={styles.header}>
+          <View style={styles.avatar}>
+            <Ionicons name="person-outline" size={22} color="#0A6E8A" />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{displayName}</Text>
+            <Text style={styles.sub}>
+              {displayPhone} • {isAdmin ? "Admin" : "Member"} • {status}
+            </Text>
+          </View>
         </View>
 
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{displayName}</Text>
-          <Text style={styles.sub}>
-            {displayPhone} • {isAdmin ? "Admin" : "Member"} • {status}
-          </Text>
+        <View style={styles.heroStatsRow}>
+          <StatPill label="Role" value={String(role)} />
+          <StatPill label="Status" value={String(status)} />
+          <StatPill label="KYC" value={kycComplete ? "Complete" : "Pending"} />
         </View>
       </View>
 
       {error ? (
         <View style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+          <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
 
       {!kycComplete ? (
         <View style={styles.banner}>
-          <Text style={styles.bannerTitle}>Complete KYC</Text>
-          <Text style={styles.bannerText}>
-            You can already use savings and merry features, but loan requests,
-            group joining and withdrawals require completed KYC.
-          </Text>
+          <View style={styles.bannerTop}>
+            <View style={styles.bannerIconWrap}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color="#0C6A80"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>Complete profile</Text>
+              <Text style={styles.bannerText}>
+                You can already use savings and merry features, but support
+                requests, group joining and withdrawals require completed KYC.
+              </Text>
+            </View>
+          </View>
 
           <TouchableOpacity
             style={styles.bannerBtn}
@@ -210,13 +244,25 @@ export default function ProfileHome() {
         </View>
       ) : (
         <View style={[styles.banner, styles.bannerSuccess]}>
-          <Text style={[styles.bannerTitle, styles.bannerSuccessTitle]}>
-            KYC Complete
-          </Text>
-          <Text style={[styles.bannerText, styles.bannerSuccessText]}>
-            Loan requests, group joining and withdrawals are available according
-            to your account status.
-          </Text>
+          <View style={styles.bannerTop}>
+            <View style={styles.bannerIconWrapSuccess}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={18}
+                color="#0C6A80"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.bannerTitle, styles.bannerSuccessTitle]}>
+                Profile complete
+              </Text>
+              <Text style={[styles.bannerText, styles.bannerSuccessText]}>
+                Support requests, group joining and withdrawals are available
+                according to your account status.
+              </Text>
+            </View>
+          </View>
         </View>
       )}
 
@@ -233,10 +279,10 @@ export default function ProfileHome() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Feature Access</Text>
+        <Text style={styles.cardTitle}>Feature access</Text>
 
         <Row label="Can join merry" value={merryAllowed ? "Yes" : "No"} />
-        <Row label="Can request loan" value={loanAllowed ? "Yes" : "No"} />
+        <Row label="Can request support" value={loanAllowed ? "Yes" : "No"} />
         <Row label="Can join group" value={groupAllowed ? "Yes" : "No"} />
         <Row label="Can withdraw" value={withdrawAllowed ? "Yes" : "No"} />
       </View>
@@ -246,7 +292,7 @@ export default function ProfileHome() {
 
         <ActionRow
           icon="create-outline"
-          text="Edit Profile"
+          text="Edit profile"
           onPress={() => router.push(ROUTES.tabs.profileEdit)}
         />
 
@@ -258,13 +304,13 @@ export default function ProfileHome() {
 
         <ActionRow
           icon="wallet-outline"
-          text="Open Savings"
+          text="Open savings"
           onPress={() => router.push(ROUTES.tabs.savings)}
         />
 
         <ActionRow
           icon="repeat-outline"
-          text="Open Merry-Go-Round"
+          text="Open merry-go-round"
           onPress={() => router.push(ROUTES.tabs.merry)}
         />
 
@@ -276,6 +322,15 @@ export default function ProfileHome() {
         />
       </View>
     </ScrollView>
+  );
+}
+
+function StatPill({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.heroStatPill}>
+      <Text style={styles.heroStatLabel}>{label}</Text>
+      <Text style={styles.heroStatValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -300,12 +355,31 @@ function ActionRow({
   danger?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.actionRow} onPress={onPress} activeOpacity={0.9}>
-      <View style={[styles.actionIcon, danger && { backgroundColor: "#FEE2E2" }]}>
-        <Ionicons name={icon} size={18} color={danger ? "#B91C1C" : COLORS.primary} />
+    <TouchableOpacity
+      style={styles.actionRow}
+      onPress={onPress}
+      activeOpacity={0.9}
+    >
+      <View
+        style={[
+          styles.actionIcon,
+          danger && { backgroundColor: "rgba(220,53,69,0.18)" },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={18}
+          color={danger ? "#FFFFFF" : "#0A6E8A"}
+        />
       </View>
-      <Text style={[styles.actionText, danger && { color: "#B91C1C" }]}>{text}</Text>
-      <Ionicons name="chevron-forward" size={18} color={COLORS.gray} />
+      <Text style={[styles.actionText, danger && { color: "#FFFFFF" }]}>
+        {text}
+      </Text>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color="rgba(255,255,255,0.72)"
+      />
     </TouchableOpacity>
   );
 }
@@ -313,7 +387,7 @@ function ActionRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#0C6A80",
     padding: SPACING.md,
   },
 
@@ -322,145 +396,286 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: SPACING.lg,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#0C6A80",
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -120,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 240,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   loadingText: {
     marginTop: 8,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
   },
 
   emptyTitle: {
     fontSize: FONT.section,
     fontWeight: "900",
-    color: COLORS.dark,
+    color: "#FFFFFF",
   },
 
   emptySub: {
     marginTop: 6,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
     textAlign: "center",
   },
 
   primaryBtn: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: "#FFFFFF",
     paddingVertical: 12,
     paddingHorizontal: 18,
     borderRadius: 10,
   },
 
   primaryBtnText: {
-    color: COLORS.white,
+    color: "#0C6A80",
     fontWeight: "900",
+  },
+
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: "rgba(49, 180, 217, 0.22)",
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: "rgba(189, 244, 255, 0.15)",
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
+  },
+
+  heroGlowOne: {
+    position: "absolute",
+    right: -28,
+    top: -20,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.09)",
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    left: -20,
+    bottom: -26,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroGlowThree: {
+    position: "absolute",
+    right: 30,
+    bottom: -16,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
   header: {
     flexDirection: "row",
     gap: 12,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
   },
 
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#EEF2FF",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(236,251,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
   },
 
   title: {
     fontSize: FONT.section,
     fontWeight: "900",
-    color: COLORS.dark,
+    color: "#FFFFFF",
   },
 
   sub: {
     marginTop: 2,
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.78)",
+  },
+
+  heroStatsRow: {
+    flexDirection: "row",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.lg,
+  },
+
+  heroStatPill: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+
+  heroStatLabel: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: FONT.regular,
+  },
+
+  heroStatValue: {
+    marginTop: 4,
+    fontSize: 14,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
   },
 
   errorCard: {
     marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
+    borderColor: "rgba(255,255,255,0.10)",
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    backgroundColor: "rgba(220,53,69,0.18)",
   },
 
   errorText: {
     flex: 1,
-    color: COLORS.danger,
+    color: "#FFFFFF",
     lineHeight: 18,
   },
 
   banner: {
     marginTop: SPACING.md,
     borderWidth: 1,
-    borderColor: "#FFE08A",
-    backgroundColor: "#FFF8E1",
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
     gap: 8,
   },
 
   bannerSuccess: {
-    borderColor: "#B7F0C4",
-    backgroundColor: "#ECFDF3",
+    backgroundColor: "rgba(140,240,199,0.12)",
+  },
+
+  bannerTop: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "flex-start",
+  },
+
+  bannerIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(236,251,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  bannerIconWrapSuccess: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(236,251,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   bannerTitle: {
     fontWeight: "900",
-    color: "#7A5B00",
+    color: "#FFFFFF",
   },
 
   bannerText: {
-    color: "#7A5B00",
+    color: "rgba(255,255,255,0.84)",
     lineHeight: 18,
+    marginTop: 4,
   },
 
   bannerSuccessTitle: {
-    color: "#0F7A2A",
+    color: "#FFFFFF",
   },
 
   bannerSuccessText: {
-    color: "#0F7A2A",
+    color: "rgba(255,255,255,0.84)",
   },
 
   bannerBtn: {
     alignSelf: "flex-start",
-    backgroundColor: "#7A5B00",
+    backgroundColor: "#FFFFFF",
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 10,
   },
 
   bannerBtnText: {
-    color: "white",
+    color: "#0C6A80",
     fontWeight: "900",
   },
 
   card: {
     marginTop: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
+    borderColor: "rgba(255,255,255,0.12)",
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    ...SHADOW.card,
   },
 
   cardTitle: {
     fontSize: FONT.body,
     fontWeight: "900",
-    color: COLORS.dark,
+    color: "#FFFFFF",
     marginBottom: 10,
   },
 
@@ -468,16 +683,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 8,
+    gap: 10,
   },
 
   label: {
-    color: COLORS.gray,
+    color: "rgba(255,255,255,0.72)",
     fontWeight: "700",
+    flex: 1,
   },
 
   value: {
-    color: COLORS.dark,
+    color: "#FFFFFF",
     fontWeight: "800",
+    flex: 1,
+    textAlign: "right",
   },
 
   actionRow: {
@@ -491,16 +710,14 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 12,
-    backgroundColor: "#EEF2FF",
+    backgroundColor: "rgba(236,251,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
   },
 
   actionText: {
     flex: 1,
-    color: COLORS.dark,
+    color: "#FFFFFF",
     fontWeight: "900",
   },
 });

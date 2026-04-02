@@ -7,6 +7,7 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -215,11 +216,23 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.container}>
-          <View style={styles.heroCard}>
-            <View style={styles.heroGlowOne} />
-            <View style={styles.heroGlowTwo} />
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.waveOne} />
+        <View style={styles.waveTwo} />
 
+        <View style={styles.container}>
+          <View style={styles.brandWrap}>
+            <Image
+              source={require("../../assets/images/icon.png")}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={styles.brandText}>UNITED CARE</Text>
+            <Text style={styles.brandSubText}>Community self-help home</Text>
+          </View>
+
+          <View style={styles.welcomeWrap}>
             <Text style={styles.title}>Create account</Text>
             <Text style={styles.subtitle}>
               Join your community space and continue with confidence.
@@ -448,7 +461,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: "#062C3D",
   },
 
   scrollContent: {
@@ -458,46 +471,94 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
     paddingTop: SPACING.xl,
     paddingBottom: SPACING.xl,
     justifyContent: "center",
-  },
-
-  heroCard: {
     position: "relative",
-    overflow: "hidden",
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.xl || RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
-    ...SHADOW.card,
   },
 
-  heroGlowOne: {
+  backgroundBlobTop: {
     position: "absolute",
-    right: -28,
-    top: -18,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.09)",
+    top: -80,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(54, 190, 176, 0.10)",
   },
 
-  heroGlowTwo: {
+  backgroundBlobBottom: {
     position: "absolute",
-    left: -18,
-    bottom: -24,
-    width: 110,
+    bottom: -100,
+    left: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "rgba(126, 217, 87, 0.08)",
+  },
+
+  waveOne: {
+    position: "absolute",
+    left: -30,
+    right: -30,
+    bottom: 110,
     height: 110,
-    borderRadius: 55,
-    backgroundColor: "rgba(242,140,40,0.18)",
+    borderTopLeftRadius: 150,
+    borderTopRightRadius: 150,
+    backgroundColor: "rgba(125, 220, 185, 0.08)",
+    transform: [{ rotate: "-5deg" }],
+  },
+
+  waveTwo: {
+    position: "absolute",
+    left: -20,
+    right: -20,
+    bottom: 55,
+    height: 95,
+    borderTopLeftRadius: 150,
+    borderTopRightRadius: 150,
+    backgroundColor: "rgba(87, 205, 185, 0.10)",
+    transform: [{ rotate: "4deg" }],
+  },
+
+  brandWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.lg,
+  },
+
+  logo: {
+    width: 78,
+    height: 78,
+    marginBottom: 10,
+  },
+
+  brandText: {
+    color: COLORS.white,
+    fontWeight: "800",
+    fontSize: 22,
+    letterSpacing: 0.8,
+    textAlign: "center",
+  },
+
+  brandSubText: {
+    marginTop: 4,
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    textAlign: "center",
+  },
+
+  welcomeWrap: {
+    alignItems: "center",
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.md,
   },
 
   title: {
     fontSize: 24,
     fontWeight: "800",
     color: COLORS.white,
+    textAlign: "center",
   },
 
   subtitle: {
@@ -505,6 +566,7 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.86)",
     fontSize: 13,
     lineHeight: 19,
+    textAlign: "center",
   },
 
   formCard: {
@@ -569,7 +631,7 @@ const styles = StyleSheet.create({
   },
 
   showBtnText: {
-    color: COLORS.primary,
+    color: "#0C6A80",
     fontWeight: "700",
     fontSize: 12,
   },
@@ -600,7 +662,7 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: "#0C6A80",
     padding: SPACING.md,
     borderRadius: RADIUS.md,
     alignItems: "center",
@@ -634,7 +696,7 @@ const styles = StyleSheet.create({
   link: {
     marginTop: SPACING.md,
     textAlign: "center",
-    color: COLORS.primary,
+    color: "#0C6A80",
     fontWeight: "600",
     fontSize: 13,
   },

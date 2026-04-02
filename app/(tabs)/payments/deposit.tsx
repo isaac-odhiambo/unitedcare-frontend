@@ -71,13 +71,12 @@ type DepositParams = {
   initial_method?: string;
 };
 
-const TERMINAL_ALLOCATION_STATUSES = new Set([
-  "AUTO_ALLOCATED",
-  "MANUALLY_ALLOCATED",
-  "PARTIALLY_ALLOCATED",
-  "MANUAL_REVIEW",
-  "INVALID_REFERENCE",
-]);
+const PAGE_BG = "#062C49";
+const SURFACE = "rgba(255,255,255,0.96)";
+const SURFACE_SOFT = "rgba(248,250,252,0.92)";
+const INNER_BORDER = "rgba(15, 23, 42, 0.06)";
+const TEXT_MAIN = "#0F172A";
+const TEXT_SOFT = "#64748B";
 
 function normalizeDisplayPhone(value: string) {
   const v = String(value || "").trim().replace(/\s+/g, "");
@@ -187,31 +186,18 @@ function getPurposeLabel(purpose: MpesaPurpose) {
     case "LOAN_REPAYMENT":
       return "Loan Repayment";
     case "SAVINGS_DEPOSIT":
-      return "Savings Deposit";
+      return "Savings Contribution";
     default:
       return "Payment";
   }
 }
 
-function normalizeAllocationStatus(value?: string | null) {
-  return String(value || "").trim().toUpperCase();
-}
-
-function hasTerminalAllocationStatus(tx?: Partial<MpesaTransaction> | null) {
-  const allocationStatus = normalizeAllocationStatus(tx?.allocation_status);
-  return TERMINAL_ALLOCATION_STATUSES.has(allocationStatus);
-}
-
-function shouldRedirectAsCompleted(tx?: Partial<MpesaTransaction> | null) {
-  return isSuccessfulTxStatus(tx?.status) && hasTerminalAllocationStatus(tx);
-}
-
 function getFailureMessage(tx?: Partial<MpesaTransaction> | null) {
   if (!tx) return "Payment was not completed.";
-  if (String(tx.status || "").toUpperCase() === "CANCELLED") {
-    return tx.result_desc || "Payment was cancelled.";
+  if (String(tx?.status || "").toUpperCase() === "CANCELLED") {
+    return tx?.result_desc || "Payment was cancelled.";
   }
-  return tx.result_desc || "Payment failed.";
+  return tx?.result_desc || "Payment failed.";
 }
 
 export default function DepositScreen() {
@@ -238,6 +224,18 @@ export default function DepositScreen() {
 
   const mountedRef = useRef(true);
   const redirectedRef = useRef(false);
+  const paymentRunRef = useRef(0);
+  const screenSessionRef = useRef(0);
+
+  const resetUiState = useCallback(() => {
+    paymentRunRef.current += 1;
+    if (!mountedRef.current) return;
+    setError("");
+    setStatusText("");
+    setSubmitting(false);
+    setChecking(false);
+    redirectedRef.current = false;
+  }, []);
 
   const purpose = useMemo(
     () => normalizePurpose(params.purpose),
@@ -357,40 +355,10 @@ export default function DepositScreen() {
     async (tx: MpesaTransaction) => {
       if (!mountedRef.current) return;
 
-      if (shouldRedirectAsCompleted(tx)) {
+      if (isSuccessfulTxStatus(tx.status)) {
+        setStatusText("Payment received ✅");
         redirectToReturn(tx, "success", "Payment successful.");
         return;
-      }
-
-      if (isSuccessfulTxStatus(tx.status)) {
-        try {
-          setStatusText("Finalizing...");
-          const finalized = await pollMyMpesaTransactionById(tx.id, {
-            intervalMs: 3000,
-            timeoutMs: 60000,
-            stopOnAllocated: true,
-          });
-
-          if (!mountedRef.current) return;
-
-          if (shouldRedirectAsCompleted(finalized)) {
-            redirectToReturn(finalized, "success", "Payment successful.");
-            return;
-          }
-
-          if (isSuccessfulTxStatus(finalized.status)) {
-            redirectToReturn(finalized, "success", "Payment successful.");
-            return;
-          }
-
-          if (isFailedTxStatus(finalized.status)) {
-            redirectToReturn(finalized, "failed", getFailureMessage(finalized));
-            return;
-          }
-        } catch {
-          redirectToReturn(tx, "success", "Payment successful.");
-          return;
-        }
       }
 
       if (isFailedTxStatus(tx.status)) {
@@ -398,7 +366,12 @@ export default function DepositScreen() {
         return;
       }
 
-      setStatusText("Still waiting...");
+      if (isPendingTxStatus(tx.status)) {
+        setStatusText("Still waiting for confirmation...");
+        return;
+      }
+
+      setStatusText("Still waiting for confirmation...");
     },
     [redirectToReturn]
   );
@@ -406,6 +379,7 @@ export default function DepositScreen() {
   const load = useCallback(async () => {
     try {
       setError("");
+      setStatusText("");
 
       const [sessionRes, meRes, configRes] = await Promise.allSettled([
         getSessionUser(),
@@ -463,13 +437,21 @@ export default function DepositScreen() {
     useCallback(() => {
       mountedRef.current = true;
       redirectedRef.current = false;
+      screenSessionRef.current += 1;
+      paymentRunRef.current += 1;
+
+      const sessionId = screenSessionRef.current;
 
       const run = async () => {
         try {
           setLoading(true);
+          setError("");
+          setStatusText("");
+          setSubmitting(false);
+          setChecking(false);
           await load();
         } finally {
-          if (mountedRef.current) {
+          if (mountedRef.current && screenSessionRef.current === sessionId) {
             setLoading(false);
           }
         }
@@ -478,6 +460,7 @@ export default function DepositScreen() {
       run();
 
       return () => {
+        paymentRunRef.current += 1;
         mountedRef.current = false;
       };
     }, [load])
@@ -486,6 +469,10 @@ export default function DepositScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
+      paymentRunRef.current += 1;
+      setStatusText("");
+      setSubmitting(false);
+      setChecking(false);
       await load();
     } finally {
       if (mountedRef.current) {
@@ -494,14 +481,28 @@ export default function DepositScreen() {
     }
   }, [load]);
 
+  const setMethodSafely = useCallback(
+    (nextMethod: DepositMethod) => {
+      resetUiState();
+      setMethod(nextMethod);
+    },
+    [resetUiState]
+  );
+
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
 
+    const runId = paymentRunRef.current + 1;
+    paymentRunRef.current = runId;
+
     try {
-      setSubmitting(true);
-      setChecking(true);
+      if (!mountedRef.current) return;
+
       setError("");
       setStatusText("Sending...");
+      setSubmitting(true);
+      setChecking(true);
+      redirectedRef.current = false;
 
       const res = await mpesaStkPush({
         phone: displayPhone,
@@ -511,7 +512,7 @@ export default function DepositScreen() {
         narration,
       });
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
 
       if (!res.tx?.id) {
         throw new Error("Transaction id was not returned by the backend.");
@@ -525,10 +526,12 @@ export default function DepositScreen() {
         stopOnAllocated: false,
       });
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
+
       await handleTerminalResult(txAfterCallback);
     } catch (e: any) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
+
       const msg = getApiErrorMessage(e);
       setError(msg);
       setStatusText("");
@@ -539,7 +542,7 @@ export default function DepositScreen() {
         duration: 5000,
       });
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && paymentRunRef.current === runId) {
         setSubmitting(false);
         setChecking(false);
       }
@@ -558,10 +561,17 @@ export default function DepositScreen() {
   const checkExistingManualPayment = useCallback(async () => {
     if (!canManualCheck) return;
 
+    const runId = paymentRunRef.current + 1;
+    paymentRunRef.current = runId;
+
     try {
-      setChecking(true);
+      if (!mountedRef.current) return;
+
       setError("");
+      setChecking(true);
+      setSubmitting(false);
       setStatusText("Checking...");
+      redirectedRef.current = false;
 
       const existing = await findLatestMatchingMyMpesaTransaction({
         purpose,
@@ -572,7 +582,7 @@ export default function DepositScreen() {
         phone: displayPhone,
       });
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
 
       if (!existing) {
         setStatusText("Not found yet.");
@@ -598,7 +608,8 @@ export default function DepositScreen() {
 
       await handleTerminalResult(existing);
     } catch (e: any) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
+
       const msg = getApiErrorMessage(e);
       setError(msg);
       setStatusText("");
@@ -609,7 +620,7 @@ export default function DepositScreen() {
         duration: 5000,
       });
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && paymentRunRef.current === runId) {
         setChecking(false);
       }
     }
@@ -626,10 +637,17 @@ export default function DepositScreen() {
   const handleManualPaid = useCallback(async () => {
     if (!canManualCheck) return;
 
+    const runId = paymentRunRef.current + 1;
+    paymentRunRef.current = runId;
+
     try {
-      setChecking(true);
+      if (!mountedRef.current) return;
+
       setError("");
+      setChecking(true);
+      setSubmitting(false);
       setStatusText("Waiting for confirmation...");
+      redirectedRef.current = false;
 
       const tx = await pollForMatchingManualPaybill({
         purpose,
@@ -640,7 +658,7 @@ export default function DepositScreen() {
         timeoutMs: 300000,
       });
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
 
       if (!tx) {
         setStatusText("Not found yet.");
@@ -655,7 +673,8 @@ export default function DepositScreen() {
 
       await handleTerminalResult(tx);
     } catch (e: any) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || paymentRunRef.current !== runId) return;
+
       const msg = getApiErrorMessage(e);
       setError(msg);
       setStatusText("");
@@ -666,7 +685,7 @@ export default function DepositScreen() {
         duration: 5000,
       });
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && paymentRunRef.current === runId) {
         setChecking(false);
       }
     }
@@ -681,6 +700,15 @@ export default function DepositScreen() {
   ]);
 
   const handleCancel = useCallback(() => {
+    paymentRunRef.current += 1;
+    if (mountedRef.current) {
+      setError("");
+      setStatusText("");
+      setSubmitting(false);
+      setChecking(false);
+    }
+    redirectedRef.current = false;
+
     const returnTo = String(params.returnTo || ROUTES.tabs.payments);
     router.replace(returnTo as any);
   }, [params.returnTo]);
@@ -689,7 +717,8 @@ export default function DepositScreen() {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.mpesa} />
+          <ActivityIndicator color="#8CF0C7" />
+          <Text style={styles.loadingText}>Preparing payment...</Text>
         </View>
       </SafeAreaView>
     );
@@ -719,24 +748,43 @@ export default function DepositScreen() {
           { paddingBottom: Math.max(insets.bottom + 24, 32) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.header}>
           <Text style={styles.title}>{displayTitle}</Text>
+          <Text style={styles.subtitle}>
+            Choose how you want to complete your contribution.
+          </Text>
         </View>
 
         {error ? (
           <Card style={styles.errorCard}>
-            <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger}
+            />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
 
         {statusText ? (
           <Card style={styles.noticeCard}>
+            <View style={styles.noticeGlow} />
             <Text style={styles.noticeText}>{statusText}</Text>
           </Card>
         ) : null}
@@ -744,12 +792,17 @@ export default function DepositScreen() {
         <View style={styles.switchRow}>
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => setMethod("STK")}
+            onPress={() => setMethodSafely("STK")}
             style={[
               styles.switchBtn,
               method === "STK" ? styles.switchBtnActive : null,
             ]}
           >
+            <Ionicons
+              name="flash-outline"
+              size={16}
+              color={method === "STK" ? COLORS.white : COLORS.mpesa}
+            />
             <Text
               style={[
                 styles.switchBtnText,
@@ -767,13 +820,18 @@ export default function DepositScreen() {
                 Alert.alert("Paybill unavailable", "Manual paybill is not enabled.");
                 return;
               }
-              setMethod("PAYBILL");
+              setMethodSafely("PAYBILL");
             }}
             style={[
               styles.switchBtn,
               method === "PAYBILL" ? styles.switchBtnActive : null,
             ]}
           >
+            <Ionicons
+              name="business-outline"
+              size={16}
+              color={method === "PAYBILL" ? COLORS.white : COLORS.mpesa}
+            />
             <Text
               style={[
                 styles.switchBtnText,
@@ -786,10 +844,15 @@ export default function DepositScreen() {
         </View>
 
         <Card style={styles.formCard}>
+          <View style={styles.cardGlow} />
+
           <Text style={styles.label}>Phone Number</Text>
           <TextInput
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(v) => {
+              setPhone(v);
+              if (statusText) setStatusText("");
+            }}
             placeholder="07XXXXXXXX"
             placeholderTextColor={COLORS.placeholder}
             keyboardType="phone-pad"
@@ -800,18 +863,35 @@ export default function DepositScreen() {
           <Text style={styles.label}>Amount</Text>
           <TextInput
             value={amount}
-            onChangeText={(v) => setAmount(sanitizeAmount(v))}
+            onChangeText={(v) => {
+              setAmount(sanitizeAmount(v));
+              if (statusText) setStatusText("");
+            }}
             placeholder="1000"
             placeholderTextColor={COLORS.placeholder}
             keyboardType="numeric"
             style={styles.input}
           />
 
+          <View style={styles.referenceBox}>
+            <Text style={styles.referenceLabel}>Reference</Text>
+            <Text style={styles.referenceValue}>{accountReference || "—"}</Text>
+          </View>
+
           {method === "STK" ? (
             <Button
-              title={submitting || checking ? "Please wait..." : "Pay"}
+              title={submitting || checking ? "Please wait..." : "Pay now"}
               onPress={handleSubmit}
               disabled={!canSubmit}
+              leftIcon={
+                submitting || checking ? undefined : (
+                  <Ionicons
+                    name="arrow-forward-outline"
+                    size={18}
+                    color={COLORS.white}
+                  />
+                )
+              }
             />
           ) : (
             <View style={styles.paybillBox}>
@@ -854,129 +934,296 @@ export default function DepositScreen() {
 
 const styles = StyleSheet.create({
   page: {
-    ...P.page,
+    flex: 1,
+    backgroundColor: PAGE_BG,
   },
+
   content: {
     ...P.content,
+    position: "relative",
   },
+
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
   },
+
+  loadingText: {
+    marginTop: SPACING.sm,
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: FONT.regular,
+    fontSize: 12,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
   header: {
     marginBottom: SPACING.md,
   },
+
   title: {
     fontFamily: FONT.bold,
     fontSize: 24,
-    color: COLORS.text,
+    color: COLORS.white,
   },
+
+  subtitle: {
+    marginTop: 6,
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
   errorCard: {
-    ...P.paymentError,
     marginBottom: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+    backgroundColor: "#FFF4F4",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.18)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
   },
+
   errorText: {
     flex: 1,
     ...TYPE.subtext,
     color: COLORS.danger,
   },
+
   noticeCard: {
+    position: "relative",
+    overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.xl,
+    backgroundColor: SURFACE,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
+
+  noticeGlow: {
+    position: "absolute",
+    right: -18,
+    top: -12,
+    width: 90,
+    height: 90,
+    borderRadius: 999,
+    backgroundColor: "rgba(12,106,128,0.05)",
+  },
+
   noticeText: {
     ...TYPE.subtext,
-    color: COLORS.text,
+    color: TEXT_MAIN,
     textAlign: "center",
+    fontFamily: FONT.medium,
   },
+
   switchRow: {
     flexDirection: "row",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
+
   switchBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 12,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.xl,
+    paddingVertical: 13,
     alignItems: "center",
-    backgroundColor: COLORS.surface,
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: SURFACE,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
+
   switchBtnActive: {
-    borderColor: COLORS.mpesa,
-    backgroundColor: "rgba(22, 163, 74, 0.08)",
+    borderColor: "rgba(22, 163, 74, 0.18)",
+    backgroundColor: COLORS.mpesa,
   },
+
   switchBtnText: {
     fontFamily: FONT.medium,
     fontSize: 14,
-    color: COLORS.textMuted,
-  },
-  switchBtnTextActive: {
     color: COLORS.mpesa,
+  },
+
+  switchBtnTextActive: {
+    color: COLORS.white,
     fontFamily: FONT.bold,
   },
+
   formCard: {
-    ...P.paymentCard,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+    shadowColor: "#001B2F",
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
+
+  cardGlow: {
+    position: "absolute",
+    right: -18,
+    top: -18,
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: "rgba(12,106,128,0.05)",
+  },
+
   label: {
     ...TYPE.label,
     marginBottom: 8,
-    color: COLORS.text,
+    color: TEXT_MAIN,
   },
+
   input: {
     ...P.input,
-    height: 50,
+    height: 52,
     marginBottom: SPACING.md,
+    backgroundColor: SURFACE_SOFT,
+    borderColor: INNER_BORDER,
   },
+
+  referenceBox: {
+    marginBottom: SPACING.md,
+    backgroundColor: SURFACE_SOFT,
+    borderWidth: 1,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+  },
+
+  referenceLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 12,
+    color: TEXT_SOFT,
+  },
+
+  referenceValue: {
+    marginTop: 6,
+    fontFamily: FONT.bold,
+    fontSize: 14,
+    color: TEXT_MAIN,
+  },
+
   paybillBox: {
     marginTop: SPACING.xs,
     gap: SPACING.sm,
   },
+
   paybillRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
-    paddingVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
+
   paybillLabel: {
     ...TYPE.subtext,
-    color: COLORS.textMuted,
+    color: TEXT_SOFT,
   },
+
   paybillValue: {
     ...TYPE.body,
-    color: COLORS.text,
+    color: TEXT_MAIN,
     fontFamily: FONT.bold,
   },
+
   inlineAction: {
     marginTop: SPACING.xs,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 8,
   },
+
   inlineActionText: {
     color: COLORS.mpesa,
     fontFamily: FONT.medium,
     fontSize: 14,
   },
+
   backBtn: {
     marginTop: SPACING.md,
     alignSelf: "center",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+
   backBtnText: {
-    color: COLORS.text,
+    color: COLORS.white,
     fontFamily: FONT.medium,
     fontSize: 14,
   },

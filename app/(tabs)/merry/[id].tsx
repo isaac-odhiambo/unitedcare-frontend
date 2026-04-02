@@ -3,11 +3,13 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -21,7 +23,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, RADIUS, SPACING, TYPE } from "@/constants/theme";
+import { COLORS, FONT, SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   fmtKES,
@@ -36,24 +38,25 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const UI = {
-  bg: "#EEF3F6",
-  surface: "#F8FBFC",
-  surfaceAlt: "#F3F7F9",
-  card: "#F9FBFC",
-  border: "#D8E2E8",
-  text: "#344454",
-  textSoft: "#607080",
-  textMuted: "#7B8997",
-  accent: "#5C7383",
-  accentSoft: "#E5EDF2",
-  successBg: "#EAF5EE",
-  successText: "#466B58",
-  warningBg: "#FFF3E6",
-  warningText: "#9A6A33",
-  dangerBg: "#FDEEEF",
-  dangerText: "#A45555",
-};
+const PAGE_BG = "#062C49";
+const BRAND = "#0C6A80";
+const WHITE = "#FFFFFF";
+const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
+const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
+const SOFT_WHITE = "rgba(255,255,255,0.10)";
+const CARD_BORDER = "rgba(255,255,255,0.10)";
+const MERRY_CARD = "rgba(98, 192, 98, 0.23)";
+const MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
+const MERRY_ICON_BG = "rgba(236, 255, 235, 0.76)";
+const MERRY_ICON = "#379B4A";
+const SUCCESS_BG = "rgba(34,197,94,0.16)";
+const SUCCESS_TEXT = "#DCFCE7";
+const WARNING_BG = "rgba(245,158,11,0.18)";
+const WARNING_TEXT = "#FEF3C7";
+const DANGER_BG = "rgba(239,68,68,0.18)";
+const DANGER_TEXT = "#FECACA";
+const ACCENT_BG = "rgba(12,106,128,0.20)";
+const ACCENT_TEXT = "#D9F3F9";
 
 function toBool(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -73,29 +76,13 @@ function hasAmount(value?: string | number | null) {
 function statusTone(bucket?: string) {
   switch ((bucket || "").toLowerCase()) {
     case "overdue":
-      return {
-        bg: UI.dangerBg,
-        text: UI.dangerText,
-        label: "Overdue",
-      };
+      return { bg: DANGER_BG, text: DANGER_TEXT, label: "Overdue" };
     case "current":
-      return {
-        bg: UI.warningBg,
-        text: UI.warningText,
-        label: "Due now",
-      };
+      return { bg: WARNING_BG, text: WARNING_TEXT, label: "Due now" };
     case "future":
-      return {
-        bg: UI.successBg,
-        text: UI.successText,
-        label: "Next due",
-      };
+      return { bg: SUCCESS_BG, text: SUCCESS_TEXT, label: "Next due" };
     default:
-      return {
-        bg: UI.accentSoft,
-        text: UI.accent,
-        label: "Open",
-      };
+      return { bg: ACCENT_BG, text: ACCENT_TEXT, label: "Open" };
   }
 }
 
@@ -111,7 +98,7 @@ function SummaryBox({
   return (
     <Card style={styles.summaryBox} variant="default">
       <View style={styles.summaryIconWrap}>
-        <Ionicons name={icon} size={18} color={UI.accent} />
+        <Ionicons name={icon} size={18} color={BRAND} />
       </View>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={styles.summaryValue} numberOfLines={1}>
@@ -181,10 +168,18 @@ function InfoStrip({
 }) {
   const toneStyle =
     tone === "warning"
-      ? { bg: UI.warningBg, border: "#F0DEC9", color: UI.warningText }
+      ? {
+          bg: WARNING_BG,
+          border: "rgba(245,158,11,0.22)",
+          color: WARNING_TEXT,
+        }
       : tone === "danger"
-        ? { bg: UI.dangerBg, border: "#EBCBCF", color: UI.dangerText }
-        : { bg: UI.accentSoft, border: UI.border, color: UI.text };
+        ? {
+            bg: DANGER_BG,
+            border: "rgba(239,68,68,0.22)",
+            color: DANGER_TEXT,
+          }
+        : { bg: SOFT_WHITE, border: CARD_BORDER, color: TEXT_ON_DARK };
 
   return (
     <View
@@ -203,7 +198,6 @@ function InfoStrip({
 
 export default function MerryDetailScreen() {
   const insets = useSafeAreaInsets();
-
   const params = useLocalSearchParams<{ id?: string; includeNext?: string }>();
   const merryId = Number(params.id);
   const initialIncludeNext = toBool(params.includeNext, false);
@@ -217,14 +211,44 @@ export default function MerryDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [toggling, setToggling] = useState(false);
+
   const [error, setError] = useState("");
+  const [breakdownError, setBreakdownError] = useState("");
+
+  const loadBreakdown = useCallback(
+    async (includeNextValue: boolean, showPop = false) => {
+      if (!merryId || Number.isNaN(merryId)) return;
+
+      try {
+        setBreakdownError("");
+        const breakdownRes = await getMerryPaymentBreakdown(
+          merryId,
+          includeNextValue
+        );
+        setBreakdown(breakdownRes);
+      } catch (e: any) {
+        const message =
+          getApiErrorMessage(e) ||
+          getErrorMessage(e) ||
+          "Unable to load contribution summary.";
+        setBreakdown(null);
+        setBreakdownError(message);
+
+        if (showPop) {
+          Alert.alert("Contribution summary unavailable", message);
+        }
+      }
+    },
+    [merryId]
+  );
 
   const load = useCallback(
-    async (includeNextValue = includeNext) => {
+    async (includeNextValue = includeNext, showBreakdownPop = false) => {
       if (!merryId || Number.isNaN(merryId)) {
         setError("Invalid merry selected.");
         setDetail(null);
         setBreakdown(null);
+        setBreakdownError("");
         return;
       }
 
@@ -254,6 +278,7 @@ export default function MerryDetailScreen() {
         if (detailRes.status !== "fulfilled") {
           setDetail(null);
           setBreakdown(null);
+          setBreakdownError("");
           setError(
             getApiErrorMessage(detailRes.reason) ||
               getErrorMessage(detailRes.reason)
@@ -265,27 +290,25 @@ export default function MerryDetailScreen() {
         setDetail(nextDetail);
 
         if (nextDetail.is_member) {
-          const breakdownRes = await getMerryPaymentBreakdown(
-            merryId,
-            includeNextValue
-          );
-          setBreakdown(breakdownRes);
+          await loadBreakdown(includeNextValue, showBreakdownPop);
         } else {
           setBreakdown(null);
+          setBreakdownError("");
         }
       } catch (e: any) {
         setDetail(null);
         setBreakdown(null);
+        setBreakdownError("");
         setError(getApiErrorMessage(e) || getErrorMessage(e));
       }
     },
-    [includeNext, merryId]
+    [includeNext, loadBreakdown, merryId]
   );
 
   const initialLoad = useCallback(async () => {
     try {
       setLoading(true);
-      await load(initialIncludeNext);
+      await load(initialIncludeNext, false);
       setIncludeNext(initialIncludeNext);
     } finally {
       setLoading(false);
@@ -301,7 +324,7 @@ export default function MerryDetailScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await load(includeNext);
+      await load(includeNext, false);
     } finally {
       setRefreshing(false);
     }
@@ -313,7 +336,7 @@ export default function MerryDetailScreen() {
       try {
         setToggling(true);
         setIncludeNext(value);
-        await load(value);
+        await load(value, true);
       } finally {
         setToggling(false);
       }
@@ -349,10 +372,10 @@ export default function MerryDetailScreen() {
   }, [breakdown, includeNext, isMember, rawSelectedAmount, walletBalance]);
 
   const canPaySelected = isMember && hasAmount(payableAfterWallet);
-
-  const groupedPreview = useMemo(() => {
-    return isMember && breakdown?.items?.length ? breakdown.items : [];
-  }, [breakdown, isMember]);
+  const groupedPreview = useMemo(
+    () => (isMember && breakdown?.items?.length ? breakdown.items : []),
+    [breakdown, isMember]
+  );
 
   const title = breakdown?.merry_name || detail?.name || "Merry";
   const seatCount = isMember
@@ -377,11 +400,41 @@ export default function MerryDetailScreen() {
     return "View merry";
   }, [canRequestJoin, detail?.is_open, isMember, joinStatus]);
 
+  const nextContributionDate = useMemo(() => {
+    if (breakdown?.next_due_date) return breakdown.next_due_date;
+
+    const nextFutureItem = breakdown?.items?.find(
+      (item) =>
+        String(item.bucket || "").toLowerCase() === "future" && item.due_date
+    );
+
+    return nextFutureItem?.due_date || null;
+  }, [breakdown]);
+
+  const goToDeposit = useCallback(() => {
+    router.replace({
+      pathname: "/(tabs)/payments/deposit" as any,
+      params: {
+        source: "merry",
+        merryId: String(merryId),
+        amount: String(payableAfterWallet || rawSelectedAmount || 0),
+        editableAmount: "true",
+      },
+    });
+  }, [merryId, payableAfterWallet, rawSelectedAmount]);
+
+  const openMembers = useCallback(() => {
+    router.push({
+      pathname: "/(tabs)/merry/members" as any,
+      params: { merryId: String(merryId) },
+    });
+  }, [merryId]);
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.accent} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -389,8 +442,8 @@ export default function MerryDetailScreen() {
 
   if (!merryId || Number.isNaN(merryId)) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
           <EmptyState
             title="Invalid merry"
             subtitle="The selected merry could not be opened."
@@ -404,8 +457,8 @@ export default function MerryDetailScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
           <EmptyState
             title="Not signed in"
             subtitle="Please login to continue."
@@ -419,8 +472,8 @@ export default function MerryDetailScreen() {
 
   if (!detail) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
           <EmptyState
             title="Unable to load merry"
             subtitle={error || "This merry could not be loaded."}
@@ -433,48 +486,120 @@ export default function MerryDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
       <ScrollView
-        style={styles.container}
+        style={styles.page}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: Math.max(insets.bottom + 24, 32) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
+        <View style={styles.topBar}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBadge}>
+              <Ionicons name="people-outline" size={22} color="#FFFFFF" />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandWordmark}>
+                MERRY <Text style={styles.brandWordmarkGreen}>DETAILS</Text>
+              </Text>
+              <Text style={styles.brandSub}>Community sharing space</Text>
+            </View>
+          </View>
+
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={onRefresh}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="refresh-outline" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => router.back()}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <Card style={styles.heroCard} variant="default">
+          <View style={styles.spaceGlowTop} />
+          <View style={styles.spaceGlowBottom} />
+
           <View style={styles.heroTop}>
             <View style={{ flex: 1, paddingRight: SPACING.md }}>
               <Text style={styles.heroEyebrow}>MERRY</Text>
               <Text style={styles.heroTitle}>{title}</Text>
               <Text style={styles.heroSubtitle}>
                 {isMember
-                  ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""}`
-                  : `${detail.payouts_per_period || 1} slot${Number(detail.payouts_per_period || 1) === 1 ? "" : "s"} per period • ${availableSeatText}`}
+                  ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
+                      seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
+                    }`
+                  : `${detail.payouts_per_period || 1} slot${
+                      Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
+                    } per period • ${availableSeatText}`}
               </Text>
             </View>
 
             <View style={styles.heroIconWrap}>
-              <Ionicons name="people-outline" size={22} color={UI.accent} />
+              <Ionicons name="people-outline" size={22} color={MERRY_ICON} />
             </View>
           </View>
 
           {isMember ? (
             <>
-              <View style={styles.heroAmountBox}>
-                <Text style={styles.heroAmountLabel}>
-                  {includeNext ? "Selected total" : "Required now"}
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={canPaySelected ? goToDeposit : undefined}
+                style={[
+                  styles.heroAmountBox,
+                  canPaySelected ? styles.heroAmountBoxPressable : null,
+                ]}
+              >
+                <View style={styles.heroAmountTopRow}>
+                  <Text style={styles.heroAmountLabel}>
+                    {includeNext ? "Selected total" : "Required now"}
+                  </Text>
+
+                  {canPaySelected ? (
+                    <View style={styles.heroAmountAction}>
+                      <Text style={styles.heroAmountActionText}>Deposit</Text>
+                      <Ionicons name="chevron-forward" size={14} color={WHITE} />
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text style={styles.heroAmountValue}>
+                  {fmtKES(rawSelectedAmount)}
                 </Text>
-                <Text style={styles.heroAmountValue}>{fmtKES(rawSelectedAmount)}</Text>
 
                 <View style={styles.heroMiniDivider} />
 
                 <View style={styles.heroMiniRow}>
                   <Text style={styles.heroMiniLabel}>Wallet balance</Text>
-                  <Text style={styles.heroMiniValue}>{fmtKES(walletBalance)}</Text>
+                  <Text style={styles.heroMiniValue}>
+                    {fmtKES(walletBalance)}
+                  </Text>
                 </View>
 
                 <View style={styles.heroMiniRow}>
@@ -485,7 +610,16 @@ export default function MerryDetailScreen() {
                     {fmtKES(payableAfterWallet)}
                   </Text>
                 </View>
-              </View>
+
+                {nextContributionDate ? (
+                  <View style={styles.heroMiniRow}>
+                    <Text style={styles.heroMiniLabel}>Next contribution</Text>
+                    <Text style={styles.heroMiniValue}>
+                      {nextContributionDate}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
 
               <View style={styles.heroActions}>
                 <Button
@@ -501,12 +635,25 @@ export default function MerryDetailScreen() {
                 />
                 <View style={{ width: SPACING.sm }} />
                 <Button
-                  title="History"
+                  title="Contribution Records"
                   variant="secondary"
-                  onPress={() => router.push(ROUTES.tabs.merryPayments as any)}
+                  onPress={() =>
+                    router.push({
+                      pathname: ROUTES.tabs.merryPayments as any,
+                      params: { merryId: String(merryId) },
+                    })
+                  }
                   style={{ flex: 1 }}
                 />
               </View>
+
+              <View style={{ height: SPACING.sm }} />
+
+              <Button
+                title="View Members"
+                variant="secondary"
+                onPress={openMembers}
+              />
             </>
           ) : (
             <View style={styles.heroAmountBox}>
@@ -529,19 +676,33 @@ export default function MerryDetailScreen() {
                   {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
                 </Text>
               </View>
+
+              <View style={{ marginTop: SPACING.md }}>
+                <Button
+                  title="View Members"
+                  variant="secondary"
+                  onPress={openMembers}
+                />
+              </View>
             </View>
           )}
         </Card>
 
         {error ? (
           <Card style={styles.errorCard} variant="default">
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={UI.dangerText}
-            />
+            <Ionicons name="alert-circle-outline" size={18} color="#FECACA" />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
+        ) : null}
+
+        {breakdownError && isMember ? (
+          <View style={{ marginBottom: SPACING.md }}>
+            <InfoStrip
+              icon="warning-outline"
+              text={`Contribution summary is not available right now. ${breakdownError}`}
+              tone="warning"
+            />
+          </View>
         ) : null}
 
         {isMember ? (
@@ -592,6 +753,15 @@ export default function MerryDetailScreen() {
                   icon="cash-outline"
                 />
               </View>
+
+              {nextContributionDate ? (
+                <View style={{ marginTop: SPACING.sm }}>
+                  <InfoStrip
+                    icon="time-outline"
+                    text={`Next contribution date: ${nextContributionDate}`}
+                  />
+                </View>
+              ) : null}
             </Section>
 
             <Section title="Option">
@@ -607,11 +777,11 @@ export default function MerryDetailScreen() {
                   <Switch
                     value={includeNext}
                     onValueChange={onToggleIncludeNext}
-                    disabled={toggling}
+                    disabled={toggling || !!breakdownError}
                     thumbColor={COLORS.white}
                     trackColor={{
-                      false: "#C9D3DA",
-                      true: UI.accent,
+                      false: "rgba(255,255,255,0.18)",
+                      true: BRAND,
                     }}
                   />
                 </View>
@@ -626,7 +796,7 @@ export default function MerryDetailScreen() {
                   <Ionicons
                     name="information-circle-outline"
                     size={18}
-                    color={UI.accent}
+                    color={WHITE}
                   />
                   <Text style={styles.optionInfoText}>
                     Your merry wallet is deducted first before new payment is
@@ -638,11 +808,21 @@ export default function MerryDetailScreen() {
 
             <Section title="Included items">
               {!groupedPreview.length ? (
-                <EmptyState
-                  icon="receipt-outline"
-                  title="Nothing open now"
-                  subtitle="This merry has no payable items at the moment."
-                />
+                <Card style={styles.emptyCard} variant="default">
+                  <EmptyState
+                    icon="receipt-outline"
+                    title={
+                      breakdownError
+                        ? "Contribution summary unavailable"
+                        : "Nothing open right now"
+                    }
+                    subtitle={
+                      breakdownError
+                        ? "Merry details are available, but the contribution summary could not be loaded."
+                        : "This merry has no payable items at the moment."
+                    }
+                  />
+                </Card>
               ) : (
                 <Card style={styles.listCard} variant="default">
                   {groupedPreview.map((item, index) => (
@@ -658,76 +838,74 @@ export default function MerryDetailScreen() {
             </Section>
           </>
         ) : (
-          <>
-            <Section title="Join">
-              <Card style={styles.ctaCard} variant="default">
-                <Text style={styles.ctaTitle}>Join this merry</Text>
-                <Text style={styles.ctaText}>
-                  Request seats and send your request to the admin for approval.
-                </Text>
+          <Section title="Join">
+            <Card style={styles.ctaCard} variant="default">
+              <Text style={styles.ctaTitle}>Join this merry</Text>
+              <Text style={styles.ctaText}>
+                Request seats and send your request to the admin for approval.
+              </Text>
 
-                <View style={{ height: SPACING.md }} />
+              <View style={{ height: SPACING.md }} />
 
-                {joinStatus === "PENDING" ? (
-                  <Button
-                    title="Request Pending"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/merry/join-request" as any,
-                        params: { merryId: String(merryId) },
-                      })
-                    }
+              {joinStatus === "PENDING" ? (
+                <Button
+                  title="Request Pending"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: { merryId: String(merryId) },
+                    })
+                  }
+                />
+              ) : canRequestJoin ? (
+                <Button
+                  title="Join Merry"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: { merryId: String(merryId) },
+                    })
+                  }
+                />
+              ) : (
+                <Button
+                  title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
+                  disabled
+                  onPress={() => {}}
+                />
+              )}
+
+              <View style={{ height: SPACING.sm }} />
+
+              <Text style={styles.helperText}>
+                Seats available: {availableSeatText}
+              </Text>
+
+              <Text style={styles.helperText}>
+                Contribution: {fmtKES(detail.contribution_amount)}
+              </Text>
+
+              {joinStatus === "PENDING" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="time-outline"
+                    text="Your join request has already been sent and is waiting for admin approval."
+                    tone="warning"
                   />
-                ) : canRequestJoin ? (
-                  <Button
-                    title="Join Merry"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/merry/join-request" as any,
-                        params: { merryId: String(merryId) },
-                      })
-                    }
+                </View>
+              ) : null}
+
+              {joinStatus === "REJECTED" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="close-circle-outline"
+                    text="Your previous join request was rejected. You can submit another request if joining is still allowed."
+                    tone="danger"
                   />
-                ) : (
-                  <Button
-                    title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
-                    disabled
-                    onPress={() => {}}
-                  />
-                )}
-
-                <View style={{ height: SPACING.sm }} />
-
-                <Text style={styles.helperText}>
-                  Seats available: {availableSeatText}
-                </Text>
-
-                <Text style={styles.helperText}>
-                  Contribution: {fmtKES(detail.contribution_amount)}
-                </Text>
-
-                {joinStatus === "PENDING" ? (
-                  <View style={{ marginTop: SPACING.md }}>
-                    <InfoStrip
-                      icon="time-outline"
-                      text="Your join request has already been sent and is waiting for admin approval."
-                      tone="warning"
-                    />
-                  </View>
-                ) : null}
-
-                {joinStatus === "REJECTED" ? (
-                  <View style={{ marginTop: SPACING.md }}>
-                    <InfoStrip
-                      icon="close-circle-outline"
-                      text="Your previous join request was rejected. You can submit another request if joining is still allowed."
-                      tone="danger"
-                    />
-                  </View>
-                ) : null}
-              </Card>
-            </Section>
-          </>
+                </View>
+              ) : null}
+            </Card>
+          </Section>
         )}
 
         <Section title="Details">
@@ -744,16 +922,25 @@ export default function MerryDetailScreen() {
             <DetailRow label="Next payout" value={detail?.next_payout_date} />
             <DetailRow
               label="Cycle duration"
-              value={`${detail?.cycle_duration_weeks ?? "—"} week${Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"}`}
+              value={`${detail?.cycle_duration_weeks ?? "—"} week${
+                Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"
+              }`}
             />
             <DetailRow label="Members" value={detail?.members_count} />
             <DetailRow label="Seats" value={detail?.seats_count} />
             {isMember ? (
               <>
-                <DetailRow label="Wallet balance" value={fmtKES(walletBalance)} />
+                <DetailRow
+                  label="Wallet balance"
+                  value={fmtKES(walletBalance)}
+                />
                 <DetailRow
                   label="Payable after wallet"
                   value={fmtKES(payableAfterWallet)}
+                />
+                <DetailRow
+                  label="Next contribution date"
+                  value={nextContributionDate}
                 />
               </>
             ) : (
@@ -770,6 +957,14 @@ export default function MerryDetailScreen() {
                 />
               </View>
             ) : null}
+
+            <View style={{ marginTop: SPACING.md }}>
+              <Button
+                title="View Members"
+                variant="secondary"
+                onPress={openMembers}
+              />
+            </View>
           </Card>
         </Section>
 
@@ -787,29 +982,172 @@ export default function MerryDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  page: {
     flex: 1,
-    backgroundColor: UI.bg,
+    backgroundColor: PAGE_BG,
   },
 
   content: {
     padding: SPACING.md,
+    position: "relative",
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: UI.bg,
+    backgroundColor: PAGE_BG,
+  },
+
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PAGE_BG,
+    padding: 24,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+  },
+
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+
+  logoBadge: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
+  brandWordmark: {
+    color: WHITE,
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    letterSpacing: 0.8,
+  },
+
+  brandWordmarkGreen: {
+    color: "#74D16C",
+  },
+
+  brandSub: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 11,
+    marginTop: 2,
+    fontFamily: FONT.regular,
+  },
+
+  topBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   heroCard: {
-    backgroundColor: UI.surface,
-    borderWidth: 1,
-    borderColor: UI.border,
-    marginBottom: SPACING.lg,
+    position: "relative",
     overflow: "hidden",
+    backgroundColor: MERRY_CARD,
+    borderWidth: 1,
+    borderColor: MERRY_BORDER,
+    marginBottom: SPACING.lg,
     borderRadius: 24,
+    ...SHADOW.card,
+  },
+
+  spaceGlowTop: {
+    position: "absolute",
+    top: -18,
+    right: -10,
+    width: 96,
+    height: 96,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  spaceGlowBottom: {
+    position: "absolute",
+    bottom: -24,
+    left: -8,
+    width: 120,
+    height: 70,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   heroTop: {
@@ -819,91 +1157,120 @@ const styles = StyleSheet.create({
   },
 
   heroEyebrow: {
-    ...TYPE.caption,
-    color: UI.textMuted,
-    fontWeight: "800",
+    color: "#D8FFF0",
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: FONT.bold,
     letterSpacing: 0.8,
   },
 
   heroTitle: {
-    ...TYPE.h2,
-    color: UI.text,
+    color: WHITE,
+    fontSize: 24,
+    lineHeight: 30,
     marginTop: 6,
-    fontWeight: "900",
+    fontFamily: FONT.bold,
   },
 
   heroSubtitle: {
-    ...TYPE.subtext,
-    color: UI.textSoft,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 13,
+    lineHeight: 20,
     marginTop: 8,
-    lineHeight: 19,
+    fontFamily: FONT.regular,
   },
 
   heroIconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    backgroundColor: UI.accentSoft,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: MERRY_ICON_BG,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   heroAmountBox: {
     marginTop: SPACING.lg,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surfaceAlt,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    padding: SPACING.md,
+  },
+
+  heroAmountBoxPressable: {
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+
+  heroAmountTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
   },
 
   heroAmountLabel: {
-    ...TYPE.caption,
-    color: UI.textMuted,
-    fontWeight: "700",
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+  },
+
+  heroAmountAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  heroAmountActionText: {
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.bold,
   },
 
   heroAmountValue: {
-    ...(TYPE as any).h1 ? (TYPE as any).h1 : TYPE.h2,
-    color: UI.text,
-    marginTop: 6,
-    fontWeight: "900",
+    color: WHITE,
+    fontSize: 28,
+    lineHeight: 34,
+    marginTop: 8,
+    fontFamily: FONT.bold,
   },
 
   heroMiniDivider: {
     height: 1,
-    backgroundColor: UI.border,
-    marginVertical: SPACING.sm,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    marginVertical: SPACING.md,
   },
 
   heroMiniRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
     marginTop: 6,
-    gap: SPACING.md,
   },
 
   heroMiniLabel: {
-    ...TYPE.caption,
-    color: UI.textSoft,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
   heroMiniValue: {
-    ...TYPE.bodyStrong,
-    color: UI.text,
-    textAlign: "right",
-    flexShrink: 1,
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.medium,
   },
 
   heroMiniStrong: {
-    fontWeight: "900",
+    fontFamily: FONT.bold,
+    color: WHITE,
   },
 
   heroActions: {
-    marginTop: SPACING.md,
     flexDirection: "row",
-    alignItems: "center",
+    marginTop: SPACING.md,
   },
 
   errorCard: {
@@ -913,231 +1280,244 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: "#EAC9CF",
-    backgroundColor: UI.dangerBg,
-    borderRadius: RADIUS.xl,
+    borderColor: "rgba(239,68,68,0.22)",
+    backgroundColor: DANGER_BG,
   },
 
   errorText: {
     flex: 1,
-    ...TYPE.subtext,
-    color: UI.dangerText,
+    color: "#FECACA",
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
   summaryGrid: {
     flexDirection: "row",
-    alignItems: "stretch",
   },
 
   summaryBox: {
     flex: 1,
-    backgroundColor: UI.card,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: UI.border,
-    borderRadius: 20,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 18,
   },
 
   summaryIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SPACING.sm,
-    backgroundColor: UI.accentSoft,
+    backgroundColor: WHITE,
+    marginBottom: 10,
   },
 
   summaryLabel: {
-    ...TYPE.caption,
-    color: UI.textMuted,
-    fontWeight: "700",
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
   summaryValue: {
-    ...TYPE.title,
-    marginTop: 4,
-    fontWeight: "900",
-    color: UI.text,
+    color: WHITE,
+    fontSize: 16,
+    marginTop: 6,
+    fontFamily: FONT.bold,
+  },
+
+  infoStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+
+  infoStripText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
   },
 
   optionCard: {
-    backgroundColor: UI.card,
-    padding: SPACING.md,
-    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
   },
 
   optionTop: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
 
   optionTitle: {
-    ...TYPE.title,
-    fontWeight: "900",
-    color: UI.text,
+    color: WHITE,
+    fontSize: 15,
+    fontFamily: FONT.bold,
   },
 
   optionText: {
-    ...TYPE.subtext,
-    color: UI.textSoft,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
     marginTop: 4,
+    fontFamily: FONT.regular,
   },
 
   nextDueHint: {
-    ...TYPE.caption,
-    color: UI.accent,
-    marginTop: SPACING.sm,
-    fontWeight: "800",
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    marginTop: SPACING.md,
+    fontFamily: FONT.medium,
   },
 
   optionInfoBox: {
     marginTop: SPACING.md,
-    padding: SPACING.md,
     borderRadius: 16,
-    backgroundColor: UI.accentSoft,
+    padding: SPACING.md,
+    backgroundColor: ACCENT_BG,
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
+    gap: SPACING.sm,
   },
 
   optionInfoText: {
     flex: 1,
-    ...TYPE.subtext,
-    color: UI.text,
+    color: WHITE,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
   },
 
   listCard: {
-    backgroundColor: UI.card,
-    padding: SPACING.md,
-    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
   },
 
   dueLine: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
   },
 
   dueLineTop: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: SPACING.sm,
-    flexWrap: "wrap",
   },
 
   dueLineTitle: {
-    ...TYPE.bodyStrong,
-    fontWeight: "800",
-    color: UI.text,
+    flex: 1,
+    color: WHITE,
+    fontSize: 13,
+    fontFamily: FONT.medium,
   },
 
   dueLineSub: {
-    ...TYPE.caption,
-    color: UI.textMuted,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 11,
     marginTop: 4,
-  },
-
-  dueLineAmount: {
-    ...TYPE.bodyStrong,
-    fontWeight: "900",
-    color: UI.text,
+    fontFamily: FONT.regular,
   },
 
   dueBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: RADIUS.round,
+    borderRadius: 999,
   },
 
   dueBadgeText: {
-    ...TYPE.caption,
-    fontWeight: "800",
+    fontSize: 10,
+    fontFamily: FONT.bold,
+  },
+
+  dueLineAmount: {
+    color: WHITE,
+    fontSize: 13,
+    fontFamily: FONT.bold,
   },
 
   lineDivider: {
     height: 1,
-    backgroundColor: UI.border,
-    marginVertical: SPACING.sm,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginVertical: SPACING.xs,
   },
 
-  detailsCard: {
-    backgroundColor: UI.card,
-    padding: SPACING.md,
-    borderRadius: 20,
+  emptyCard: {
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
   },
 
   ctaCard: {
-    backgroundColor: UI.card,
-    padding: SPACING.md,
-    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
   },
 
   ctaTitle: {
-    ...TYPE.title,
-    color: UI.text,
-    fontWeight: "900",
+    color: WHITE,
+    fontSize: 16,
+    fontFamily: FONT.bold,
   },
 
   ctaText: {
-    ...TYPE.subtext,
-    color: UI.textSoft,
-    marginTop: 6,
-    lineHeight: 20,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+    fontFamily: FONT.regular,
   },
 
   helperText: {
-    ...TYPE.caption,
-    color: UI.textMuted,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
     marginTop: 6,
+    fontFamily: FONT.regular,
+  },
+
+  detailsCard: {
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
   },
 
   kvRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     gap: SPACING.md,
-    marginTop: 10,
+    paddingVertical: SPACING.sm,
   },
 
   kvLabel: {
-    ...TYPE.caption,
-    color: UI.textMuted,
+    flex: 1,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
   kvValue: {
-    ...TYPE.bodyStrong,
-    color: UI.text,
-    textAlign: "right",
-    flexShrink: 1,
-  },
-
-  infoStrip: {
-    padding: SPACING.md,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    borderWidth: 1,
-  },
-
-  infoStripText: {
     flex: 1,
-    ...TYPE.subtext,
+    textAlign: "right",
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.medium,
   },
 
   bottomActions: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
 });

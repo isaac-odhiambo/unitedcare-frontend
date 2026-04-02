@@ -1,617 +1,494 @@
+// app/(tabs)/merry/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
+import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { getErrorMessage } from "@/services/api";
 import {
-  COLORS,
-  P,
-  RADIUS,
-  SHADOW,
-  SPACING,
-  TYPE,
-} from "@/constants/theme";
-import {
-  getGroupIdFromMembership,
-  getGroupNameFromMembership,
-  GroupMembership,
-  listGroupMemberships,
-} from "@/services/groups";
-import {
-  getMyGuaranteeRequests,
-  getMyLoans,
-  Loan,
-  LoanGuarantor,
-} from "@/services/loans";
-import {
+  AvailableMerryRow,
   fmtKES,
+  getApiErrorMessage,
+  getAvailableMerries,
   getMyAllMerryDueSummary,
+  getMyMerries,
+  MerryDueSummaryItem,
   MyAllMerryDueSummaryResponse,
+  MyMerriesResponse,
 } from "@/services/merry";
-import {
-  canRequestLoan,
-  getMe,
-  isAdminUser,
-  isKycComplete,
-  MeResponse
-} from "@/services/profile";
-import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
+import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
-type DashboardUser = Partial<MeResponse> &
-  Partial<SessionUser> & {
-    member_number?: string | number;
-    full_name?: string;
-    name?: string;
-  };
+type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
-type NoticeItem = {
-  id: string;
-  title: string;
-  subtitle?: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tone: "primary" | "success" | "warning" | "info";
-  actionLabel?: string;
-  onPress?: () => void;
-};
+const BRAND = "#0C6A80";
+const MUTED_BG = "rgba(255,255,255,0.60)";
+const BRAND_DARK = "#09586A";
+const PAGE_BG = "#0C6A80";
+const CARD_BG = "#EEF7F9";
+const SURFACE_SOFT = "rgba(255,255,255,0.72)";
+const BRAND_SOFT = "rgba(12,106,128,0.10)";
+const BRAND_SOFT_2 = "rgba(12,106,128,0.16)";
+const SUCCESS_BG = "rgba(55,155,74,0.12)";
+const SUCCESS_TEXT = "#2F7A43";
+const WARNING_BG = "rgba(245,158,11,0.12)";
+const WARNING_TEXT = "#9A6700";
+const TEXT = COLORS.text || "#17323B";
+const TEXT_MUTED = COLORS.textMuted || "#6E7F89";
 
-function getGreetingByTime() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+function moneyNumber(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+function hasAmount(value?: string | number | null) {
+  return moneyNumber(value) > 0;
+}
 
-  if (typeof value === "string") {
-    const n = Number(String(value).replace(/,/g, "").trim());
-    return Number.isFinite(n) ? n : 0;
+function getFrequencyLabel(item: AvailableMerryRow) {
+  const freq = String(item.payout_frequency || "").toUpperCase();
+  const perPeriod = Number(item.payouts_per_period || 1);
+
+  if (freq === "MONTHLY") {
+    return perPeriod > 1 ? `${perPeriod} times monthly` : "Monthly";
   }
 
-  return 0;
+  return perPeriod > 1 ? `${perPeriod} times weekly` : "Weekly";
 }
 
-function formatKes(value: number): string {
-  return `KES ${value.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+function getJoinStatusText(item: AvailableMerryRow) {
+  const status = String(item.my_join_request?.status || "").toUpperCase();
+
+  if (item.is_member) return "Joined";
+  if (status === "PENDING") return "Request pending";
+  if (status === "APPROVED") return "Approved";
+  if (status === "REJECTED") return "Request rejected";
+  if (!item.is_open) return "Closed";
+  if (item.available_seats !== null && Number(item.available_seats) <= 0) {
+    return "Full";
+  }
+  if (item.can_request_join) return "Open to join";
+  return "View merry";
 }
 
-function hasAmount(value?: string | number | null): boolean {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) && n > 0;
+function getSeatSummary(item: MerryDueSummaryItem) {
+  const count = Number(item.seat_count ?? 0);
+  const numbers = Array.isArray(item.seat_numbers) ? item.seat_numbers : [];
+
+  if (numbers.length > 0) {
+    return `Seats: ${count} • ${numbers.join(", ")}`;
+  }
+
+  return `Seats: ${count}`;
 }
 
-function getSavingsTotal(accounts: SavingsAccount[]): number {
-  return accounts.reduce((sum, account) => {
-    return sum + toNumber(account.available_balance ?? account.balance ?? 0);
-  }, 0);
-}
-
-function getLoansTotal(loansData: Loan[]): number {
-  const rows = Array.isArray(loansData) ? loansData : [];
-  return rows.reduce((sum: number, loan: Loan) => {
-    return sum + toNumber(loan?.outstanding_balance ?? 0);
-  }, 0);
-}
-
-function getPrimarySavingsAccount(accounts: SavingsAccount[]) {
-  if (!Array.isArray(accounts) || accounts.length === 0) return null;
-  return accounts[0];
-}
-
-function getActiveLoan(loansData: Loan[]) {
-  if (!Array.isArray(loansData) || loansData.length === 0) return null;
-
-  return (
-    loansData.find((loan) => {
-      const status = String(loan?.status || "").toUpperCase();
-      return ["APPROVED", "ACTIVE", "DISBURSED", "UNDER_REPAYMENT"].includes(
-        status
-      );
-    }) || null
-  );
-}
-
-function formatUserStatus(status?: string) {
-  const value = String(status || "ACTIVE").replaceAll("_", " ").trim();
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
-}
-
-function getMemberIdentity(user: DashboardUser | null) {
-  return (
-    user?.full_name ||
-    user?.name ||
-    user?.username ||
-    (typeof user?.phone === "string" ? user.phone : "") ||
-    "Member"
-  );
-}
-
-function getToneColors(
-  tone: "primary" | "success" | "warning" | "info" = "primary"
-) {
-  const map = {
-    primary: {
-      iconBg: COLORS.primaryLight,
-      icon: COLORS.primary,
-      border: "rgba(14, 94, 111, 0.12)",
-      accent: COLORS.primary,
-      cardTint: "rgba(14, 94, 111, 0.03)",
-      valueBg: "rgba(14, 94, 111, 0.06)",
-    },
-    success: {
-      iconBg: COLORS.secondaryLight,
-      icon: COLORS.secondary,
-      border: "rgba(22, 163, 74, 0.12)",
-      accent: COLORS.secondary,
-      cardTint: "rgba(22, 163, 74, 0.03)",
-      valueBg: "rgba(22, 163, 74, 0.06)",
-    },
-    warning: {
-      iconBg: COLORS.accentLight,
-      icon: COLORS.accentDark,
-      border: "rgba(242, 140, 40, 0.14)",
-      accent: COLORS.accentDark,
-      cardTint: "rgba(242, 140, 40, 0.03)",
-      valueBg: "rgba(242, 140, 40, 0.07)",
-    },
-    info: {
-      iconBg: COLORS.primaryLight,
-      icon: COLORS.primary,
-      border: "rgba(14, 94, 111, 0.10)",
-      accent: COLORS.primary,
-      cardTint: "rgba(14, 94, 111, 0.025)",
-      valueBg: "rgba(14, 94, 111, 0.05)",
-    },
-  };
-
-  return map[tone];
-}
-
-async function clearDashboardSession() {
-  const possibleKeys = [
-    "access",
-    "refresh",
-    "access_token",
-    "refresh_token",
-    "ACCESS_TOKEN",
-    "REFRESH_TOKEN",
-    "user",
-    "session_user",
-    "SESSION_USER",
-    "me",
-  ];
-
-  try {
-    if (Platform.OS === "web") {
-      possibleKeys.forEach((key) => {
-        try {
-          localStorage.removeItem(key);
-        } catch {}
-      });
-    } else {
-      await Promise.allSettled(
-        possibleKeys.map((key) => SecureStore.deleteItemAsync(key))
-      );
-    }
-  } catch {}
-}
-
-function SummaryCard({
-  title,
+function SummaryTile({
+  label,
   value,
-  subtitle,
   icon,
-  tone = "primary",
-  onPress,
 }: {
-  title: string;
+  label: string;
   value: string;
-  subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone?: "primary" | "success" | "warning" | "info";
-  onPress?: () => void;
 }) {
-  const colors = getToneColors(tone);
-
   return (
-    <TouchableOpacity
-      activeOpacity={0.94}
-      onPress={onPress}
-      disabled={!onPress}
-      style={[
-        styles.summaryCard,
-        {
-          borderColor: colors.border,
-          backgroundColor: COLORS.white,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.summaryCardGlow,
-          { backgroundColor: colors.cardTint },
-        ]}
-      />
-
-      <View style={styles.summaryTop}>
-        <View style={[styles.summaryIconWrap, { backgroundColor: colors.iconBg }]}>
-          <Ionicons name={icon} size={18} color={colors.icon} />
-        </View>
-
-        {onPress ? (
-          <View style={styles.summaryChevronWrap}>
-            <Ionicons
-              name="chevron-forward"
-              size={16}
-              color={COLORS.textMuted}
-            />
-          </View>
-        ) : null}
+    <View style={styles.summaryTile}>
+      <View style={styles.summaryIconWrap}>
+        <Ionicons name={icon} size={16} color={BRAND} />
       </View>
-
-      <Text style={styles.summaryTitle}>{title}</Text>
-
-      <View
-        style={[
-          styles.summaryValueWrap,
-          { backgroundColor: colors.valueBg },
-        ]}
-      >
-        <Text style={[styles.summaryValue, { color: colors.accent }]}>{value}</Text>
-      </View>
-
-      <Text style={styles.summarySubtitle}>{subtitle}</Text>
-    </TouchableOpacity>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
-function SpaceCard({
-  title,
-  subtitle,
-  icon,
-  tone = "primary",
-  primaryLabel,
-  secondaryLabel,
-  onPrimary,
-  onSecondary,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tone?: "primary" | "success" | "warning" | "info";
-  primaryLabel: string;
-  secondaryLabel?: string;
-  onPrimary: () => void;
-  onSecondary?: () => void;
-}) {
-  const colors = getToneColors(tone);
-
-  return (
-    <Card
-      style={[
-        styles.spaceCard,
-        {
-          borderColor: colors.border,
-          backgroundColor: COLORS.white,
-        },
-      ]}
-      variant="default"
-    >
-      <View
-        style={[
-          styles.spaceCardGlow,
-          { backgroundColor: colors.cardTint },
-        ]}
-      />
-
-      <View style={styles.spaceHead}>
-        <View style={[styles.spaceIcon, { backgroundColor: colors.iconBg }]}>
-          <Ionicons name={icon} size={20} color={colors.icon} />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.spaceTitle}>{title}</Text>
-          <Text style={styles.spaceSubtitle}>{subtitle}</Text>
-        </View>
-      </View>
-
-      <View style={styles.spaceActions}>
-        <Button title={primaryLabel} onPress={onPrimary} style={{ flex: 1 }} />
-        {secondaryLabel && onSecondary ? (
-          <>
-            <View style={{ width: SPACING.sm }} />
-            <Button
-              title={secondaryLabel}
-              variant="secondary"
-              onPress={onSecondary}
-              style={{ flex: 1 }}
-            />
-          </>
-        ) : null}
-      </View>
-    </Card>
-  );
-}
-
-function NoticeCard({ item }: { item: NoticeItem }) {
-  const colors = getToneColors(item.tone);
-
-  return (
-    <Card
-      onPress={item.onPress}
-      style={[
-        styles.noticeCard,
-        {
-          borderColor: colors.border,
-          backgroundColor: COLORS.white,
-        },
-      ]}
-      variant="default"
-    >
-      <View
-        style={[
-          styles.noticeStripe,
-          { backgroundColor: colors.accent },
-        ]}
-      />
-
-      <View style={[styles.noticeIcon, { backgroundColor: colors.iconBg }]}>
-        <Ionicons name={item.icon} size={18} color={colors.icon} />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={styles.noticeTitle}>{item.title}</Text>
-        {item.subtitle ? (
-          <Text style={styles.noticeSubtitle}>{item.subtitle}</Text>
-        ) : null}
-        {item.actionLabel ? (
-          <Text style={[styles.noticeAction, { color: colors.accent }]}>
-            {item.actionLabel}
-          </Text>
-        ) : null}
-      </View>
-
-      {item.onPress ? (
-        <Ionicons name="chevron-forward" size={17} color={COLORS.textMuted} />
-      ) : null}
-    </Card>
-  );
-}
-
-function SmallLink({
-  title,
-  icon,
+function DueSummaryHero({
+  amount,
   onPress,
-  danger = false,
 }: {
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  amount: number;
   onPress: () => void;
-  danger?: boolean;
 }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={onPress}
-      style={[
-        styles.smallLink,
-        danger && {
-          borderColor: "rgba(220, 38, 38, 0.12)",
-          backgroundColor: "rgba(220, 38, 38, 0.04)",
-        },
-      ]}
-    >
-      <View style={styles.smallLinkLeft}>
-        <View
-          style={[
-            styles.smallLinkIcon,
-            danger
-              ? { backgroundColor: "rgba(220, 38, 38, 0.10)" }
-              : { backgroundColor: COLORS.primaryLight },
-          ]}
-        >
-          <Ionicons
-            name={icon}
-            size={15}
-            color={danger ? COLORS.error : COLORS.primary}
-          />
+    <Card style={styles.heroCard} variant="default">
+      <View style={styles.heroTop}>
+        <View style={styles.heroIconWrap}>
+          <Ionicons name="people-outline" size={20} color={BRAND} />
         </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.heroTitle}>Your merry contribution</Text>
+          <Text style={styles.heroSubtitle}>
+            Support your merry space by contributing your share for this period.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.heroAmountBox}>
+        <Text style={styles.heroAmountLabel}>Ready for contribution</Text>
+        <Text style={styles.heroAmountValue}>{fmtKES(amount)}</Text>
+      </View>
+
+      <View style={styles.heroPillsRow}>
+        <View style={styles.heroPill}>
+          <Ionicons name="heart-outline" size={13} color={BRAND} />
+          <Text style={styles.heroPillText}>Community first</Text>
+        </View>
+
+        <View style={styles.heroPill}>
+          <Ionicons name="repeat-outline" size={13} color={BRAND} />
+          <Text style={styles.heroPillText}>Shared support</Text>
+        </View>
+      </View>
+
+      <View style={{ marginTop: SPACING.md }}>
+        <Button title="Contribute to Merry" onPress={onPress} />
+      </View>
+    </Card>
+  );
+}
+
+function MyMerryCard({
+  item,
+  onContribute,
+}: {
+  item: MerryDueSummaryItem;
+  onContribute: (item: MerryDueSummaryItem) => void;
+}) {
+  const hasOverdue = hasAmount(item.overdue);
+  const hasCurrent = hasAmount(item.current_due);
+  const hasRequired = hasAmount(item.required_now);
+
+  const badgeLabel = hasOverdue
+    ? "Needs attention"
+    : hasCurrent
+    ? "Due this period"
+    : "Up to date";
+
+  const badgeStyle = hasOverdue
+    ? styles.badgeWarning
+    : hasCurrent
+    ? styles.badgeAccent
+    : styles.badgeSuccess;
+
+  const badgeTextStyle = hasOverdue
+    ? styles.badgeTextWarning
+    : hasCurrent
+    ? styles.badgeTextAccent
+    : styles.badgeTextSuccess;
+
+  return (
+    <Card style={styles.myMerryCard} variant="default">
+      <View style={styles.cardTop}>
+        <View style={styles.cardTitleWrap}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.merry_name}
+          </Text>
+          <Text style={styles.cardSubtitle} numberOfLines={2}>
+            {getSeatSummary(item)}
+          </Text>
+        </View>
+
+        <View style={[styles.badgeBase, badgeStyle]}>
+          <Text style={[styles.badgeText, badgeTextStyle]} numberOfLines={1}>
+            {badgeLabel}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.amountPanel}>
+        <Text style={styles.amountPanelLabel}>Your share for now</Text>
         <Text
-          style={[
-            styles.smallLinkText,
-            danger && { color: "#B91C1C" },
-          ]}
+          style={styles.amountPanelValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit
         >
-          {title}
+          {fmtKES(item.required_now)}
         </Text>
       </View>
-      <Ionicons
-        name="chevron-forward"
-        size={16}
-        color={danger ? COLORS.error : COLORS.textMuted}
-      />
+
+      {hasAmount(item.overdue) ? (
+        <Text style={styles.helperText}>
+          Pending from earlier: {fmtKES(item.overdue)}
+        </Text>
+      ) : null}
+
+      {!hasRequired && hasAmount(item.next_due) ? (
+        <Text style={styles.helperText}>
+          Next contribution
+          {item.next_due_date ? ` on ${item.next_due_date}` : ""} •{" "}
+          {fmtKES(item.next_due)}
+        </Text>
+      ) : null}
+
+      <View style={styles.cardActions}>
+        <Button
+          title="Contribute"
+          onPress={() => onContribute(item)}
+          style={{ flex: 1 }}
+        />
+        <View style={{ width: SPACING.sm }} />
+        <Button
+          title="Open"
+          variant="secondary"
+          onPress={() => router.push(`/(tabs)/merry/${item.merry_id}` as any)}
+          style={{ flex: 1 }}
+        />
+      </View>
+    </Card>
+  );
+}
+
+function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
+  const joinStatus = getJoinStatusText(item);
+  const requestStatus = String(item.my_join_request?.status || "").toUpperCase();
+
+  const canJoinDirect =
+    !item.is_member &&
+    item.can_request_join &&
+    item.is_open !== false &&
+    (item.available_seats == null || Number(item.available_seats) > 0) &&
+    requestStatus !== "PENDING" &&
+    requestStatus !== "APPROVED";
+
+  const primaryTitle = item.is_member
+    ? "Open Merry"
+    : requestStatus === "PENDING"
+    ? "Open Request"
+    : canJoinDirect
+    ? "Join Merry"
+    : "Open Merry";
+
+  const onPrimaryPress = () => {
+    if (item.is_member) {
+      router.push(`/(tabs)/merry/${item.id}` as any);
+      return;
+    }
+
+    if (requestStatus === "PENDING") {
+      router.push(`/(tabs)/merry/${item.id}` as any);
+      return;
+    }
+
+    if (canJoinDirect) {
+      router.push({
+        pathname: "/(tabs)/merry/join-request" as any,
+        params: { merryId: String(item.id) },
+      });
+      return;
+    }
+
+    router.push(`/(tabs)/merry/${item.id}` as any);
+  };
+
+  return (
+    <Card style={styles.availableCard} variant="default">
+      <View style={styles.cardTop}>
+        <View style={styles.cardTitleWrap}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.cardSubtitle} numberOfLines={2}>
+            {getFrequencyLabel(item)} • {item.seats_count} seat
+            {Number(item.seats_count) === 1 ? "" : "s"}
+          </Text>
+        </View>
+
+        <View style={styles.amountBadge}>
+          <Text style={styles.amountBadgeText} numberOfLines={1}>
+            {fmtKES(item.contribution_amount)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.metaRow}>
+        <View style={styles.metaPillNeutral}>
+          <Text style={styles.metaPillText} numberOfLines={1}>
+            {item.available_seats == null
+              ? "Unlimited seats"
+              : `${item.available_seats} seat${
+                  Number(item.available_seats) === 1 ? "" : "s"
+                } left`}
+          </Text>
+        </View>
+
+        <View style={styles.metaPillAccent}>
+          <Text style={styles.metaPillText} numberOfLines={1}>
+            {joinStatus}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.cardActions}>
+        <Button
+          title={primaryTitle}
+          onPress={onPrimaryPress}
+          style={{ flex: 1 }}
+        />
+        <View style={{ width: SPACING.sm }} />
+        <Button
+          title="View"
+          variant="secondary"
+          onPress={() => router.push(`/(tabs)/merry/${item.id}` as any)}
+          style={{ flex: 1 }}
+        />
+      </View>
+    </Card>
+  );
+}
+
+function QuickLink({
+  title,
+  subtitle,
+  icon,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.quickLinkCard}>
+      <View style={styles.quickLinkLeft}>
+        <View style={styles.quickLinkIcon}>
+          <Ionicons name={icon} size={18} color={BRAND} />
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.quickLinkTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.quickLinkSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        </View>
+      </View>
+
+      <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} />
     </TouchableOpacity>
   );
 }
 
-export default function DashboardScreen() {
-  const { width } = useWindowDimensions();
-  const isWideScreen = width >= 760;
+export default function MerryIndexScreen() {
+  const insets = useSafeAreaInsets();
 
-  const [user, setUser] = useState<DashboardUser | null>(null);
+  const [user, setUser] = useState<MerryUser | null>(null);
+  const [summary, setSummary] =
+    useState<MyAllMerryDueSummaryResponse | null>(null);
+  const [myMerries, setMyMerries] = useState<MyMerriesResponse>({
+    created: [],
+    memberships: [],
+  });
+  const [availableMerries, setAvailableMerries] = useState<AvailableMerryRow[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-
-  const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
-  const [heroSavings, setHeroSavings] = useState("—");
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
-  const [merrySummary, setMerrySummary] =
-    useState<MyAllMerryDueSummaryResponse | null>(null);
-  const [groupMemberships, setGroupMemberships] = useState<GroupMembership[]>([]);
-
-  const isAdmin = isAdminUser(user as any);
-  const kycComplete = isKycComplete(user as any);
-  const loanAllowed = canRequestLoan(user as any);
-
-  const openFirstMerryFlow = useCallback(() => {
-    const items = merrySummary?.items ?? [];
-    const payable =
-      items.find((item) => hasAmount(item.required_now)) ||
-      items.find((item) => hasAmount(item.pay_with_next)) ||
-      items[0];
-
-    if (!payable) {
-      router.push(ROUTES.tabs.merry as any);
-      return;
-    }
-
-    router.replace({
-      pathname: "/(tabs)/payments/deposit" as any,
-      params: {
-        source: "merry",
-        merryId: String(payable.merry_id),
-        amount: String(payable.required_now || payable.pay_with_next || 0),
-        editableAmount: "true",
-      },
-    });
-  }, [merrySummary]);
-
-  const openSavingsFlow = useCallback((account?: SavingsAccount | null) => {
-    if (!account) {
-      router.push(ROUTES.tabs.savings as any);
-      return;
-    }
-
-    router.replace({
-      pathname: "/(tabs)/payments/deposit" as any,
-      params: {
-        source: "savings",
-        savingsId: String(account.id),
-        amount: "",
-        editableAmount: "true",
-      },
-    });
-  }, []);
-
-  const openLoanPaymentFlow = useCallback((loan?: Loan | null) => {
-    if (!loan) {
-      router.push(ROUTES.tabs.loans as any);
-      return;
-    }
-
-    router.replace({
-      pathname: "/(tabs)/payments/deposit" as any,
-      params: {
-        source: "loan",
-        loanId: String(loan.id),
-        amount: "",
-        editableAmount: "true",
-      },
-    });
-  }, []);
-
-  const openGroupContributionFlow = useCallback((groupId?: number | null) => {
-    if (!groupId) {
-      router.push(ROUTES.tabs.groups as any);
-      return;
-    }
-
-    router.push({
-      pathname: "/(tabs)/groups/contribute" as any,
-      params: { groupId: String(groupId) },
-    });
-  }, []);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
+      setError("");
 
-      const [
-        sessionResult,
-        meResult,
-        savingsResult,
-        loansResult,
-        merrySummaryResult,
-        guaranteeResult,
-        membershipsResult,
-      ] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-        listMySavingsAccounts(),
-        getMyLoans(),
-        getMyAllMerryDueSummary(),
-        getMyGuaranteeRequests(),
-        listGroupMemberships(),
-      ]);
+      const [sessionRes, meRes, summaryRes, myMerriesRes, availableRes] =
+        await Promise.allSettled([
+          getSessionUser(),
+          getMe(),
+          getMyAllMerryDueSummary(),
+          getMyMerries(),
+          getAvailableMerries(),
+        ]);
 
       const sessionUser =
-        sessionResult.status === "fulfilled" ? sessionResult.value : null;
-      const meUser = meResult.status === "fulfilled" ? meResult.value : null;
+        sessionRes.status === "fulfilled" ? sessionRes.value : null;
+      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
 
-      const mergedUser: DashboardUser | null =
+      setUser(
         sessionUser || meUser
           ? {
               ...(sessionUser ?? {}),
               ...(meUser ?? {}),
             }
-          : null;
-
-      setUser(mergedUser);
-
-      const savings =
-        savingsResult.status === "fulfilled" ? savingsResult.value : [];
-      setSavingsAccounts(savings);
-      setHeroSavings(formatKes(getSavingsTotal(savings)));
-
-      setLoans(loansResult.status === "fulfilled" ? loansResult.value : []);
-      setGuaranteeRequests(
-        guaranteeResult.status === "fulfilled" ? guaranteeResult.value : []
-      );
-      setMerrySummary(
-        merrySummaryResult.status === "fulfilled"
-          ? merrySummaryResult.value
           : null
       );
-      setGroupMemberships(
-        membershipsResult.status === "fulfilled" && Array.isArray(membershipsResult.value)
-          ? membershipsResult.value
-          : []
-      );
-    } finally {
-      setLoading(false);
+
+      if (summaryRes.status === "fulfilled") {
+        setSummary(summaryRes.value);
+      } else {
+        setSummary(null);
+      }
+
+      if (myMerriesRes.status === "fulfilled") {
+        setMyMerries(myMerriesRes.value ?? { created: [], memberships: [] });
+      } else {
+        setMyMerries({ created: [], memberships: [] });
+      }
+
+      if (availableRes.status === "fulfilled") {
+        setAvailableMerries(availableRes.value ?? []);
+      } else {
+        setAvailableMerries([]);
+      }
+
+      const errors: string[] = [];
+
+      if (summaryRes.status === "rejected") {
+        errors.push(
+          getApiErrorMessage(summaryRes.reason) ||
+            getErrorMessage(summaryRes.reason)
+        );
+      }
+
+      if (availableRes.status === "rejected") {
+        errors.push(
+          getApiErrorMessage(availableRes.reason) ||
+            getErrorMessage(availableRes.reason)
+        );
+      }
+
+      setError(errors.filter(Boolean).join(" • "));
+    } catch (e: any) {
+      setSummary(null);
+      setMyMerries({ created: [], memberships: [] });
+      setAvailableMerries([]);
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
     }
   }, []);
 
+  const initialLoad = useCallback(async () => {
+    try {
+      setLoading(true);
+      await load();
+    } finally {
+      setLoading(false);
+    }
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load])
+      initialLoad();
+    }, [initialLoad])
   );
 
   const onRefresh = useCallback(async () => {
@@ -623,213 +500,80 @@ export default function DashboardScreen() {
     }
   }, [load]);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert("Log out", "Do you want to leave your account for now?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setLoggingOut(true);
-            await clearDashboardSession();
-            router.replace(ROUTES.auth.login as any);
-          } finally {
-            setLoggingOut(false);
-          }
-        },
-      },
-    ]);
+  const myGroupsPreview = useMemo<MerryDueSummaryItem[]>(
+    () => (Array.isArray(summary?.items) ? summary?.items.slice(0, 4) : []),
+    [summary]
+  );
+
+  const availablePreview = useMemo<AvailableMerryRow[]>(
+    () => (Array.isArray(availableMerries) ? availableMerries.slice(0, 4) : []),
+    [availableMerries]
+  );
+
+  const firstJoinableMerry = useMemo(
+    () =>
+      availableMerries.find((item) => {
+        const requestStatus = String(
+          item.my_join_request?.status || ""
+        ).toUpperCase();
+
+        return (
+          !item.is_member &&
+          item.can_request_join &&
+          item.is_open !== false &&
+          (item.available_seats == null || Number(item.available_seats) > 0) &&
+          requestStatus !== "PENDING" &&
+          requestStatus !== "APPROVED"
+        );
+      }) || null,
+    [availableMerries]
+  );
+
+  const totalRequiredNow = useMemo(
+    () => moneyNumber(summary?.total_required_now),
+    [summary]
+  );
+
+  const activeMerryCount = useMemo(
+    () => (Array.isArray(summary?.items) ? summary.items.length : 0),
+    [summary]
+  );
+
+  const totalOpenMerries = useMemo(
+    () => availableMerries.length,
+    [availableMerries]
+  );
+
+  const onContribute = useCallback((item: MerryDueSummaryItem) => {
+    router.push({
+      pathname: "/(tabs)/merry/contribute" as any,
+      params: { merryId: String(item.merry_id) },
+    });
   }, []);
 
-  const memberName = useMemo(() => getMemberIdentity(user), [user]);
-  const greetingText = useMemo(() => getGreetingByTime(), []);
-  const totalOutstandingLoans = useMemo(() => getLoansTotal(loans), [loans]);
-  const primarySavingsAccount = useMemo(
-    () => getPrimarySavingsAccount(savingsAccounts),
-    [savingsAccounts]
-  );
-  const activeLoan = useMemo(() => getActiveLoan(loans), [loans]);
+  const openHeroContribution = useCallback(() => {
+    const items = summary?.items ?? [];
+    const payable =
+      items.find((item) => hasAmount(item.required_now)) ||
+      items.find((item) => hasAmount(item.pay_with_next)) ||
+      items[0];
 
-  const activeGroupMemberships = useMemo(
-    () => groupMemberships.filter((m: any) => !!m?.is_active),
-    [groupMemberships]
-  );
-
-  const firstActiveGroupId = useMemo(() => {
-    const first = activeGroupMemberships[0];
-    return first ? Number(getGroupIdFromMembership(first)) : null;
-  }, [activeGroupMemberships]);
-
-  const firstActiveGroupName = useMemo(() => {
-    const first = activeGroupMemberships[0];
-    return first ? getGroupNameFromMembership(first) : "Community group";
-  }, [activeGroupMemberships]);
-
-  const memberNumber = useMemo(() => {
-    const raw = user?.member_number;
-    if (raw === undefined || raw === null || raw === "") return "";
-    return String(raw);
-  }, [user]);
-
-  const merryDueNow = useMemo(
-    () => toNumber(merrySummary?.total_required_now),
-    [merrySummary]
-  );
-
-  const merryWalletBalance = useMemo(() => {
-    const raw =
-      (merrySummary as any)?.wallet_balance ??
-      (merrySummary as any)?.total_wallet_balance ??
-      0;
-    return toNumber(raw);
-  }, [merrySummary]);
-
-  const hasActiveMerry = useMemo(() => {
-    const items = merrySummary?.items ?? [];
-    return items.length > 0;
-  }, [merrySummary]);
-
-  const merryAmountValue = useMemo(() => {
-    if (merryWalletBalance > 0 && merryDueNow <= 0) {
-      return formatKes(merryWalletBalance);
+    if (!payable) {
+      router.push(ROUTES.tabs.merry as any);
+      return;
     }
 
-    if (merryDueNow > 0) {
-      return fmtKES(merrySummary?.total_required_now);
-    }
-
-    return "Active";
-  }, [merryWalletBalance, merryDueNow, merrySummary]);
-
-  const merrySubtitle = useMemo(() => {
-    if (merryDueNow > 0) return "Contribution waiting";
-    if (merryWalletBalance > 0) return "Positive merry wallet";
-    return "Your merry space is active";
-  }, [merryDueNow, merryWalletBalance]);
-
-  const hasActiveGroups = activeGroupMemberships.length > 0;
-
-  const groupSummaryValue = useMemo(() => {
-    if (!hasActiveGroups) return "—";
-    return `${activeGroupMemberships.length}`;
-  }, [activeGroupMemberships.length, hasActiveGroups]);
-
-  const groupSummarySubtitle = useMemo(() => {
-    if (!hasActiveGroups) return "";
-    if (activeGroupMemberships.length === 1) {
-      return `${firstActiveGroupName}`;
-    }
-    return `${activeGroupMemberships.length} active group spaces`;
-  }, [activeGroupMemberships.length, firstActiveGroupName, hasActiveGroups]);
-
-  const communityCount = useMemo(() => {
-    const merryCount = hasActiveMerry ? 1 : 0;
-    const savingsCount = savingsAccounts.length > 0 ? 1 : 0;
-    const groupCount = hasActiveGroups ? 1 : 0;
-    const supportCount = activeLoan ? 1 : 0;
-    return merryCount + savingsCount + groupCount + supportCount;
-  }, [hasActiveMerry, savingsAccounts.length, hasActiveGroups, activeLoan]);
-
-  const noticeItems = useMemo<NoticeItem[]>(() => {
-    const items: NoticeItem[] = [];
-
-    if (!kycComplete) {
-      items.push({
-        id: "kyc-needed",
-        title: "Complete your profile",
-        subtitle: "Finish verification to unlock full access.",
-        icon: "shield-checkmark-outline",
-        tone: "info",
-        actionLabel: "Open",
-        onPress: () => router.push(ROUTES.tabs.profile as any),
-      });
-    }
-
-    if (hasActiveMerry && merryDueNow > 0) {
-      items.push({
-        id: "merry-due",
-        title: "Merry contribution waiting",
-        subtitle: `${fmtKES(merrySummary?.total_required_now)} is ready for contribution.`,
-        icon: "repeat-outline",
-        tone: "success",
-        actionLabel: "Contribute",
-        onPress: openFirstMerryFlow,
-      });
-    }
-
-    if (hasActiveGroups) {
-      items.push({
-        id: "group-space",
-        title:
-          activeGroupMemberships.length === 1
-            ? "Group contribution space"
-            : `${activeGroupMemberships.length} group spaces active`,
-        subtitle:
-          activeGroupMemberships.length === 1
-            ? `Open ${firstActiveGroupName} and continue contributing.`
-            : "Open your groups and continue participating.",
-        icon: "people-outline",
-        tone: "primary",
-        actionLabel: "Open",
-        onPress: () => router.push(ROUTES.tabs.groupsMemberships as any),
-      });
-    }
-
-    if (guaranteeRequests.length > 0) {
-      items.push({
-        id: "guarantee-requests",
-        title:
-          guaranteeRequests.length === 1
-            ? "1 support request waiting"
-            : `${guaranteeRequests.length} support requests waiting`,
-        subtitle: "Review and respond.",
-        icon: "people-outline",
-        tone: "primary",
-        actionLabel: "View",
-        onPress: () => router.push("/(tabs)/loans/guarantee-requests" as any),
-      });
-    }
-
-    const approvedLoan = loans.find(
-      (l) => String(l.status || "").toUpperCase() === "APPROVED"
-    );
-
-    if (approvedLoan) {
-      items.push({
-        id: "support-ready",
-        title: "Support ready",
-        subtitle: "Your support request is ready to view.",
-        icon: "checkmark-circle-outline",
-        tone: "success",
-        actionLabel: "Open",
-        onPress: () =>
-          router.push({
-            pathname: "/(tabs)/loans/[id]" as any,
-            params: { id: String(approvedLoan.id) },
-          }),
-      });
-    }
-
-    return items.slice(0, 4);
-  }, [
-    activeGroupMemberships.length,
-    firstActiveGroupName,
-    guaranteeRequests.length,
-    hasActiveGroups,
-    hasActiveMerry,
-    kycComplete,
-    loans,
-    merryDueNow,
-    merrySummary,
-    openFirstMerryFlow,
-  ]);
+    router.push({
+      pathname: "/(tabs)/merry/contribute" as any,
+      params: { merryId: String(payable.merry_id) },
+    });
+  }, [summary]);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.page} edges={["top"]}>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={BRAND} />
         </View>
       </SafeAreaView>
     );
@@ -837,12 +581,12 @@ export default function DashboardScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.page} edges={["top"]}>
-        <View style={styles.page}>
+      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
           <EmptyState
             title="Not signed in"
-            subtitle="Please log in to continue."
-            actionLabel="Go to Login"
+            subtitle="Login to continue"
+            actionLabel="Login"
             onAction={() => router.replace(ROUTES.auth.login as any)}
           />
         </View>
@@ -851,758 +595,693 @@ export default function DashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.page} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <ScrollView
-        style={styles.page}
-        contentContainerStyle={styles.content}
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 28, 36) },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.primary}
-            colors={[COLORS.primary, COLORS.secondary]}
+            tintColor={BRAND}
+            colors={[BRAND]}
           />
         }
         showsVerticalScrollIndicator={false}
-        contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.topBar}>
-          <View style={styles.topBarLeft}>
-            <View style={styles.brandIcon}>
-              <Ionicons
-                name="people-circle-outline"
-                size={24}
-                color={COLORS.white}
-              />
-            </View>
+        <View style={styles.heroShell}>
+          <View style={styles.heroShellTop}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => router.back()}
+              style={styles.backBtn}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color={BRAND} />
+            </TouchableOpacity>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.brandTitle}>United Care</Text>
-              <Text style={styles.brandSubtitle}>
-                Community self-help home
-              </Text>
+            <View style={styles.heroBadge}>
+              <Ionicons name="people-outline" size={14} color={BRAND} />
+              <Text style={styles.heroBadgeText}>Community merry space</Text>
             </View>
           </View>
 
-          <View style={styles.topBarActions}>
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={onRefresh}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="refresh-outline" size={18} color={COLORS.primary} />
-            </TouchableOpacity>
+          <Text style={styles.pageTitle}>Merry</Text>
+          <Text style={styles.pageSubtitle}>
+            Join, contribute, and keep your merry circle active with simple shared
+            participation.
+          </Text>
 
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={handleLogout}
-              disabled={loggingOut}
-              style={styles.iconBtn}
-            >
-              <Ionicons
-                name="log-out-outline"
-                size={18}
-                color={loggingOut ? COLORS.textMuted : COLORS.error}
-              />
-            </TouchableOpacity>
+          <View style={styles.summaryRow}>
+            <SummaryTile
+              label="My active merry"
+              value={String(activeMerryCount)}
+              icon="repeat-outline"
+            />
+            <SummaryTile
+              label="Open merry"
+              value={String(totalOpenMerries)}
+              icon="compass-outline"
+            />
+            <SummaryTile
+              label="Ready now"
+              value={fmtKES(totalRequiredNow)}
+              icon="wallet-outline"
+            />
           </View>
         </View>
 
-        <Card style={styles.heroCard} variant="elevated">
-          <View style={styles.heroDecorOne} />
-          <View style={styles.heroDecorTwo} />
-          <View style={styles.heroDecorThree} />
+        {error ? (
+          <Card style={styles.errorCard} variant="default">
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={COLORS.danger || "#DC2626"}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-          <View style={styles.heroHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.heroTag}>
-                {isAdmin ? "COMMUNITY LEAD" : "COMMUNITY MEMBER"}
-              </Text>
-              <Text style={styles.heroTitle}>
-                {greetingText}, {memberName}
-              </Text>
-              <Text style={styles.heroCaption}>
-                Save together, support each other, and keep your community active.
-              </Text>
-            </View>
-          </View>
+        <DueSummaryHero amount={totalRequiredNow} onPress={openHeroContribution} />
 
-          <View style={styles.heroIdentityRow}>
-            <View style={styles.heroMetaPill}>
-              <Ionicons name="ellipse" size={8} color="#8CF0C7" />
-              <Text style={styles.heroMetaText}>
-                {formatUserStatus(user?.status)}
-              </Text>
-            </View>
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle}>Your merry groups</Text>
+          <Text style={styles.sectionSubtitle}>
+            See your active merry spaces and continue contributing when ready.
+          </Text>
 
-            {memberNumber ? (
-              <View style={styles.heroMetaPill}>
-                <Ionicons
-                  name="card-outline"
-                  size={14}
-                  color="rgba(255,255,255,0.92)"
-                />
-                <Text style={styles.heroMetaText}>#{memberNumber}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.heroMetaPill}>
-              <Ionicons
-                name="people-outline"
-                size={14}
-                color="rgba(255,255,255,0.92)"
+          {myGroupsPreview.length === 0 ? (
+            <Card style={styles.emptyCard} variant="default">
+              <EmptyState
+                icon="people-outline"
+                title="No merry groups yet"
+                subtitle="When you join a merry, it will appear here."
               />
-              <Text style={styles.heroMetaText}>
-                {communityCount} active area{communityCount === 1 ? "" : "s"}
-              </Text>
+            </Card>
+          ) : (
+            <View style={styles.cardList}>
+              {myGroupsPreview.map((item) => (
+                <MyMerryCard
+                  key={`due-${item.merry_id}`}
+                  item={item}
+                  onContribute={onContribute}
+                />
+              ))}
             </View>
+          )}
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle}>Open merry spaces</Text>
+          <Text style={styles.sectionSubtitle}>
+            Explore community merry circles and join the one that fits you.
+          </Text>
+
+          {availablePreview.length === 0 ? (
+            <Card style={styles.emptyCard} variant="default">
+              <EmptyState
+                icon="grid-outline"
+                title="No open merry now"
+                subtitle="New merry opportunities will appear here."
+              />
+            </Card>
+          ) : (
+            <View style={styles.cardList}>
+              {availablePreview.map((item) => (
+                <AvailableMerryCard key={`available-${item.id}`} item={item} />
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionTitle}>Quick access</Text>
+          <Text style={styles.sectionSubtitle}>
+            Open the next merry step in one tap.
+          </Text>
+
+          <View style={styles.quickLinksList}>
+            <QuickLink
+              title="Your Contributions"
+              subtitle="See how you’ve been supporting your merry"
+              icon="time-outline"
+              onPress={() => router.push("/(tabs)/merry/history" as any)}
+            />
+
+            {firstJoinableMerry ? (
+              <QuickLink
+                title="Join a Merry"
+                subtitle="Open a merry and send your join request"
+                icon="person-add-outline"
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/merry/join-request" as any,
+                    params: { merryId: String(firstJoinableMerry.id) },
+                  })
+                }
+              />
+            ) : null}
           </View>
+        </View>
+
+        <Card style={styles.communityCard} variant="default">
+          <View style={styles.communityTop}>
+            <View style={styles.communityIconWrap}>
+              <Ionicons name="sparkles-outline" size={18} color={BRAND} />
+            </View>
+            <Text style={styles.communityTitle}>Why merry matters</Text>
+          </View>
+
+          <Text style={styles.communityText}>
+            Merry makes it easier for members to support one another through
+            consistent contribution, shared responsibility, and a strong sense of
+            community.
+          </Text>
         </Card>
-
-        <Section title="Overview">
-          <View
-            style={[styles.summaryGrid, isWideScreen && styles.summaryGridWide]}
-          >
-            {hasActiveMerry ? (
-              <View
-                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
-              >
-                <SummaryCard
-                  title="Merry"
-                  value={merryAmountValue}
-                  subtitle={merrySubtitle}
-                  icon="repeat-outline"
-                  tone="success"
-                  onPress={() => router.push(ROUTES.tabs.merry as any)}
-                />
-              </View>
-            ) : null}
-
-            <View
-              style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
-            >
-              <SummaryCard
-                title="Savings"
-                value={heroSavings}
-                subtitle={
-                  savingsAccounts.length > 0
-                    ? "Your available savings"
-                    : "Start your savings journey"
-                }
-                icon="wallet-outline"
-                tone="primary"
-                onPress={() => router.push(ROUTES.tabs.savings as any)}
-              />
-            </View>
-
-            {hasActiveGroups ? (
-              <View
-                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
-              >
-                <SummaryCard
-                  title="Groups"
-                  value={groupSummaryValue}
-                  subtitle={groupSummarySubtitle}
-                  icon="people-outline"
-                  tone="info"
-                  onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-                />
-              </View>
-            ) : null}
-
-            {activeLoan ? (
-              <View
-                style={[styles.summaryItem, isWideScreen && styles.summaryItemWide]}
-              >
-                <SummaryCard
-                  title="Support"
-                  value={formatKes(totalOutstandingLoans)}
-                  subtitle="Current active support"
-                  icon="heart-outline"
-                  tone="warning"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/loans/[id]" as any,
-                      params: { id: String(activeLoan.id) },
-                    })
-                  }
-                />
-              </View>
-            ) : null}
-          </View>
-        </Section>
-
-        <Section title="Continue">
-          <View style={[styles.spaceGrid, isWideScreen && styles.spaceGridWide]}>
-            {hasActiveMerry ? (
-              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-                <SpaceCard
-                  title="Merry space"
-                  subtitle={
-                    merryDueNow > 0
-                      ? `${fmtKES(merrySummary?.total_required_now)} is ready for contribution.`
-                      : "Open your merry space and keep participating."
-                  }
-                  icon="repeat-outline"
-                  tone="success"
-                  primaryLabel="Contribute"
-                  secondaryLabel="Open"
-                  onPrimary={openFirstMerryFlow}
-                  onSecondary={() => router.push(ROUTES.tabs.merry as any)}
-                />
-              </View>
-            ) : null}
-
-            <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-              <SpaceCard
-                title="Savings space"
-                subtitle={
-                  savingsAccounts.length > 0
-                    ? "Keep growing your savings balance."
-                    : "Start setting something aside for your future."
-                }
-                icon="wallet-outline"
-                tone="primary"
-                primaryLabel="Save"
-                secondaryLabel="Open"
-                onPrimary={() => openSavingsFlow(primarySavingsAccount)}
-                onSecondary={() => router.push(ROUTES.tabs.savings as any)}
-              />
-            </View>
-
-            {hasActiveGroups ? (
-              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-                <SpaceCard
-                  title="Group space"
-                  subtitle={
-                    activeGroupMemberships.length === 1
-                      ? `Continue with ${firstActiveGroupName}.`
-                      : "Open your group spaces and continue participating."
-                  }
-                  icon="people-outline"
-                  tone="info"
-                  primaryLabel="Contribute"
-                  secondaryLabel="Open"
-                  onPrimary={() => openGroupContributionFlow(firstActiveGroupId)}
-                  onSecondary={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-                />
-              </View>
-            ) : null}
-
-            {activeLoan ? (
-              <View style={[styles.spaceItem, isWideScreen && styles.spaceItemWide]}>
-                <SpaceCard
-                  title="Support space"
-                  subtitle="View your active support details or make a contribution."
-                  icon="heart-outline"
-                  tone="warning"
-                  primaryLabel="Add"
-                  secondaryLabel="View"
-                  onPrimary={() => {
-                    if (!loanAllowed) {
-                      router.push(ROUTES.tabs.profile as any);
-                      return;
-                    }
-                    openLoanPaymentFlow(activeLoan);
-                  }}
-                  onSecondary={() =>
-                    router.push({
-                      pathname: "/(tabs)/loans/[id]" as any,
-                      params: { id: String(activeLoan.id) },
-                    })
-                  }
-                />
-              </View>
-            ) : null}
-          </View>
-        </Section>
-
-        <Section title="Updates">
-          <View style={styles.noticeWrap}>
-            {noticeItems.length > 0 ? (
-              noticeItems.map((item) => <NoticeCard key={item.id} item={item} />)
-            ) : (
-              <Card style={styles.noticeCard} variant="default">
-                <View
-                  style={[
-                    styles.noticeStripe,
-                    { backgroundColor: COLORS.primary },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.noticeIcon,
-                    { backgroundColor: COLORS.primaryLight },
-                  ]}
-                >
-                  <Ionicons
-                    name="notifications-outline"
-                    size={18}
-                    color={COLORS.primary}
-                  />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.noticeTitle}>No new updates</Text>
-                  <Text style={styles.noticeSubtitle}>
-                    Your latest account updates will appear here.
-                  </Text>
-                </View>
-              </Card>
-            )}
-          </View>
-        </Section>
-
-        <Section title="Account">
-          <View style={styles.smallLinksWrap}>
-            <SmallLink
-              title="Notifications"
-              icon="notifications-outline"
-              onPress={() => router.push("/(tabs)/notifications" as any)}
-            />
-
-            <SmallLink
-              title="Profile"
-              icon="person-outline"
-              onPress={() => router.push(ROUTES.tabs.profile as any)}
-            />
-
-            {isAdmin ? (
-              <SmallLink
-                title="Admin tools"
-                icon="shield-checkmark-outline"
-                onPress={() => router.push(ROUTES.tabs.groups as any)}
-              />
-            ) : null}
-
-            <SmallLink
-              title={loggingOut ? "Logging out..." : "Log out"}
-              icon="log-out-outline"
-              onPress={handleLogout}
-              danger
-            />
-          </View>
-        </Section>
-
-        <View style={{ height: 12 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  page: {
+  container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
   },
 
   content: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.xl,
+    padding: SPACING.md,
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: PAGE_BG,
   },
 
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.sm,
+  heroShell: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    backgroundColor: BRAND,
     marginBottom: SPACING.md,
-    paddingTop: SPACING.xs,
+    ...SHADOW.card,
   },
 
-  topBarLeft: {
+  heroShellTop: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: SPACING.sm,
-    flex: 1,
-  },
-
-  topBarActions: {
-    flexDirection: "row",
-    alignItems: "center",
+    marginBottom: SPACING.md,
     gap: SPACING.sm,
   },
 
-  brandIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    ...SHADOW.soft,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
   },
 
-  brandTitle: {
-    ...TYPE.title,
-    color: COLORS.text,
-    fontWeight: "900",
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    maxWidth: "72%",
   },
 
-  brandSubtitle: {
-    ...TYPE.caption,
-    color: COLORS.textMuted,
-    marginTop: 2,
+  heroBadgeText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.medium,
+    color: COLORS.white,
+    flexShrink: 1,
   },
 
-  iconBtn: {
+  pageTitle: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontFamily: FONT.bold,
+    color: COLORS.white,
+  },
+
+  pageSubtitle: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.90)",
+  },
+
+  summaryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.md,
+  },
+
+  summaryTile: {
+    flexGrow: 1,
+    minWidth: 94,
+    padding: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+
+  summaryIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    marginBottom: 8,
+  },
+
+  summaryLabel: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.80)",
+  },
+
+  summaryValue: {
+    marginTop: 4,
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: FONT.bold,
+    color: COLORS.white,
+  },
+
+  heroCard: {
+    marginBottom: SPACING.md,
+    backgroundColor: CARD_BG,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
+    ...SHADOW.card,
+  },
+
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  heroIconWrap: {
     width: 42,
     height: 42,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.white,
+    backgroundColor: BRAND_SOFT,
+  },
+
+  heroTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
+  },
+
+  heroSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
+    marginTop: 4,
+  },
+
+  heroAmountBox: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: SURFACE_SOFT,
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.10)",
-    ...SHADOW.soft,
+    borderColor: BRAND_SOFT_2,
   },
 
-  heroCard: {
-    ...P.dashboardHero,
-    borderRadius: 28,
-    overflow: "hidden",
-    marginBottom: SPACING.lg,
-    paddingBottom: SPACING.md,
-    minHeight: 196,
+  heroAmountLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
   },
 
-  heroDecorOne: {
-    position: "absolute",
-    width: 190,
-    height: 190,
-    borderRadius: 999,
-    top: -58,
-    right: -30,
-    backgroundColor: "rgba(255,255,255,0.08)",
+  heroAmountValue: {
+    fontSize: 24,
+    lineHeight: 30,
+    marginTop: 4,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
   },
 
-  heroDecorTwo: {
-    position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    bottom: -24,
-    left: -8,
-    backgroundColor: "rgba(255,255,255,0.05)",
+  heroPillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.md,
   },
 
-  heroDecorThree: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 999,
-    bottom: -120,
-    right: -20,
-    backgroundColor: "rgba(22, 163, 74, 0.16)",
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: BRAND_SOFT,
   },
 
-  heroHeaderRow: {
+  heroPillText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: FONT.medium,
+    color: BRAND,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.18)",
+    backgroundColor: "#FFF1F2",
+    borderRadius: RADIUS.xl,
+  },
+
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: COLORS.danger || "#DC2626",
+  },
+
+  sectionBlock: {
+    marginTop: SPACING.md,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
+  },
+
+  sectionSubtitle: {
+    marginTop: 4,
+    marginBottom: SPACING.sm,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
+  },
+
+  cardList: {
+    gap: SPACING.sm,
+  },
+
+  myMerryCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  availableCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
+    borderRadius: RADIUS.xl,
+    ...SHADOW.card,
+  },
+
+  cardTop: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: SPACING.sm,
   },
 
-  heroTag: {
-    ...TYPE.caption,
-    color: "rgba(255,255,255,0.82)",
-    fontWeight: "900",
-    letterSpacing: 1.1,
+  cardTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: SPACING.sm,
   },
 
-  heroTitle: {
-    ...TYPE.title,
-    color: COLORS.white,
-    marginTop: 8,
-    fontWeight: "900",
-  },
-
-  heroCaption: {
-    ...TYPE.subtext,
-    color: "rgba(255,255,255,0.88)",
-    marginTop: 6,
-    fontWeight: "700",
+  cardTitle: {
+    fontSize: 15,
     lineHeight: 20,
-    maxWidth: "96%",
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
   },
 
-  heroIdentityRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
+  cardSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
+    marginTop: 4,
   },
 
-  heroMetaPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-
-  heroMetaText: {
-    ...TYPE.caption,
-    color: COLORS.white,
-    fontWeight: "800",
-  },
-
-  summaryGrid: {
-    gap: SPACING.md,
-  },
-
-  summaryGridWide: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-
-  summaryItem: {
-    width: "100%",
-  },
-
-  summaryItemWide: {
-    flex: 1,
-    minWidth: 220,
-  },
-
-  summaryCard: {
-    minHeight: 154,
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: SPACING.md,
-    justifyContent: "space-between",
-    overflow: "hidden",
-    ...SHADOW.soft,
-  },
-
-  summaryCardGlow: {
-    position: "absolute",
-    right: -24,
-    top: -24,
-    width: 110,
-    height: 110,
+  badgeBase: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 999,
-  },
-
-  summaryTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  summaryIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  summaryChevronWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.04)",
-  },
-
-  summaryTitle: {
-    ...TYPE.caption,
-    color: COLORS.textMuted,
-    fontWeight: "800",
-    marginTop: SPACING.md,
-  },
-
-  summaryValueWrap: {
     alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginTop: 8,
+    maxWidth: "42%",
   },
 
-  summaryValue: {
-    ...TYPE.title,
-    fontWeight: "900",
+  badgeAccent: {
+    backgroundColor: BRAND_SOFT,
   },
 
-  summarySubtitle: {
-    ...TYPE.subtext,
-    color: COLORS.textMuted,
-    marginTop: 8,
-    lineHeight: 18,
+  badgeSuccess: {
+    backgroundColor: SUCCESS_BG,
   },
 
-  spaceGrid: {
-    gap: SPACING.md,
+  badgeWarning: {
+    backgroundColor: WARNING_BG,
   },
 
-  spaceGridWide: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  badgeText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: FONT.medium,
   },
 
-  spaceItem: {
-    width: "100%",
+  badgeTextAccent: {
+    color: BRAND,
   },
 
-  spaceItemWide: {
-    flex: 1,
-    minWidth: 280,
+  badgeTextSuccess: {
+    color: SUCCESS_TEXT,
   },
 
-  spaceCard: {
+  badgeTextWarning: {
+    color: WARNING_TEXT,
+  },
+
+  amountPanel: {
+    marginTop: SPACING.md,
     padding: SPACING.md,
-    borderRadius: 24,
+    borderRadius: RADIUS.lg,
+    backgroundColor: SURFACE_SOFT,
     borderWidth: 1,
-    backgroundColor: COLORS.white,
-    minHeight: 170,
-    overflow: "hidden",
-    ...SHADOW.soft,
+    borderColor: BRAND_SOFT_2,
   },
 
-  spaceCardGlow: {
-    position: "absolute",
-    top: -28,
-    right: -20,
-    width: 120,
-    height: 120,
-    borderRadius: 999,
+  amountPanelLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
   },
 
-  spaceHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-  },
-
-  spaceIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  spaceTitle: {
-    ...TYPE.title,
-    color: COLORS.text,
-    fontWeight: "900",
-  },
-
-  spaceSubtitle: {
-    ...TYPE.subtext,
-    color: COLORS.textMuted,
+  amountPanelValue: {
     marginTop: 4,
-    lineHeight: 18,
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
   },
 
-  spaceActions: {
+  helperText: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
+  },
+
+  cardActions: {
     flexDirection: "row",
-    alignItems: "center",
     marginTop: SPACING.md,
   },
 
-  noticeWrap: {
-    gap: SPACING.sm,
-  },
-
-  noticeCard: {
-    padding: SPACING.md,
-    paddingLeft: SPACING.lg,
-    borderRadius: RADIUS.xl,
+  amountBadge: {
+    maxWidth: "42%",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: SURFACE_SOFT,
     borderWidth: 1,
-    backgroundColor: COLORS.white,
+    borderColor: BRAND_SOFT_2,
+    alignSelf: "flex-start",
+  },
+
+  amountBadgeText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
+  },
+
+  metaRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-    overflow: "hidden",
-    ...SHADOW.soft,
+    flexWrap: "wrap",
+    gap: SPACING.sm as any,
+    marginTop: SPACING.md,
   },
 
-  noticeStripe: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
+  metaPillNeutral: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: MUTED_BG,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
   },
 
-  noticeIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  metaPillAccent: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: BRAND_SOFT,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
   },
 
-  noticeTitle: {
-    ...TYPE.bodyStrong,
-    color: COLORS.text,
-    fontWeight: "800",
+  metaPillText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: FONT.medium,
+    color: TEXT,
   },
 
-  noticeSubtitle: {
-    ...TYPE.subtext,
-    color: COLORS.textMuted,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-
-  noticeAction: {
-    ...TYPE.caption,
-    marginTop: 8,
-    fontWeight: "900",
-  },
-
-  smallLinksWrap: {
+  quickLinksList: {
     gap: SPACING.sm,
   },
 
-  smallLink: {
-    minHeight: 54,
+  quickLinkCard: {
+    minHeight: 68,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(14, 94, 111, 0.10)",
+    borderColor: BRAND_SOFT_2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    ...SHADOW.soft,
+    gap: SPACING.sm,
+    ...SHADOW.card,
   },
 
-  smallLinkLeft: {
+  quickLinkLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
     flex: 1,
+    minWidth: 0,
   },
 
-  smallLinkIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
+  quickLinkIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: BRAND_SOFT,
   },
 
-  smallLinkText: {
-    ...TYPE.bodyStrong,
-    color: COLORS.text,
-    fontWeight: "700",
+  quickLinkTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
+  },
+
+  quickLinkSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: FONT.regular,
+    color: TEXT_MUTED,
+  },
+
+  communityCard: {
+    marginTop: SPACING.md,
+    backgroundColor: CARD_BG,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
+    ...SHADOW.card,
+  },
+
+  communityTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+
+  communityIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: BRAND_SOFT,
+  },
+
+  communityTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontFamily: FONT.bold,
+    color: BRAND_DARK,
+  },
+
+  communityText: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: FONT.regular,
+    color: TEXT,
+  },
+
+  emptyCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: BRAND_SOFT_2,
+    ...SHADOW.card,
   },
 });
