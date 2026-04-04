@@ -32,17 +32,13 @@ import {
 } from "@/services/savings";
 import { saveSessionUser } from "@/services/session";
 
-const SURFACE = "rgba(255,255,255,0.96)";
-const SURFACE_SOFT = "rgba(248,250,252,0.92)";
-const CARD_BORDER = "rgba(255,255,255,0.10)";
-const INNER_BORDER = "rgba(15, 23, 42, 0.06)";
-const TEXT_MAIN = "#0F172A";
-const TEXT_SOFT = "#64748B";
 const PAGE_BG = "#062C49";
-const HERO_BG = "rgba(12,106,128,0.48)";
-const SOFT_GREEN = "#ECFDF5";
-const SOFT_BLUE = "#EFF6FF";
-const SOFT_AMBER = "#FFF7ED";
+const WHITE = "#FFFFFF";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
+const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.75)";
+const TEXT_ON_DARK_MUTED = "rgba(255,255,255,0.55)";
+const GLASS = "rgba(255,255,255,0.08)";
+const GLASS_BORDER = "rgba(255,255,255,0.10)";
 
 function formatKes(value?: string | number) {
   const n = Number(value ?? 0);
@@ -69,17 +65,10 @@ function SummaryTile({
       ? COLORS.success
       : tone === "warning"
         ? COLORS.warning
-        : TEXT_MAIN;
-
-  const bgColor =
-    tone === "success"
-      ? SOFT_GREEN
-      : tone === "warning"
-        ? SOFT_AMBER
-        : SURFACE_SOFT;
+        : WHITE;
 
   return (
-    <View style={[styles.summaryTile, { backgroundColor: bgColor }]}>
+    <View style={styles.summaryTile}>
       <View style={styles.summaryTileGlow} />
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={[styles.summaryValue, { color: valueColor }]}>{value}</Text>
@@ -120,7 +109,7 @@ function ActionRow({
         <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={TEXT_SOFT} />
+      <Ionicons name="chevron-forward" size={18} color={TEXT_ON_DARK_MUTED} />
     </TouchableOpacity>
   );
 }
@@ -387,7 +376,7 @@ export default function SavingsIndexScreen() {
               </Text>
             </View>
 
-            <Ionicons name="chevron-forward" size={18} color={TEXT_SOFT} />
+            <Ionicons name="chevron-forward" size={18} color={TEXT_ON_DARK_MUTED} />
           </Card>
         ) : null}
 
@@ -494,7 +483,7 @@ const styles = StyleSheet.create({
 
   loadingText: {
     marginTop: SPACING.sm,
-    color: "rgba(255,255,255,0.75)",
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
   },
@@ -550,14 +539,13 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
     borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
-    backgroundColor: HERO_BG,
+    backgroundColor: "rgba(12,106,128,0.45)",
     borderWidth: 1,
-    borderColor: "rgba(176, 243, 234, 0.10)",
+    borderColor: "rgba(176,243,234,0.12)",
+    overflow: "hidden",
     ...SHADOW.strong,
   },
 
@@ -621,7 +609,7 @@ const styles = StyleSheet.create({
 
   heroTitle: {
     marginTop: 6,
-    color: COLORS.white,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 22,
     lineHeight: 28,
@@ -629,7 +617,7 @@ const styles = StyleSheet.create({
 
   heroSubtitle: {
     marginTop: 6,
-    color: "rgba(255,255,255,0.88)",
+    color: TEXT_ON_DARK,
     fontFamily: FONT.regular,
     fontSize: 13,
     lineHeight: 19,
@@ -650,10 +638,10 @@ const styles = StyleSheet.create({
 
   heroBalanceValue: {
     marginTop: 6,
-    color: COLORS.white,
     fontFamily: FONT.bold,
     fontSize: 28,
     lineHeight: 34,
+    color: WHITE,
   },
 
   heroMetaRow: {
@@ -676,7 +664,7 @@ const styles = StyleSheet.create({
   },
 
   heroMetaText: {
-    color: "rgba(255,255,255,0.92)",
+    color: TEXT_ON_DARK,
     fontFamily: FONT.medium || FONT.regular,
     fontSize: 12,
   },
@@ -686,16 +674,16 @@ const styles = StyleSheet.create({
   },
 
   errorCard: {
-    backgroundColor: "#FFF4F4",
+    backgroundColor: "rgba(239,68,68,0.18)",
+    borderColor: "rgba(239,68,68,0.25)",
     borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.18)",
     borderRadius: RADIUS.xl,
     padding: SPACING.md,
     marginBottom: SPACING.md,
   },
 
   errorText: {
-    color: COLORS.danger,
+    color: WHITE,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
@@ -704,20 +692,16 @@ const styles = StyleSheet.create({
   noticeCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: INNER_BORDER,
+    borderColor: GLASS_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
     marginBottom: SPACING.lg,
-    shadowColor: "#001B2F",
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    ...SHADOW.card,
   },
 
   noticeGlow: {
@@ -727,7 +711,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 999,
-    backgroundColor: "rgba(12,106,128,0.05)",
+    backgroundColor: "rgba(12,106,128,0.08)",
   },
 
   noticeIcon: {
@@ -744,14 +728,14 @@ const styles = StyleSheet.create({
   },
 
   noticeTitle: {
-    color: TEXT_MAIN,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 14,
   },
 
   noticeText: {
     marginTop: 4,
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
@@ -766,13 +750,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: INNER_BORDER,
+    borderColor: GLASS_BORDER,
     padding: SPACING.md,
-    shadowColor: "#001B2F",
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    backgroundColor: GLASS,
+    ...SHADOW.card,
   },
 
   summaryTileGlow: {
@@ -782,11 +763,11 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
 
   summaryLabel: {
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
   },
@@ -796,6 +777,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
     fontSize: 18,
     lineHeight: 24,
+    color: WHITE,
   },
 
   actionList: {
@@ -805,19 +787,15 @@ const styles = StyleSheet.create({
   actionRow: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: SURFACE,
+    backgroundColor: GLASS,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: INNER_BORDER,
+    borderColor: GLASS_BORDER,
     padding: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
-    shadowColor: "#001B2F",
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    ...SHADOW.card,
   },
 
   actionRowGlow: {
@@ -827,7 +805,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 999,
-    backgroundColor: "rgba(12,106,128,0.04)",
+    backgroundColor: "rgba(12,106,128,0.06)",
   },
 
   actionIconWrap: {
@@ -843,33 +821,28 @@ const styles = StyleSheet.create({
   },
 
   actionTitle: {
-    color: TEXT_MAIN,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 14,
   },
 
   actionSubtitle: {
     marginTop: 4,
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
   },
 
   communityCard: {
-    position: "relative",
-    overflow: "hidden",
     marginTop: SPACING.sm,
-    backgroundColor: "rgba(239,246,255,0.96)",
+    backgroundColor: GLASS,
     borderWidth: 1,
-    borderColor: "rgba(37, 99, 235, 0.08)",
+    borderColor: GLASS_BORDER,
     borderRadius: 22,
     padding: SPACING.md,
-    shadowColor: "#001B2F",
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    overflow: "hidden",
+    ...SHADOW.card,
   },
 
   communityGlow: {
@@ -879,7 +852,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 999,
-    backgroundColor: "rgba(37, 99, 235, 0.06)",
+    backgroundColor: "rgba(37, 99, 235, 0.08)",
   },
 
   communityCardTop: {
@@ -895,17 +868,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(37, 99, 235, 0.08)",
+    backgroundColor: "rgba(37, 99, 235, 0.10)",
   },
 
   communityTitle: {
-    color: TEXT_MAIN,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 14,
   },
 
   communityText: {
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 19,

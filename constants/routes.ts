@@ -11,42 +11,27 @@ export const ROUTES = {
 
   tabs: {
     dashboard: "/(tabs)/dashboard",
-
-    /* -----------------------------
-       Notifications
-    ----------------------------- */
     notifications: "/(tabs)/notifications",
 
-    /* -----------------------------
-       Savings
-    ----------------------------- */
     savings: "/(tabs)/savings",
     savingsSave: "/(tabs)/savings/save",
-    savingsCreate: "/(tabs)/savings/create",
     savingsHistory: "/(tabs)/savings/history",
 
-    /* -----------------------------
-       Payments
-    ----------------------------- */
     payments: "/(tabs)/payments",
     paymentsLedger: "/(tabs)/payments/ledger",
     paymentsDeposit: "/(tabs)/payments/deposit",
     paymentsWithdrawals: "/(tabs)/payments/withdrawals",
     paymentsRequestWithdrawal: "/(tabs)/payments/request-withdrawal",
 
-    /* -----------------------------
-       Loans / Support
-    ----------------------------- */
     loans: "/(tabs)/loans",
     loansRequest: "/(tabs)/loans/request",
     loansPay: "/(tabs)/loans/pay",
     loansAddGuarantor: "/(tabs)/loans/add-guarantor",
-    loansGuarantees: "/(tabs)/loans/guarantee-requests",
+    loansGuaranteeRequests: "/(tabs)/loans/guarantee-requests",
+    loansGuarantees: "/(tabs)/loans/guarantees",
     loansHistory: "/(tabs)/loans/history",
+    loansAdminApprove: "/(tabs)/loans/admin-approve",
 
-    /* -----------------------------
-       Merry-Go-Round
-    ----------------------------- */
     merry: "/(tabs)/merry",
     merryContribute: "/(tabs)/merry/contribute",
     merryHistory: "/(tabs)/merry/history",
@@ -58,52 +43,31 @@ export const ROUTES = {
     merryAdminJoinRequests: "/(tabs)/merry/admin-join-requests",
     merryAdminPayoutCreate: "/(tabs)/merry/admin-payout-create",
 
-    /* -----------------------------
-       Groups
-    ----------------------------- */
     groups: "/(tabs)/groups",
     groupsAvailable: "/(tabs)/groups/available",
     groupsMySavings: "/(tabs)/groups/my-savings",
     groupsMemberships: "/(tabs)/groups/memberships",
     groupsJoinRequests: "/(tabs)/groups/join-requests",
-    groupsCreate: "/(tabs)/groups/create",
-    groupsEdit: "/(tabs)/groups/edit",
-    groupsAddMembership: "/(tabs)/groups/add-membership",
     groupsContribute: "/(tabs)/groups/contribute",
     groupsHistory: "/(tabs)/groups/history",
     groupsAdminJoinRequests: "/(tabs)/groups/admin-join-requests",
 
-    /* -----------------------------
-       Profile
-       NOTE:
-       Actual existing route is only "/(tabs)/profile"
-       Keep profileEdit/profileKyc mapped here for backward compatibility.
-    ----------------------------- */
     profile: "/(tabs)/profile",
-    profileEdit: "/(tabs)/profile",
-    profileKyc: "/(tabs)/profile",
+    profileEdit: "/(tabs)/profile/edit",
+    profileKyc: "/(tabs)/profile/kyc",
   },
 
   dynamic: {
-    /* -----------------------------
-       Dynamic detail screens
-    ----------------------------- */
     loanDetail: (id: number | string) => `/(tabs)/loans/${id}`,
     merryDetail: (id: number | string) => `/(tabs)/merry/${id}`,
     groupDetail: (id: number | string) => `/(tabs)/groups/${id}`,
 
-    /* -----------------------------
-       Savings dynamic helpers
-    ----------------------------- */
     savingsAccountDetail: (accountId: number | string) =>
       `/(tabs)/savings/${accountId}`,
 
     savingsAccountHistory: (accountId: number | string) =>
       `/(tabs)/savings/history?accountId=${accountId}`,
 
-    /* -----------------------------
-       Group dynamic helpers
-    ----------------------------- */
     groupMemberships: (groupId: number | string) =>
       `/(tabs)/groups/memberships?groupId=${groupId}`,
 
@@ -119,12 +83,6 @@ export const ROUTES = {
     groupHistory: (groupId: number | string) =>
       `/(tabs)/groups/history?groupId=${groupId}`,
 
-    groupEdit: (groupId: number | string) =>
-      `/(tabs)/groups/edit?groupId=${groupId}`,
-
-    /* -----------------------------
-       Merry dynamic helpers
-    ----------------------------- */
     merryMembers: (merryId: number | string) =>
       `/(tabs)/merry/members?merryId=${merryId}`,
 

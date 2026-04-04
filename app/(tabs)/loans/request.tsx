@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,126 +17,427 @@ import {
 } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Input from "@/components/ui/Input";
-import Section from "@/components/ui/Section";
 
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   buildLoanRequestPayload,
   getApiErrorMessage,
   getGuarantorCandidates,
   getLoanEligibilityPreview,
+  getLoanSecurityPreview,
   GuarantorCandidate,
   LoanEligibilityPreview,
+  LoanSecurityPreview,
   requestLoan,
 } from "@/services/loans";
 
+type SpaceTone = "savings" | "merry" | "groups" | "support";
+
+function getSpaceTonePalette(tone: SpaceTone) {
+  const map = {
+    savings: {
+      card: "rgba(29, 196, 182, 0.22)",
+      border: "rgba(129, 244, 231, 0.15)",
+      iconBg: "rgba(220, 255, 250, 0.75)",
+      icon: "#0B6A80",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    merry: {
+      card: "rgba(98, 192, 98, 0.23)",
+      border: "rgba(194, 255, 188, 0.16)",
+      iconBg: "rgba(236, 255, 235, 0.76)",
+      icon: "#379B4A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    groups: {
+      card: "rgba(49, 180, 217, 0.22)",
+      border: "rgba(189, 244, 255, 0.15)",
+      iconBg: "rgba(236, 251, 255, 0.76)",
+      icon: "#0A6E8A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    support: {
+      card: "rgba(52, 198, 191, 0.22)",
+      border: "rgba(195, 255, 250, 0.16)",
+      iconBg: "rgba(236, 255, 252, 0.76)",
+      icon: "#148C84",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+  };
+
+  return map[tone];
+}
+
 const UI = {
-  bg: "#EDF4F7",
-  surface: "#FFFFFF",
-  surfaceSoft: "#F7FAFC",
-  surfaceAlt: "#EEF6F5",
-  border: "#D7E3E8",
-  text: "#243746",
-  textSoft: "#5F7384",
-  textMuted: "#7B8C99",
-  accent: "#2E6F68",
-  accentSoft: "#E3F1EE",
-  infoSoft: "#EAF2FF",
-  warningSoft: "#FFF5E8",
-  successSoft: "#EAF7EF",
-  dangerSoft: "#FDEEEE",
+  page: "#062C49",
+
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.88)",
+  textMuted: "rgba(255,255,255,0.72)",
+
+  mint: "#8CF0C7",
+  aqua: "#0CC0B7",
+  careGreen: "#197D71",
+
+  glass: "rgba(255,255,255,0.10)",
+  glassStrong: "rgba(255,255,255,0.14)",
+  border: "rgba(255,255,255,0.12)",
+
+  supportCard: "rgba(52, 198, 191, 0.22)",
+  supportBorder: "rgba(195, 255, 250, 0.16)",
+  supportIconBg: "rgba(236, 255, 252, 0.76)",
+  supportIcon: "#148C84",
+
+  successCard: "rgba(98, 192, 98, 0.23)",
+  successBorder: "rgba(194, 255, 188, 0.16)",
+  successIconBg: "rgba(236, 255, 235, 0.76)",
+  successIcon: "#379B4A",
+
+  warningCard: "rgba(255, 204, 102, 0.16)",
+  warningBorder: "rgba(255, 220, 140, 0.18)",
+  warningIconBg: "rgba(255, 247, 224, 0.88)",
+  warningIcon: "#B7791F",
+
+  infoCard: "rgba(49, 180, 217, 0.22)",
+  infoBorder: "rgba(189, 244, 255, 0.15)",
+  infoIconBg: "rgba(236, 251, 255, 0.76)",
+  infoIcon: "#0A6E8A",
+
+  dangerCard: "rgba(220,53,69,0.18)",
 };
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "KES 0.00";
+  if (!Number.isFinite(n)) return "KES 0";
   return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   })}`;
+}
+
+function toNumber(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isPositiveNumber(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+function normalizeApiMessage(message: string) {
+  if (!message) return "Something went wrong. Please try again.";
+
+  const lower = message.toLowerCase();
+
+  if (lower.includes("active loan")) {
+    return "You already have an active support request.";
+  }
+
+  if (lower.includes("principal")) {
+    return "Enter a valid amount.";
+  }
+
+  if (lower.includes("term_weeks")) {
+    return "Choose a valid repayment period.";
+  }
+
+  if (lower.includes("guarantor")) {
+    return "Please check the selected members and try again.";
+  }
+
+  if (lower.includes("insufficient security")) {
+    return "This amount needs more security. Add member support or reduce the amount.";
+  }
+
+  return message;
+}
+
+function SummaryCard({
+  title,
+  amount,
+  subtitle,
+  tone,
+}: {
+  title: string;
+  amount: string;
+  subtitle: string;
+  tone: "support" | "success" | "warning" | "info";
+}) {
+  const palette = {
+    support: {
+      card: UI.supportCard,
+      border: UI.supportBorder,
+      iconBg: UI.supportIconBg,
+      icon: UI.supportIcon,
+      iconName: "wallet-outline" as const,
+    },
+    success: {
+      card: UI.successCard,
+      border: UI.successBorder,
+      iconBg: UI.successIconBg,
+      icon: UI.successIcon,
+      iconName: "checkmark-circle-outline" as const,
+    },
+    warning: {
+      card: UI.warningCard,
+      border: UI.warningBorder,
+      iconBg: UI.warningIconBg,
+      icon: UI.warningIcon,
+      iconName: "alert-circle-outline" as const,
+    },
+    info: {
+      card: UI.infoCard,
+      border: UI.infoBorder,
+      iconBg: UI.infoIconBg,
+      icon: UI.infoIcon,
+      iconName: "information-circle-outline" as const,
+    },
+  }[tone];
+
+  return (
+    <View
+      style={[
+        styles.summaryCard,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+        },
+      ]}
+    >
+      <View style={styles.summaryTopRow}>
+        <View style={[styles.summaryIconWrap, { backgroundColor: palette.iconBg }]}>
+          <Ionicons name={palette.iconName} size={18} color={palette.icon} />
+        </View>
+        <Text style={styles.summaryAmount}>{amount}</Text>
+      </View>
+
+      <Text style={styles.summaryTitle}>{title}</Text>
+      <Text style={styles.summarySubtitle}>{subtitle}</Text>
+    </View>
+  );
+}
+
+function SectionCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.sectionCard}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function GuarantorRow({
+  item,
+  selected,
+  onPress,
+}: {
+  item: GuarantorCandidate;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      style={[
+        styles.guarantorRow,
+        selected && styles.guarantorRowSelected,
+      ]}
+    >
+      <View style={styles.guarantorLeft}>
+        <View
+          style={[
+            styles.guarantorAvatar,
+            selected && styles.guarantorAvatarSelected,
+          ]}
+        >
+          <Ionicons
+            name={selected ? "checkmark" : "person-outline"}
+            size={16}
+            color={selected ? UI.page : "#FFFFFF"}
+          />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.guarantorName}>{item.full_name}</Text>
+          <Text style={styles.guarantorMeta}>
+            {selected ? "Selected" : "Tap to add"}
+          </Text>
+        </View>
+      </View>
+
+      <Ionicons name="chevron-forward" size={18} color={UI.textMuted} />
+    </TouchableOpacity>
+  );
 }
 
 export default function RequestLoanScreen() {
   const insets = useSafeAreaInsets();
+  const palette = getSpaceTonePalette("support");
 
   const [principal, setPrincipal] = useState("");
   const [termWeeks, setTermWeeks] = useState("12");
-  const [memberNote, setMemberNote] = useState("");
-
-  const [search, setSearch] = useState("");
-  const [selectedGuarantorIds, setSelectedGuarantorIds] = useState<number[]>(
-    []
-  );
 
   const [eligibility, setEligibility] =
     useState<LoanEligibilityPreview | null>(null);
-  const [candidates, setCandidates] = useState<GuarantorCandidate[]>([]);
+  const [securityPreview, setSecurityPreview] =
+    useState<LoanSecurityPreview | null>(null);
 
-  const [loadingEligibility, setLoadingEligibility] = useState(true);
-  const [loadingCandidates, setLoadingCandidates] = useState(true);
+  const [guarantorSearch, setGuarantorSearch] = useState("");
+  const [guarantorCandidates, setGuarantorCandidates] = useState<
+    GuarantorCandidate[]
+  >([]);
+  const [selectedGuarantorIds, setSelectedGuarantorIds] = useState<number[]>([]);
+
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [checkingSecurity, setCheckingSecurity] = useState(false);
+  const [loadingGuarantors, setLoadingGuarantors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
   const [error, setError] = useState("");
+
+  const hasValidAmount = isPositiveNumber(principal);
+  const hasActiveLoan = Boolean(eligibility?.has_active_loan);
+  const fullySecured = Boolean(securityPreview?.fully_secured);
+
+  const needsGuarantors =
+    hasValidAmount &&
+    !hasActiveLoan &&
+    Boolean(securityPreview) &&
+    !fullySecured &&
+    toNumber(securityPreview?.shortfall) > 0;
 
   const formState = useMemo(() => {
     return buildLoanRequestPayload({
       principal,
       term_weeks: Number(termWeeks || 0),
       guarantor_ids: selectedGuarantorIds,
-      member_note: memberNote,
+      member_note: "",
     });
-  }, [principal, termWeeks, selectedGuarantorIds, memberNote]);
+  }, [principal, termWeeks, selectedGuarantorIds]);
+
+  const amountLabel = useMemo(() => formatKes(principal || 0), [principal]);
+
+  const selectedGuarantors = useMemo(() => {
+    const ids = new Set(selectedGuarantorIds);
+    return guarantorCandidates.filter((item) => ids.has(item.id));
+  }, [selectedGuarantorIds, guarantorCandidates]);
+
+  const loadEligibility = async () => {
+    try {
+      setError("");
+      const res = await getLoanEligibilityPreview();
+      setEligibility(res);
+    } catch (e: any) {
+      setEligibility(null);
+      setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
+    }
+  };
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
     (async () => {
       try {
-        setLoadingEligibility(true);
-        setError("");
-        const res = await getLoanEligibilityPreview();
-        if (!mounted) return;
-        setEligibility(res);
-      } catch (e: any) {
-        if (!mounted) return;
-        setEligibility(null);
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
+        setLoadingPage(true);
+        await loadEligibility();
       } finally {
-        if (mounted) setLoadingEligibility(false);
+        if (active) setLoadingPage(false);
       }
     })();
 
     return () => {
-      mounted = false;
+      active = false;
     };
   }, []);
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
+
+    if (!hasValidAmount || hasActiveLoan) {
+      setSecurityPreview(null);
+      return;
+    }
 
     const timer = setTimeout(async () => {
       try {
-        setLoadingCandidates(true);
-        const rows = await getGuarantorCandidates(search.trim());
-        if (!mounted) return;
-        setCandidates(Array.isArray(rows) ? rows.slice(0, 10) : []);
+        setCheckingSecurity(true);
+        setError("");
+
+        const preview = await getLoanSecurityPreview({
+          principal: Number(principal),
+          guarantor_ids: selectedGuarantorIds,
+        });
+
+        if (!active) return;
+        setSecurityPreview(preview);
       } catch (e: any) {
-        if (!mounted) return;
-        setCandidates([]);
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
+        if (!active) return;
+        setSecurityPreview(null);
+        setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
       } finally {
-        if (mounted) setLoadingCandidates(false);
+        if (active) setCheckingSecurity(false);
       }
     }, 250);
 
     return () => {
-      mounted = false;
+      active = false;
       clearTimeout(timer);
     };
-  }, [search]);
+  }, [principal, selectedGuarantorIds, hasValidAmount, hasActiveLoan]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!needsGuarantors) {
+      setGuarantorCandidates([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingGuarantors(true);
+        const rows = await getGuarantorCandidates(guarantorSearch.trim());
+        if (!active) return;
+        setGuarantorCandidates(Array.isArray(rows) ? rows.slice(0, 20) : []);
+      } catch (e: any) {
+        if (!active) return;
+        setGuarantorCandidates([]);
+        setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
+      } finally {
+        if (active) setLoadingGuarantors(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [guarantorSearch, needsGuarantors]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadEligibility();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const toggleGuarantor = (id: number) => {
     setSelectedGuarantorIds((prev) =>
@@ -143,50 +445,44 @@ export default function RequestLoanScreen() {
     );
   };
 
-  const selectedGuarantors = useMemo(() => {
-    const map = new Map(candidates.map((c) => [c.id, c]));
-    return selectedGuarantorIds
-      .map((id) => map.get(id))
-      .filter(Boolean) as GuarantorCandidate[];
-  }, [candidates, selectedGuarantorIds]);
-
-  const amountPreview = useMemo(() => formatKes(principal || 0), [principal]);
-
-  const hasActiveLoan = Boolean(eligibility?.has_active_loan);
-  const showEligibilitySection =
-    !loadingEligibility && !!eligibility && !hasActiveLoan;
-
-  const canSubmit = Boolean(
-    formState.canSubmit &&
-      eligibility?.eligible &&
-      !submitting &&
-      !hasActiveLoan
-  );
-
-  const goToLoansIndex = () => {
+  const goBack = () => {
     if (submitting) return;
+
+    const canGoBack =
+      typeof (router as any)?.canGoBack === "function"
+        ? (router as any).canGoBack()
+        : false;
+
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+
     router.replace("/(tabs)/loans" as any);
   };
 
   const submit = async () => {
     try {
       if (hasActiveLoan) {
-        Alert.alert("Loan Request", "You already have an active loan.");
-        return;
-      }
-
-      if (!eligibility?.eligible) {
-        Alert.alert(
-          "Loan Request",
-          "You are not eligible to request a loan right now."
-        );
+        Alert.alert("Support", "You already have an active support request.");
         return;
       }
 
       if (!formState.canSubmit || !formState.payload) {
         Alert.alert(
-          "Loan Request",
-          formState.error || "Please complete the form."
+          "Support",
+          normalizeApiMessage(formState.error || "Please check your details.")
+        );
+        return;
+      }
+
+      if (!securityPreview?.fully_secured) {
+        Alert.alert(
+          "Support",
+          normalizeApiMessage(
+            securityPreview?.message ||
+              "This amount still needs more security."
+          )
         );
         return;
       }
@@ -197,8 +493,8 @@ export default function RequestLoanScreen() {
       const res = await requestLoan(formState.payload);
 
       Alert.alert(
-        "Request Sent",
-        res?.message || "Your loan request has been submitted successfully.",
+        "Request sent",
+        res?.message || "Your support request was sent successfully.",
         [
           {
             text: "OK",
@@ -207,567 +503,689 @@ export default function RequestLoanScreen() {
         ]
       );
     } catch (e: any) {
-      const msg = getApiErrorMessage(e) || getErrorMessage(e);
+      const msg = normalizeApiMessage(
+        getApiErrorMessage(e) || getErrorMessage(e)
+      );
       setError(msg);
-      Alert.alert("Request Loan", msg);
+      Alert.alert("Support", msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const summaryState = useMemo(() => {
+    if (!hasValidAmount) {
+      return {
+        title: "Enter amount first",
+        amount: amountLabel,
+        subtitle: "We will check whether your current security is enough.",
+        tone: "info" as const,
+      };
+    }
+
+    if (checkingSecurity) {
+      return {
+        title: "Checking security",
+        amount: amountLabel,
+        subtitle: "Please wait while we review your current coverage.",
+        tone: "info" as const,
+      };
+    }
+
+    if (securityPreview?.fully_secured) {
+      return {
+        title: "Ready to submit",
+        amount: formatKes(securityPreview.secured_total),
+        subtitle: "Your request is fully secured and ready to send.",
+        tone: "success" as const,
+      };
+    }
+
+    if (securityPreview) {
+      return {
+        title: "More support needed",
+        amount: formatKes(securityPreview.shortfall),
+        subtitle: "Add member support or reduce the amount.",
+        tone: "warning" as const,
+      };
+    }
+
+    return {
+      title: "Support summary",
+      amount: amountLabel,
+      subtitle: "Enter details to continue.",
+      tone: "support" as const,
+    };
+  }, [hasValidAmount, checkingSecurity, securityPreview, amountLabel]);
+
+  if (loadingPage) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={UI.mint} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (hasActiveLoan) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+        <View style={styles.loadingWrap}>
+          <View style={styles.blockCard}>
+            <View
+              style={[
+                styles.blockIconWrap,
+                { backgroundColor: UI.warningIconBg },
+              ]}
+            >
+              <Ionicons name="time-outline" size={18} color={UI.warningIcon} />
+            </View>
+            <Text style={styles.blockTitle}>Support already active</Text>
+            <Text style={styles.blockText}>
+              Finish the current one before starting another.
+            </Text>
+
+            <View style={{ marginTop: SPACING.md, width: "100%" }}>
+              <Button title="Back to support" onPress={goBack} />
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView
-        style={styles.container}
+        style={styles.page}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Math.max(insets.bottom + 28, 36) },
+          { paddingBottom: Math.max(insets.bottom + 24, 36) },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={UI.mint}
+            colors={[UI.mint, UI.aqua]}
+          />
+        }
       >
-        <View style={styles.hero}>
-          <View style={styles.heroGlow} />
-          <View style={styles.heroRow}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="people-outline" size={22} color={COLORS.white} />
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
+        <View
+          style={[
+            styles.heroCard,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+            },
+          ]}
+        >
+          <View style={styles.heroOrbOne} />
+          <View style={styles.heroOrbTwo} />
+          <View style={styles.heroOrbThree} />
+
+          <View style={styles.heroTopRow}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={goBack}
+              style={[styles.backButton, { backgroundColor: palette.chip }]}
+            >
+              <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={styles.heroBadge}>
+              <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
+            </View>
+          </View>
+
+          <View style={styles.heroHeader}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.heroTitle}>Ask for support</Text>
+              <Text style={styles.heroSubtitle}>
+                Enter amount and repayment period. We check your current
+                security right away and show whether you are ready to submit.
+              </Text>
             </View>
 
-            <View style={styles.heroTextWrap}>
-              <Text style={styles.heroTitle}>Loan Support</Text>
-              <Text style={styles.heroSub}>
-                Request support in a simple and guided way, with help from your
-                community.
+            <View
+              style={[
+                styles.heroIconWrap,
+                { backgroundColor: palette.iconBg },
+              ]}
+            >
+              <Ionicons name="create-outline" size={22} color={palette.icon} />
+            </View>
+          </View>
+
+          <View style={styles.heroMiniWrap}>
+            <View
+              style={[
+                styles.heroMiniPill,
+                { backgroundColor: palette.amountBg },
+              ]}
+            >
+              <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.heroMiniText}>{amountLabel}</Text>
+            </View>
+
+            <View
+              style={[
+                styles.heroMiniPill,
+                { backgroundColor: palette.amountBg },
+              ]}
+            >
+              <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.heroMiniText}>
+                {termWeeks ? `${termWeeks} weeks` : "Repayment period"}
               </Text>
             </View>
           </View>
         </View>
 
         {error ? (
-          <Card style={styles.errorCard}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={COLORS.danger}
-            />
+          <View style={styles.errorCard}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
-          </Card>
+          </View>
         ) : null}
 
-        {loadingEligibility ? (
-          <Card style={styles.loadingCard}>
-            <ActivityIndicator color={UI.accent} />
-            <Text style={styles.loadingText}>Checking your loan status...</Text>
-          </Card>
-        ) : null}
+        <SectionCard title="Support details">
+          <Input
+            label="Amount"
+            value={principal}
+            onChangeText={setPrincipal}
+            placeholder="e.g. 5000"
+            keyboardType="decimal-pad"
+          />
 
-        {hasActiveLoan ? (
-          <Card style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconWrap}>
-                <Ionicons
-                  name="time-outline"
-                  size={18}
-                  color={COLORS.warning}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.infoTitle}>Loan request unavailable</Text>
-                <Text style={styles.infoText}>
-                  You already have an active loan or pending request. Finish the
-                  current process before starting another one.
-                </Text>
-              </View>
+          <Input
+            label="Repayment period (weeks)"
+            value={termWeeks}
+            onChangeText={setTermWeeks}
+            placeholder="e.g. 12"
+            keyboardType="number-pad"
+          />
+        </SectionCard>
+
+        <SummaryCard
+          title={summaryState.title}
+          amount={summaryState.amount}
+          subtitle={summaryState.subtitle}
+          tone={summaryState.tone}
+        />
+
+        {securityPreview && hasValidAmount && !checkingSecurity ? (
+          <View style={styles.metricsWrap}>
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Amount</Text>
+              <Text style={styles.metricValue}>{amountLabel}</Text>
             </View>
-          </Card>
-        ) : null}
 
-        {showEligibilitySection ? (
-          <Section title="Your Loan Overview">
-            <Card style={styles.overviewCard}>
-              <View style={styles.gridRow}>
-                <View style={[styles.infoTile, styles.infoTilePrimary]}>
-                  <Text style={styles.infoLabelLight}>Status</Text>
-                  <Text style={styles.infoValueLight}>
-                    {eligibility?.eligible ? "Ready to Request" : "Not Ready"}
-                  </Text>
-                </View>
-
-                <View style={styles.infoTile}>
-                  <Text style={styles.infoLabel}>Maximum Available</Text>
-                  <Text style={styles.infoValue}>
-                    {formatKes(eligibility?.max_allowed)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.gridRow}>
-                <View style={styles.infoTile}>
-                  <Text style={styles.infoLabel}>Savings Considered</Text>
-                  <Text style={styles.infoValue}>
-                    {formatKes(eligibility?.available_savings)}
-                  </Text>
-                </View>
-
-                <View style={styles.infoTile}>
-                  <Text style={styles.infoLabel}>Current Request</Text>
-                  <Text style={styles.infoValue}>None active</Text>
-                </View>
-              </View>
-            </Card>
-          </Section>
-        ) : null}
-
-        {!hasActiveLoan ? (
-          <Section title="Loan Details">
-            <Card style={styles.card}>
-              <Input
-                label="Amount Needed (KES)"
-                value={principal}
-                onChangeText={setPrincipal}
-                placeholder="e.g. 10000"
-                keyboardType="decimal-pad"
-              />
-
-              <Input
-                label="Repayment Period (Weeks)"
-                value={termWeeks}
-                onChangeText={setTermWeeks}
-                placeholder="e.g. 12"
-                keyboardType="number-pad"
-              />
-
-              <Input
-                label="Reason (Optional)"
-                value={memberNote}
-                onChangeText={setMemberNote}
-                placeholder="Tell us what the support is for"
-              />
-
-              <View style={styles.amountPreviewBox}>
-                <Text style={styles.amountPreviewLabel}>Request Preview</Text>
-                <Text style={styles.amountPreviewValue}>{amountPreview}</Text>
-              </View>
-            </Card>
-          </Section>
-        ) : null}
-
-        {!hasActiveLoan ? (
-          <Section title="Selected Guarantors">
-            <Card style={styles.card}>
-              <View style={styles.selectedHeader}>
-                <Text style={styles.selectedTitle}>
-                  {selectedGuarantorIds.length} selected
-                </Text>
-
-                {selectedGuarantorIds.length > 0 ? (
-                  <TouchableOpacity onPress={() => setSelectedGuarantorIds([])}>
-                    <Text style={styles.clearText}>Clear all</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-
-              {selectedGuarantors.length === 0 ? (
-                <Text style={styles.helperText}>No guarantor selected yet.</Text>
-              ) : (
-                <View style={styles.chipsWrap}>
-                  {selectedGuarantors.map((item) => (
-                    <View key={item.id} style={styles.chip}>
-                      <Text style={styles.chipText}>{item.full_name}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </Card>
-          </Section>
-        ) : null}
-
-        {!hasActiveLoan ? (
-          <Section title="Find a Guarantor">
-            <Card style={styles.card}>
-              <Input
-                label="Search Member"
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Type a member name"
-              />
-              <Text style={styles.helperText}>
-                Choose one or more members to support your request.
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Covered</Text>
+              <Text style={styles.metricValue}>
+                {formatKes(securityPreview.secured_total)}
               </Text>
-            </Card>
-          </Section>
+            </View>
+
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Still needed</Text>
+              <Text
+                style={[
+                  styles.metricValue,
+                  fullySecured ? styles.successText : styles.warningText,
+                ]}
+              >
+                {formatKes(securityPreview.shortfall)}
+              </Text>
+            </View>
+
+            <View style={styles.metricTile}>
+              <Text style={styles.metricLabel}>Your savings</Text>
+              <Text style={styles.metricValue}>
+                {formatKes(securityPreview.borrower_savings)}
+              </Text>
+            </View>
+          </View>
         ) : null}
 
-        {!hasActiveLoan ? (
-          <Section title="Available Members">
-            {loadingCandidates ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator color={UI.accent} />
+        {needsGuarantors ? (
+          <SectionCard title="Add member support">
+            <Input
+              label="Search member"
+              value={guarantorSearch}
+              onChangeText={setGuarantorSearch}
+              placeholder="Type member name"
+            />
+
+            {selectedGuarantors.length > 0 ? (
+              <View style={styles.chipsWrap}>
+                {selectedGuarantors.map((item) => (
+                  <View key={item.id} style={styles.chip}>
+                    <Text style={styles.chipText}>{item.full_name}</Text>
+                  </View>
+                ))}
               </View>
-            ) : candidates.length === 0 ? (
+            ) : (
+              <Text style={styles.helperText}>
+                Select members who can support this request.
+              </Text>
+            )}
+          </SectionCard>
+        ) : null}
+
+        {needsGuarantors ? (
+          loadingGuarantors ? (
+            <View style={styles.inlineLoader}>
+              <ActivityIndicator color={UI.mint} />
+            </View>
+          ) : guarantorCandidates.length === 0 ? (
+            <View style={styles.emptyWrap}>
               <EmptyState
                 icon="people-outline"
                 title="No members found"
-                subtitle="Try another search name."
+                subtitle="Try another name."
               />
-            ) : (
-              candidates.map((candidate) => {
-                const selected = selectedGuarantorIds.includes(candidate.id);
+            </View>
+          ) : (
+            <View style={styles.guarantorList}>
+              {guarantorCandidates.map((item) => {
+                const selected = selectedGuarantorIds.includes(item.id);
 
                 return (
-                  <TouchableOpacity
-                    key={candidate.id}
-                    activeOpacity={0.9}
-                    onPress={() => toggleGuarantor(candidate.id)}
-                  >
-                    <Card
-                      style={[
-                        styles.memberCard,
-                        selected && styles.memberCardSelected,
-                      ]}
-                    >
-                      <View style={styles.memberCardTop}>
-                        <View style={styles.memberLeft}>
-                          <View
-                            style={[
-                              styles.avatar,
-                              selected && styles.avatarSelected,
-                            ]}
-                          >
-                            <Ionicons
-                              name={selected ? "checkmark" : "person-outline"}
-                              size={16}
-                              color={selected ? COLORS.white : UI.accent}
-                            />
-                          </View>
-
-                          <View style={styles.memberTextWrap}>
-                            <Text style={styles.memberName}>
-                              {candidate.full_name}
-                            </Text>
-                            <Text style={styles.memberMeta}>
-                              {selected ? "Selected" : "Tap to select"}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <View
-                          style={[
-                            styles.statusPill,
-                            selected
-                              ? styles.statusPillSelected
-                              : styles.statusPillDefault,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusPillText,
-                              { color: selected ? COLORS.success : UI.textMuted },
-                            ]}
-                          >
-                            {selected ? "Selected" : "Available"}
-                          </Text>
-                        </View>
-                      </View>
-                    </Card>
-                  </TouchableOpacity>
+                  <GuarantorRow
+                    key={item.id}
+                    item={item}
+                    selected={selected}
+                    onPress={() => toggleGuarantor(item.id)}
+                  />
                 );
-              })
-            )}
-          </Section>
-        ) : null}
-
-        {!hasActiveLoan ? (
-          <Card style={styles.submitCard}>
-            <View style={styles.submitSummary}>
-              <View style={styles.submitSummaryBox}>
-                <Text style={styles.submitSummaryLabel}>Amount</Text>
-                <Text style={styles.submitSummaryValue}>{amountPreview}</Text>
-              </View>
-
-              <View style={styles.submitSummaryBox}>
-                <Text style={styles.submitSummaryLabel}>Guarantors</Text>
-                <Text style={styles.submitSummaryValue}>
-                  {selectedGuarantorIds.length}
-                </Text>
-              </View>
+              })}
             </View>
-
-            <View style={{ height: SPACING.md }} />
-
-            <Button
-              title={submitting ? "Submitting..." : "Submit Request"}
-              onPress={submit}
-              loading={submitting}
-              disabled={!canSubmit}
-            />
-
-            <View style={{ height: SPACING.sm }} />
-
-            <Button
-              title="Cancel"
-              variant="secondary"
-              onPress={goToLoansIndex}
-              disabled={submitting}
-            />
-          </Card>
+          )
         ) : null}
+
+        <View style={styles.actionCard}>
+          <Button
+            title={submitting ? "Sending..." : "Submit request"}
+            onPress={submit}
+            loading={submitting}
+            disabled={!fullySecured || submitting || !formState.canSubmit}
+          />
+
+          <View style={{ height: SPACING.sm }} />
+
+          <Button
+            title="Cancel"
+            variant="secondary"
+            onPress={goBack}
+            disabled={submitting}
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    backgroundColor: UI.bg,
+    backgroundColor: UI.page,
+  },
+
+  page: {
+    flex: 1,
+    backgroundColor: UI.page,
   },
 
   content: {
+    padding: SPACING.md,
+  },
+
+  loadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.page,
     padding: SPACING.lg,
   },
 
-  hero: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
-    backgroundColor: UI.accent,
-    ...SHADOW.card,
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -100,
+    right: -40,
+    width: 230,
+    height: 230,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
 
-  heroGlow: {
+  backgroundBlobMiddle: {
     position: "absolute",
+    top: 250,
+    left: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -100,
     right: -30,
-    top: -20,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 210,
+    height: 210,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 110,
+    right: 20,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 140,
+    left: 10,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "rgba(140,240,199,0.08)",
+  },
+
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 26,
+    borderWidth: 1,
+    padding: 20,
+    marginBottom: SPACING.md,
+  },
+
+  heroOrbOne: {
+    position: "absolute",
+    top: -26,
+    right: -16,
+    width: 120,
+    height: 120,
+    borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.10)",
   },
 
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: SPACING.lg,
+  heroOrbTwo: {
+    position: "absolute",
+    bottom: -24,
+    left: -18,
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: "rgba(236,251,255,0.10)",
   },
 
-  heroIcon: {
+  heroOrbThree: {
+    position: "absolute",
+    top: 74,
+    right: 40,
+    width: 70,
+    height: 70,
+    borderRadius: 999,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  heroBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    letterSpacing: 0.8,
+  },
+
+  heroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  heroIconWrap: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginRight: SPACING.md,
-  },
-
-  heroTextWrap: {
-    flex: 1,
   },
 
   heroTitle: {
+    color: "#FFFFFF",
+    fontSize: 23,
+    lineHeight: 29,
     fontFamily: FONT.bold,
-    fontSize: 20,
-    color: COLORS.white,
   },
 
-  heroSub: {
-    marginTop: 6,
+  heroSubtitle: {
+    marginTop: 8,
+    color: UI.textSoft,
+    fontSize: 14,
+    lineHeight: 21,
     fontFamily: FONT.regular,
+    maxWidth: "96%",
+  },
+
+  heroMiniWrap: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+    flexWrap: "wrap",
+  },
+
+  heroMiniPill: {
+    minHeight: 36,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  heroMiniText: {
+    color: "#FFFFFF",
     fontSize: 12,
-    color: "rgba(255,255,255,0.88)",
-    lineHeight: 18,
-  },
-
-  card: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
-  },
-
-  overviewCard: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
+    fontFamily: FONT.bold,
   },
 
   errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: UI.dangerCard,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: UI.border,
-    borderRadius: RADIUS.lg,
-    backgroundColor: UI.dangerSoft,
+    gap: 10,
+    marginBottom: SPACING.md,
   },
 
   errorText: {
     flex: 1,
-    color: COLORS.danger,
-    fontSize: 12,
-    lineHeight: 18,
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: FONT.regular,
   },
 
-  loadingCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
+  blockCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 22,
+    padding: SPACING.lg,
+    backgroundColor: UI.glassStrong,
+    borderWidth: 1,
+    borderColor: UI.border,
+    alignItems: "center",
+  },
+
+  blockIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
+    marginBottom: 12,
   },
 
-  loadingText: {
-    marginTop: 10,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: UI.textMuted,
-  },
-
-  infoCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
-  },
-
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  infoIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: UI.warningSoft,
-  },
-
-  infoTitle: {
+  blockTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: UI.text,
-    marginBottom: 4,
+    marginBottom: 6,
   },
 
-  infoText: {
+  blockText: {
+    color: UI.textSoft,
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: UI.textMuted,
+    textAlign: "center",
   },
 
-  loadingWrap: {
-    paddingVertical: SPACING.xl,
-    alignItems: "center",
-    justifyContent: "center",
+  sectionCard: {
+    borderRadius: 22,
+    padding: SPACING.md,
+    backgroundColor: UI.glass,
+    borderWidth: 1,
+    borderColor: UI.border,
+    marginBottom: SPACING.md,
   },
 
-  gridRow: {
-    flexDirection: "row",
-    gap: SPACING.sm,
+  sectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontFamily: FONT.bold,
     marginBottom: SPACING.sm,
   },
 
-  infoTile: {
-    flex: 1,
-    backgroundColor: UI.surfaceSoft,
-    borderRadius: RADIUS.lg,
+  summaryCard: {
+    borderRadius: 22,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: UI.border,
-    minHeight: 88,
+    marginBottom: SPACING.md,
+  },
+
+  summaryTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+
+  summaryIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
     justifyContent: "center",
   },
 
-  infoTilePrimary: {
-    backgroundColor: UI.accent,
-    borderColor: UI.accent,
-  },
-
-  infoLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: UI.textMuted,
-    marginBottom: 6,
-  },
-
-  infoValue: {
+  summaryAmount: {
+    color: "#FFFFFF",
+    fontSize: 18,
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: UI.text,
   },
 
-  infoLabelLight: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.85)",
-    marginBottom: 6,
-  },
-
-  infoValueLight: {
-    fontFamily: FONT.bold,
+  summaryTitle: {
+    color: "#FFFFFF",
     fontSize: 15,
-    color: COLORS.white,
-  },
-
-  amountPreviewBox: {
-    marginTop: SPACING.sm,
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    backgroundColor: UI.accentSoft,
-    borderWidth: 1,
-    borderColor: "rgba(46,111,104,0.12)",
-  },
-
-  amountPreviewLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: UI.textMuted,
+    fontFamily: FONT.bold,
     marginBottom: 4,
   },
 
-  amountPreviewValue: {
-    fontFamily: FONT.bold,
-    fontSize: 18,
-    color: UI.accent,
+  summarySubtitle: {
+    color: UI.textSoft,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.regular,
   },
 
-  selectedHeader: {
+  metricsWrap: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
 
-  selectedTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: UI.text,
+  metricTile: {
+    width: "48%",
+    minHeight: 84,
+    borderRadius: 18,
+    padding: SPACING.md,
+    backgroundColor: UI.glassStrong,
+    borderWidth: 1,
+    borderColor: UI.border,
+    justifyContent: "center",
   },
 
-  clearText: {
+  metricLabel: {
+    color: UI.textMuted,
+    fontSize: 11,
+    fontFamily: FONT.regular,
+    marginBottom: 6,
+  },
+
+  metricValue: {
+    color: "#FFFFFF",
+    fontSize: 15,
     fontFamily: FONT.bold,
-    fontSize: 12,
-    color: UI.accent,
   },
 
   helperText: {
-    marginTop: 8,
-    fontFamily: FONT.regular,
-    fontSize: 12,
+    marginTop: 6,
     color: UI.textMuted,
+    fontSize: 12,
     lineHeight: 18,
+    fontFamily: FONT.regular,
   },
 
   chipsWrap: {
@@ -778,133 +1196,98 @@ const styles = StyleSheet.create({
   },
 
   chip: {
-    backgroundColor: UI.accentSoft,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    backgroundColor: "rgba(140,240,199,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(46,111,104,0.12)",
+    borderColor: "rgba(140,240,199,0.18)",
   },
 
   chipText: {
-    fontFamily: FONT.regular,
+    color: "#FFFFFF",
     fontSize: 12,
-    color: UI.accent,
+    fontFamily: FONT.regular,
   },
 
-  memberCard: {
+  inlineLoader: {
+    paddingVertical: SPACING.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  emptyWrap: {
+    marginBottom: SPACING.md,
+  },
+
+  guarantorList: {
+    marginBottom: SPACING.md,
+  },
+
+  guarantorRow: {
     marginBottom: SPACING.sm,
+    borderRadius: 18,
     padding: SPACING.md,
+    backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
-  },
-
-  memberCardSelected: {
-    borderColor: COLORS.success,
-    backgroundColor: UI.successSoft,
-  },
-
-  memberCardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: SPACING.sm,
   },
 
-  memberLeft: {
+  guarantorRowSelected: {
+    backgroundColor: "rgba(140,240,199,0.16)",
+    borderColor: "rgba(140,240,199,0.22)",
+  },
+
+  guarantorLeft: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
   },
 
-  avatar: {
+  guarantorAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: UI.accentSoft,
     marginRight: SPACING.sm,
   },
 
-  avatarSelected: {
-    backgroundColor: COLORS.success,
+  guarantorAvatarSelected: {
+    backgroundColor: UI.mint,
   },
 
-  memberTextWrap: {
-    flex: 1,
-  },
-
-  memberName: {
-    fontFamily: FONT.bold,
+  guarantorName: {
+    color: "#FFFFFF",
     fontSize: 13,
-    color: UI.text,
+    fontFamily: FONT.bold,
   },
 
-  memberMeta: {
+  guarantorMeta: {
     marginTop: 4,
-    fontFamily: FONT.regular,
-    fontSize: 11,
     color: UI.textMuted,
-  },
-
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-  },
-
-  statusPillDefault: {
-    backgroundColor: UI.surfaceSoft,
-    borderColor: UI.border,
-  },
-
-  statusPillSelected: {
-    backgroundColor: UI.successSoft,
-    borderColor: "rgba(34,197,94,0.20)",
-  },
-
-  statusPillText: {
-    fontFamily: FONT.bold,
     fontSize: 11,
+    fontFamily: FONT.regular,
   },
 
-  submitCard: {
-    marginTop: SPACING.lg,
+  actionCard: {
+    marginTop: SPACING.sm,
+    borderRadius: 22,
     padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: UI.surface,
-    ...SHADOW.card,
-  },
-
-  submitSummary: {
-    flexDirection: "row",
-    gap: SPACING.sm,
-  },
-
-  submitSummaryBox: {
-    flex: 1,
-    backgroundColor: UI.surfaceSoft,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+    backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
   },
 
-  submitSummaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: UI.textMuted,
-    marginBottom: 6,
+  successText: {
+    color: UI.mint,
   },
 
-  submitSummaryValue: {
-    fontFamily: FONT.bold,
-    fontSize: 14,
-    color: UI.text,
+  warningText: {
+    color: UI.warningIcon,
   },
 });

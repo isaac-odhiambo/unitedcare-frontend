@@ -34,10 +34,8 @@ export const ENDPOINTS = {
      PAYMENTS (Centralized payment engine)
   ========================================================= */
   payments: {
-    // NEW: active mpesa config for frontend paybill/till display
     mpesaConfig: "/payments/mpesa-config/",
 
-    // Optional admin config endpoints
     adminMpesaConfig: "/payments/mpesa-config/admin/",
     adminMpesaConfigDetail: (configId: number | string) =>
       `/payments/mpesa-config/admin/${configId}/`,
@@ -58,7 +56,6 @@ export const ENDPOINTS = {
     stkPush: "/payments/mpesa/stk-push/",
     adminMpesa: "/payments/mpesa/admin/",
 
-    // ✅ ADDED (ONLY THESE TWO — as requested)
     myMpesaTransactions: "/payments/mpesa/me/transactions/",
     myMpesaTransactionDetail: (id: number | string) =>
       `/payments/mpesa/me/transactions/${id}/`,
@@ -111,16 +108,16 @@ export const ENDPOINTS = {
     guarantorCandidates: "/api/loans/guarantor-candidates/",
     request: "/api/loans/request/",
 
-    detail: (loanId: number | string) =>
-      `/api/loans/loan/${loanId}/`,
+    detail: (loanId: number | string) => `/api/loans/loan/${loanId}/`,
 
     approve: (loanId: number | string) =>
       `/api/loans/loan/${loanId}/approve/`,
 
-    pay: (loanId: number | string) =>
-      `/api/loans/loan/${loanId}/pay/`,
+    pay: (loanId: number | string) => `/api/loans/loan/${loanId}/pay/`,
 
     addGuarantor: "/api/loans/loan/add-guarantor/",
+
+    securityPreview: "/api/loans/security-preview/",
 
     myGuaranteeRequests: "/api/loans/guarantee/my-requests/",
 
@@ -139,19 +136,16 @@ export const ENDPOINTS = {
     available: "/api/merry/available/",
     create: "/api/merry/create/",
 
-    detail: (merryId: number | string) =>
-      `/api/merry/${merryId}/`,
+    detail: (merryId: number | string) => `/api/merry/${merryId}/`,
 
     duesSummary: "/api/merry/dues/summary/",
 
-    duesAdmin: (merryId: number | string) =>
-      `/api/merry/${merryId}/dues/`,
+    duesAdmin: (merryId: number | string) => `/api/merry/${merryId}/dues/`,
 
     ensureDues: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/ensure/`,
 
-    duesMy: (merryId: number | string) =>
-      `/api/merry/${merryId}/dues/my/`,
+    duesMy: (merryId: number | string) => `/api/merry/${merryId}/dues/my/`,
 
     joinRequest: (merryId: number | string) =>
       `/api/merry/${merryId}/join/request/`,
@@ -159,14 +153,11 @@ export const ENDPOINTS = {
     adminJoinRequests: (merryId: number | string) =>
       `/api/merry/${merryId}/join/requests/`,
 
-    members: (merryId: number | string) =>
-      `/api/merry/${merryId}/members/`,
+    members: (merryId: number | string) => `/api/merry/${merryId}/members/`,
 
-    seats: (merryId: number | string) =>
-      `/api/merry/${merryId}/seats/`,
+    seats: (merryId: number | string) => `/api/merry/${merryId}/seats/`,
 
-    slots: (merryId: number | string) =>
-      `/api/merry/${merryId}/slots/`,
+    slots: (merryId: number | string) => `/api/merry/${merryId}/slots/`,
 
     paymentBreakdown: (merryId: number | string) =>
       `/api/merry/${merryId}/payments/breakdown/`,

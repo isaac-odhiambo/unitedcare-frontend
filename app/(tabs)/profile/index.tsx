@@ -387,7 +387,7 @@ function ActionRow({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
     padding: SPACING.md,
   },
 

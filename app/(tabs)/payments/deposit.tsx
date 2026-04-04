@@ -153,7 +153,7 @@ function buildFallbackReference(
       return userId ? `mus${userId}` : "";
     case "GROUP_CONTRIBUTION":
       return Number.isFinite(parsedGroupId) && parsedGroupId > 0
-        ? `grp${parsedGroupId}`
+        ? `GROUP${parsedGroupId}`
         : "";
     case "LOAN_REPAYMENT":
       return userId ? `loan${userId}` : "";
@@ -256,11 +256,23 @@ export default function DepositScreen() {
     return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "";
   }, [amount]);
 
-  const accountReference = useMemo(() => {
-    const explicitRef = String(params.reference || "").trim();
-    if (explicitRef) return explicitRef;
-    return buildFallbackReference(purpose, user, params.groupId);
-  }, [params.reference, params.groupId, purpose, user]);
+ const accountReference = useMemo(() => {
+  const explicitRef = String(params.reference || "").trim();
+  if (explicitRef) return explicitRef;
+
+  // ✅ PAYBILL → use group code + user id (UN2)
+  if (method === "PAYBILL" && purpose === "GROUP_CONTRIBUTION") {
+    const groupCode = (params as any)?.groupCode || (params as any)?.payment_code;
+    const userId = getUserId(user);
+
+    if (groupCode && userId) {
+      return `${String(groupCode).toUpperCase()}${userId}`;
+    }
+  }
+
+  // ✅ fallback (STK and others)
+  return buildFallbackReference(purpose, user, params.groupId);
+}, [params.reference, params.groupId, purpose, user, method]);
 
   const narration = useMemo(() => {
     const explicitNarration = String(params.narration || "").trim();

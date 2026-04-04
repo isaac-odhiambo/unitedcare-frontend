@@ -144,10 +144,12 @@ export default function SavingsSaveScreen() {
     }
   }, [load]);
 
+  // IMPORTANT:
+  // Backend STK savings expects reference based on USER id, not savings account id.
   const savingsReference = useMemo(() => {
-    if (!account?.id) return "";
-    return buildSavingsReference(account.id);
-  }, [account]);
+    if (!user?.id) return "";
+    return buildSavingsReference(user.id);
+  }, [user]);
 
   const availableBalance = useMemo(
     () => formatKes(account?.available_balance),
@@ -162,7 +164,7 @@ export default function SavingsSaveScreen() {
   );
 
   const handleContinue = useCallback(() => {
-    if (!account?.id) return;
+    if (!account?.id || !user?.id) return;
 
     router.push({
       pathname: ROUTES.tabs.paymentsDeposit as any,
@@ -170,6 +172,7 @@ export default function SavingsSaveScreen() {
         category: "SAVINGS",
         purpose: "SAVINGS_DEPOSIT",
         accountId: String(account.id),
+        userId: String(user.id),
         reference: savingsReference,
         narration: "Savings deposit",
         phone: user?.phone || "",
@@ -177,7 +180,7 @@ export default function SavingsSaveScreen() {
         title: account.name || "Save Money",
       },
     });
-  }, [account, savingsReference, user]);
+  }, [account, user, savingsReference]);
 
   if (loading) {
     return (
@@ -353,7 +356,17 @@ export default function SavingsSaveScreen() {
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Reference</Text>
-              <Text style={styles.detailValue}>{savingsReference}</Text>
+              <Text style={styles.detailValue}>{savingsReference || "Not ready"}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>User ID route</Text>
+              <Text style={styles.detailValue}>{String(user?.id || "-")}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Savings Account ID</Text>
+              <Text style={styles.detailValue}>{String(account?.id || "-")}</Text>
             </View>
 
             <View style={styles.detailRow}>

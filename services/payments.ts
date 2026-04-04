@@ -447,9 +447,8 @@ export function buildMerryReference(userId: number | string) {
 }
 
 export function buildGroupReference(groupId: number | string) {
-  return `grp${Number(groupId)}`;
+  return `GROUP${Number(groupId)}`;
 }
-
 /* =========================================================
    Base API Functions
 ========================================================= */

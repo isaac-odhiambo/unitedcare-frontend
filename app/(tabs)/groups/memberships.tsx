@@ -7,8 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -16,7 +18,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import {
   getApiErrorMessage,
   getGroupIdFromMembership,
@@ -28,6 +30,16 @@ import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type MembershipsUser = Partial<MeResponse> & Partial<SessionUser>;
+
+const PAGE_BG = "#062C49";
+const CARD_BG = "rgba(255,255,255,0.08)";
+const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
+const CARD_BORDER = "rgba(255,255,255,0.10)";
+const WHITE = "#FFFFFF";
+const SOFT_TEXT = "rgba(255,255,255,0.75)";
+const SOFT_TEXT_2 = "rgba(255,255,255,0.84)";
+const BRAND = "#0C6A80";
+const HERO_GREEN = "#74D16C";
 
 function fmtDate(value?: string | null) {
   if (!value) return "—";
@@ -147,11 +159,7 @@ function MembershipCard({
         </View>
 
         <View style={styles.arrowWrap}>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color="#FFFFFF"
-          />
+          <Ionicons name="chevron-forward" size={18} color={WHITE} />
         </View>
       </View>
 
@@ -174,7 +182,11 @@ function MembershipCard({
         <View
           style={[
             styles.infoDot,
-            { backgroundColor: membership.is_active ? "#DFFFE8" : "rgba(255,255,255,0.70)" },
+            {
+              backgroundColor: membership.is_active
+                ? "#DFFFE8"
+                : "rgba(255,255,255,0.70)",
+            },
           ]}
         />
         <Text style={styles.infoStripText}>
@@ -206,6 +218,10 @@ export default function GroupMembershipsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  const goBackToGroups = useCallback(() => {
+    router.replace(ROUTES.tabs.groups as any);
+  }, []);
+
   const load = useCallback(async () => {
     try {
       setError("");
@@ -228,13 +244,14 @@ export default function GroupMembershipsScreen() {
       const mergedUser: MembershipsUser | null = meUser
         ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
         : sessionUser
-        ? { ...sessionUser }
-        : null;
+          ? { ...sessionUser }
+          : null;
 
       setUser(mergedUser);
 
       setMemberships(
-        membershipsRes.status === "fulfilled" && Array.isArray(membershipsRes.value)
+        membershipsRes.status === "fulfilled" &&
+          Array.isArray(membershipsRes.value)
           ? membershipsRes.value
           : []
       );
@@ -299,153 +316,203 @@ export default function GroupMembershipsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#8CF0C7" />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top"]}>
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color="#8CF0C7" />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!user) {
     return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to view your community spaces."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top"]}>
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to view your community spaces."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#8CF0C7"
-          colors={["#8CF0C7", "#0CC0B7"]}
-        />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.backgroundBlobTop} />
-      <View style={styles.backgroundBlobMiddle} />
-      <View style={styles.backgroundBlobBottom} />
-      <View style={styles.backgroundGlowOne} />
-      <View style={styles.backgroundGlowTwo} />
+    <SafeAreaView style={styles.page} edges={["top"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroGlowOne} />
-        <View style={styles.heroGlowTwo} />
-        <View style={styles.heroGlowThree} />
+        <View style={styles.topBar}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBadge}>
+              <Ionicons name="people-outline" size={20} color={WHITE} />
+            </View>
 
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.heroTag}>YOUR SPACES</Text>
-            <Text style={styles.heroTitle}>Your spaces</Text>
-            <Text style={styles.heroSubtitle}>
-              Open the community spaces you belong to and continue from there.
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandWordmark}>
+                GROUP <Text style={styles.brandWordmarkGreen}>MEMBERSHIPS</Text>
+              </Text>
+              <Text style={styles.brandSub}>Your active community spaces</Text>
+            </View>
           </View>
 
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="people-outline" size={22} color={COLORS.white} />
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={onRefresh}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="refresh-outline" size={18} color={WHITE} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={goBackToGroups}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.heroStatsRow}>
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>All spaces</Text>
-            <Text style={styles.heroStatValue}>{stats.total}</Text>
+        <View style={styles.heroCard}>
+          <View style={styles.heroGlowOne} />
+          <View style={styles.heroGlowTwo} />
+          <View style={styles.heroGlowThree} />
+
+          <View style={styles.heroTop}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.heroTag}>YOUR SPACES</Text>
+              <Text style={styles.heroTitle}>Your spaces</Text>
+              <Text style={styles.heroSubtitle}>
+                Open the community spaces you belong to and continue from there.
+              </Text>
+            </View>
+
+            <View style={styles.heroIconWrap}>
+              <Ionicons name="people-outline" size={22} color={WHITE} />
+            </View>
           </View>
 
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Active</Text>
-            <Text style={styles.heroStatValue}>{stats.active}</Text>
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>All spaces</Text>
+              <Text style={styles.heroStatValue}>{stats.total}</Text>
+            </View>
+
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>Active</Text>
+              <Text style={styles.heroStatValue}>{stats.active}</Text>
+            </View>
+
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>Leadership</Text>
+              <Text style={styles.heroStatValue}>{stats.leadership}</Text>
+            </View>
           </View>
 
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Leadership</Text>
-            <Text style={styles.heroStatValue}>{stats.leadership}</Text>
+          <View style={styles.heroActionsRow}>
+            <Button
+              title="Explore spaces"
+              onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
+              style={{ flex: 1 }}
+            />
+            <View style={{ width: SPACING.sm }} />
+            <Button
+              title="Requests"
+              variant="secondary"
+              onPress={() => router.push(ROUTES.tabs.groupsJoinRequests as any)}
+              style={{ flex: 1 }}
+            />
           </View>
         </View>
 
-        <View style={styles.heroActionsRow}>
-          <Button
-            title="Explore spaces"
-            onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-            style={{ flex: 1 }}
-          />
-          <View style={{ width: SPACING.sm }} />
-          <Button
-            title="Requests"
-            variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.groupsJoinRequests as any)}
-            style={{ flex: 1 }}
-          />
-        </View>
-      </View>
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Ionicons name="alert-circle-outline" size={18} color={WHITE} />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color="#FFFFFF"
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      <Section title="Active spaces">
-        {grouped.active.length === 0 ? (
-          <EmptyState
-            icon="people-outline"
-            title="No active spaces"
-            subtitle="Explore available spaces and join one that fits your community."
-            actionLabel="Explore spaces"
-            onAction={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-          />
-        ) : (
-          grouped.active.map((membership) => (
-            <MembershipCard key={membership.id} membership={membership} />
-          ))
-        )}
-      </Section>
-
-      {grouped.inactive.length > 0 ? (
-        <Section title="Other spaces">
-          {grouped.inactive.map((membership) => (
-            <MembershipCard key={membership.id} membership={membership} />
-          ))}
+        <Section title="Active spaces">
+          {grouped.active.length === 0 ? (
+            <EmptyState
+              icon="people-outline"
+              title="No active spaces"
+              subtitle="Explore available spaces and join one that fits your community."
+              actionLabel="Explore spaces"
+              onAction={() => router.push(ROUTES.tabs.groupsAvailable as any)}
+            />
+          ) : (
+            grouped.active.map((membership) => (
+              <MembershipCard key={membership.id} membership={membership} />
+            ))
+          )}
         </Section>
-      ) : null}
 
-      <View style={{ height: 28 }} />
-    </ScrollView>
+        {grouped.inactive.length > 0 ? (
+          <Section title="Other spaces">
+            {grouped.inactive.map((membership) => (
+              <MembershipCard key={membership.id} membership={membership} />
+            ))}
+          </Section>
+        ) : null}
+
+        <View style={styles.bottomActions}>
+          <Button
+            title="Back to Groups"
+            variant="secondary"
+            onPress={goBackToGroups}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
   content: {
-    padding: SPACING.lg,
-    paddingBottom: 28,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: 16,
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
+  },
+
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PAGE_BG,
+    padding: 24,
   },
 
   backgroundBlobTop: {
@@ -455,7 +522,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundBlobMiddle: {
@@ -465,7 +532,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
 
   backgroundBlobBottom: {
@@ -475,7 +542,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundGlowOne: {
@@ -485,7 +552,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   backgroundGlowTwo: {
@@ -495,19 +562,80 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: "rgba(140,240,199,0.08)",
+    backgroundColor: "rgba(140,240,199,0.06)",
+  },
+
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+  },
+
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+
+  logoBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CARD_BG_STRONG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  brandWordmark: {
+    color: WHITE,
+    fontSize: 16,
+    fontFamily: FONT.bold,
+    letterSpacing: 0.8,
+  },
+
+  brandWordmarkGreen: {
+    color: HERO_GREEN,
+  },
+
+  brandSub: {
+    color: SOFT_TEXT,
+    fontSize: 11,
+    marginTop: 2,
+    fontFamily: FONT.regular,
+  },
+
+  topBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CARD_BG_STRONG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: CARD_BG,
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    ...SHADOW.card,
+    borderColor: CARD_BORDER,
   },
 
   heroGlowOne: {
@@ -517,7 +645,7 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
 
   heroGlowTwo: {
@@ -527,7 +655,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(236,251,255,0.10)",
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   heroGlowThree: {
@@ -537,7 +665,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   heroTop: {
@@ -559,25 +687,27 @@ const styles = StyleSheet.create({
   },
 
   heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   heroTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: FONT.bold,
-    color: COLORS.white,
+    color: WHITE,
   },
 
   heroSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    lineHeight: 18,
-    color: "rgba(255,255,255,0.85)",
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    color: SOFT_TEXT,
     fontFamily: FONT.regular,
   },
 
@@ -589,22 +719,24 @@ const styles = StyleSheet.create({
 
   heroStatPill: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
+    backgroundColor: CARD_BG_STRONG,
+    borderRadius: 16,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   heroStatLabel: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
+    color: SOFT_TEXT,
     fontFamily: FONT.regular,
   },
 
   heroStatValue: {
     marginTop: 4,
     fontSize: 16,
-    color: COLORS.white,
+    color: WHITE,
     fontFamily: FONT.bold,
   },
 
@@ -623,14 +755,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.lg,
+    borderRadius: 20,
   },
 
   errorText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
-    color: "#FFFFFF",
+    color: WHITE,
     fontFamily: FONT.regular,
   },
 
@@ -639,11 +771,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: "rgba(49, 180, 217, 0.22)",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: CARD_BG,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(189, 244, 255, 0.15)",
-    ...SHADOW.card,
+    borderColor: CARD_BORDER,
   },
 
   cardGlowPrimary: {
@@ -653,7 +784,7 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 52.5,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   cardGlowAccent: {
@@ -663,7 +794,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(236,251,255,0.08)",
+    backgroundColor: "rgba(236,251,255,0.06)",
   },
 
   cardTopRow: {
@@ -672,12 +803,12 @@ const styles = StyleSheet.create({
   },
 
   groupIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(236, 251, 255, 0.88)",
+    backgroundColor: "rgba(236, 251, 255, 0.90)",
     marginRight: 12,
   },
 
@@ -688,24 +819,24 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     fontFamily: FONT.bold,
-    fontSize: 14,
-    color: "#FFFFFF",
+    fontSize: 15,
+    color: WHITE,
   },
 
   cardSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: "rgba(255,255,255,0.78)",
+    color: SOFT_TEXT,
   },
 
   arrowWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
 
   badgesRow: {
@@ -748,10 +879,15 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: "rgba(255,255,255,0.84)",
+    color: SOFT_TEXT_2,
   },
 
   cardFooter: {
     marginTop: SPACING.md,
+  },
+
+  bottomActions: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
 });

@@ -12,7 +12,11 @@
 
 import { ENDPOINTS } from "@/services/endpoints";
 import { clearSessionUser } from "@/services/session";
-import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosError,
+  AxiosRequestConfig,
+  InternalAxiosRequestConfig,
+} from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
@@ -25,7 +29,9 @@ import { Platform } from "react-native";
  */
 
 function cleanBaseUrl(url: string) {
-  return String(url || "").trim().replace(/\/+$/, "");
+  return String(url || "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 let BASE_URL = cleanBaseUrl(process.env.EXPO_PUBLIC_API_URL || "");
@@ -52,7 +58,10 @@ export const api = axios.create({
   timeout: 20000,
   headers: {
     Accept: "application/json",
-    "Content-Type": "application/json",
+    // NOTE:
+    // Do NOT force "Content-Type": "application/json" here.
+    // Some requests (like KYC upload) use FormData/multipart.
+    // We set JSON content type conditionally in the request interceptor below.
   },
 });
 
@@ -245,10 +254,23 @@ api.interceptors.request.use(
     const url = normalizeUrlPath(String(config.url || ""));
     config.headers = config.headers ?? {};
 
+    const isFormData =
+      typeof FormData !== "undefined" && config.data instanceof FormData;
+
     if (isPublicEndpoint(url)) {
       if ((config.headers as any).Authorization) {
         delete (config.headers as any).Authorization;
       }
+
+      // IMPORTANT:
+      // For FormData requests, let axios set the multipart boundary automatically.
+      // For non-FormData requests, default to JSON.
+      if (isFormData) {
+        delete (config.headers as any)["Content-Type"];
+      } else if (!(config.headers as any)["Content-Type"]) {
+        (config.headers as any)["Content-Type"] = "application/json";
+      }
+
       return config;
     }
 
@@ -258,6 +280,15 @@ api.interceptors.request.use(
       (config.headers as any).Authorization = `Bearer ${token}`;
     } else if ((config.headers as any).Authorization) {
       delete (config.headers as any).Authorization;
+    }
+
+    // IMPORTANT:
+    // KYC upload uses FormData. If Content-Type is forced to JSON,
+    // Django will receive plain text instead of files.
+    if (isFormData) {
+      delete (config.headers as any)["Content-Type"];
+    } else if (!(config.headers as any)["Content-Type"]) {
+      (config.headers as any)["Content-Type"] = "application/json";
     }
 
     return config;
@@ -289,7 +320,9 @@ export function buildUrl(path: string) {
   if (isAbsoluteUrl(cleanPath)) return cleanPath;
 
   const base = cleanBaseUrl(String(api.defaults.baseURL || ""));
-  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  const normalizedPath = cleanPath.startsWith("/")
+    ? cleanPath
+    : `/${cleanPath}`;
 
   return `${base}${normalizedPath}`;
 }

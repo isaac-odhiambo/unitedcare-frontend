@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -33,6 +34,47 @@ import {
   type SavingsAccount,
   type SavingsHistoryRow,
 } from "@/services/savings";
+
+type SpaceTone = "savings" | "merry" | "groups" | "support";
+
+function getSpaceTonePalette(tone: SpaceTone) {
+  const map = {
+    savings: {
+      card: "rgba(29, 196, 182, 0.22)",
+      border: "rgba(129, 244, 231, 0.15)",
+      iconBg: "rgba(220, 255, 250, 0.75)",
+      icon: "#0B6A80",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    merry: {
+      card: "rgba(98, 192, 98, 0.23)",
+      border: "rgba(194, 255, 188, 0.16)",
+      iconBg: "rgba(236, 255, 235, 0.76)",
+      icon: "#379B4A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    groups: {
+      card: "rgba(49, 180, 217, 0.22)",
+      border: "rgba(189, 244, 255, 0.15)",
+      iconBg: "rgba(236, 251, 255, 0.76)",
+      icon: "#0A6E8A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    support: {
+      card: "rgba(52, 198, 191, 0.22)",
+      border: "rgba(195, 255, 250, 0.16)",
+      iconBg: "rgba(236, 255, 252, 0.76)",
+      icon: "#148C84",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+  };
+
+  return map[tone];
+}
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -77,7 +119,7 @@ function getTxnTone(row: SavingsHistoryRow) {
       color: COLORS.success,
       sign: "+",
       icon: "arrow-down-circle-outline" as const,
-      bg: "rgba(46, 125, 50, 0.10)",
+      bg: "rgba(46, 125, 50, 0.14)",
     };
   }
 
@@ -86,7 +128,7 @@ function getTxnTone(row: SavingsHistoryRow) {
       color: COLORS.danger,
       sign: "-",
       icon: "arrow-up-circle-outline" as const,
-      bg: "rgba(211, 47, 47, 0.10)",
+      bg: "rgba(211, 47, 47, 0.14)",
     };
   }
 
@@ -94,7 +136,7 @@ function getTxnTone(row: SavingsHistoryRow) {
     color: COLORS.info,
     sign: "",
     icon: "swap-horizontal-outline" as const,
-    bg: "rgba(37, 99, 235, 0.10)",
+    bg: "rgba(37, 99, 235, 0.14)",
   };
 }
 
@@ -102,18 +144,18 @@ function TypePill({ account }: { account: SavingsAccount }) {
   const type = String(account.account_type || "").toUpperCase();
   const locked = isSavingsLocked(account);
 
-  let bg = "rgba(12, 106, 128, 0.10)";
-  let color = "#0C6A80";
-  let label = getSavingsTypeLabel(type);
+  let bg = "rgba(12, 106, 128, 0.16)";
+  let color = "#DFFBFF";
+  const label = getSavingsTypeLabel(type);
 
   if (type === "FIXED") {
-    bg = locked ? "rgba(242, 140, 40, 0.14)" : "rgba(242, 140, 40, 0.10)";
-    color = COLORS.warning;
+    bg = locked ? "rgba(242, 140, 40, 0.16)" : "rgba(242, 140, 40, 0.12)";
+    color = "#FFD58F";
   }
 
   if (type === "TARGET") {
-    bg = "rgba(46, 125, 50, 0.10)";
-    color = COLORS.success;
+    bg = "rgba(46, 125, 50, 0.16)";
+    color = "#BAF5C0";
   }
 
   return (
@@ -129,8 +171,8 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
   if (!account.is_active) {
     return (
       <View style={[styles.banner, styles.bannerDanger]}>
-        <Ionicons name="alert-circle-outline" size={16} color={COLORS.danger} />
-        <Text style={[styles.bannerText, { color: COLORS.danger }]}>
+        <Ionicons name="alert-circle-outline" size={16} color="#FFD4D4" />
+        <Text style={[styles.bannerText, { color: "#FFD4D4" }]}>
           This savings space is currently inactive.
         </Text>
       </View>
@@ -141,8 +183,8 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
   if (lockMessage) {
     return (
       <View style={[styles.banner, styles.bannerWarning]}>
-        <Ionicons name="lock-closed-outline" size={16} color={COLORS.warning} />
-        <Text style={[styles.bannerText, { color: COLORS.warning }]}>
+        <Ionicons name="lock-closed-outline" size={16} color="#FFD58F" />
+        <Text style={[styles.bannerText, { color: "#FFD58F" }]}>
           {lockMessage}
         </Text>
       </View>
@@ -154,9 +196,9 @@ function StatusBanner({ account }: { account: SavingsAccount }) {
       <Ionicons
         name="checkmark-circle-outline"
         size={16}
-        color={COLORS.success}
+        color="#BAF5C0"
       />
-      <Text style={[styles.bannerText, { color: COLORS.success }]}>
+      <Text style={[styles.bannerText, { color: "#BAF5C0" }]}>
         Your savings space is active and ready.
       </Text>
     </View>
@@ -172,17 +214,17 @@ function SummaryCard({
   value: string;
   tone?: "default" | "success" | "danger";
 }) {
-  const color =
+  const valueColor =
     tone === "success"
       ? COLORS.success
       : tone === "danger"
         ? COLORS.danger
-        : "#0F172A";
+        : "#FFFFFF";
 
   return (
     <View style={styles.summaryCard}>
       <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={[styles.summaryValue, { color }]} numberOfLines={1}>
+      <Text style={[styles.summaryValue, { color: valueColor }]} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -190,8 +232,18 @@ function SummaryCard({
 }
 
 function AccountCard({ account }: { account: SavingsAccount }) {
+  const palette = getSpaceTonePalette("savings");
+
   return (
-    <Card style={styles.accountCard}>
+    <Card
+      style={[
+        styles.accountCard,
+        {
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+        },
+      ]}
+    >
       <View style={styles.accountHead}>
         <View style={styles.accountHeadText}>
           <Text style={styles.accountName} numberOfLines={1}>
@@ -409,30 +461,36 @@ export default function SavingsHistoryScreen() {
           />
         }
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.heroCard}>
           <View style={styles.heroGlowOne} />
           <View style={styles.heroGlowTwo} />
 
           <View style={styles.header}>
             <View style={styles.headerTextWrap}>
-              <Text style={styles.title}>Savings Activity</Text>
+              <Text style={styles.eyebrow}>SAVINGS ACTIVITY</Text>
+              <Text style={styles.title}>Savings History</Text>
               <Text style={styles.subtitle}>
                 Follow your community saving journey and recent activity in one place.
               </Text>
             </View>
 
-            <Button
-              title="Back"
-              variant="ghost"
+            <TouchableOpacity
+              activeOpacity={0.9}
               onPress={() => router.back()}
-              leftIcon={
-                <Ionicons
-                  name="arrow-back-outline"
-                  size={16}
-                  color="#FFFFFF"
-                />
-              }
-            />
+              style={styles.backBtn}
+            >
+              <Ionicons
+                name="arrow-back-outline"
+                size={18}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -549,16 +607,17 @@ export default function SavingsHistoryScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
   },
 
   content: {
     padding: SPACING.lg,
+    position: "relative",
   },
 
   loadingWrap: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: SPACING.lg,
@@ -571,15 +630,66 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.88)",
   },
 
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+
   heroCard: {
     position: "relative",
     overflow: "hidden",
     marginBottom: SPACING.lg,
     padding: SPACING.lg,
     borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.12)",
+    ...SHADOW.card,
   },
 
   heroGlowOne: {
@@ -612,7 +722,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  eyebrow: {
+    fontFamily: FONT.bold,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.78)",
+    letterSpacing: 1,
+  },
+
   title: {
+    marginTop: 6,
     fontFamily: FONT.bold,
     fontSize: 22,
     color: "#FFFFFF",
@@ -626,6 +744,17 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.86)",
   },
 
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
   errorCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
@@ -633,7 +762,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(239,68,68,0.22)",
     backgroundColor: "rgba(211, 47, 47, 0.18)",
     borderRadius: RADIUS.lg,
   },
@@ -649,9 +778,7 @@ const styles = StyleSheet.create({
   accountCard: {
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.08)",
     ...SHADOW.card,
   },
 
@@ -669,14 +796,14 @@ const styles = StyleSheet.create({
   accountName: {
     fontFamily: FONT.bold,
     fontSize: 16,
-    color: "#0F172A",
+    color: "#FFFFFF",
   },
 
   accountMeta: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: "#64748B",
+    color: "rgba(255,255,255,0.74)",
   },
 
   typePill: {
@@ -703,18 +830,18 @@ const styles = StyleSheet.create({
   },
 
   bannerSuccess: {
-    backgroundColor: "rgba(46, 125, 50, 0.06)",
-    borderColor: "rgba(46, 125, 50, 0.16)",
+    backgroundColor: "rgba(46, 125, 50, 0.10)",
+    borderColor: "rgba(46, 125, 50, 0.20)",
   },
 
   bannerWarning: {
-    backgroundColor: "rgba(242, 140, 40, 0.08)",
-    borderColor: "rgba(242, 140, 40, 0.18)",
+    backgroundColor: "rgba(242, 140, 40, 0.12)",
+    borderColor: "rgba(242, 140, 40, 0.22)",
   },
 
   bannerDanger: {
-    backgroundColor: "rgba(211, 47, 47, 0.06)",
-    borderColor: "rgba(211, 47, 47, 0.16)",
+    backgroundColor: "rgba(211, 47, 47, 0.10)",
+    borderColor: "rgba(211, 47, 47, 0.20)",
   },
 
   bannerText: {
@@ -735,22 +862,22 @@ const styles = StyleSheet.create({
     width: "48%",
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.08)",
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   metricLabel: {
     fontFamily: FONT.regular,
     fontSize: 11,
-    color: "#64748B",
+    color: "rgba(255,255,255,0.65)",
   },
 
   metricValue: {
     marginTop: 6,
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: "#0F172A",
+    color: "#FFFFFF",
   },
 
   summaryGrid: {
@@ -761,10 +888,10 @@ const styles = StyleSheet.create({
 
   summaryCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.08)",
+    borderColor: "rgba(255,255,255,0.10)",
     padding: SPACING.md,
     ...SHADOW.card,
   },
@@ -772,7 +899,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: "#64748B",
+    color: "rgba(255,255,255,0.65)",
   },
 
   summaryValue: {
@@ -791,9 +918,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.08)",
+    borderColor: "rgba(255,255,255,0.10)",
     ...SHADOW.card,
   },
 
@@ -819,7 +946,7 @@ const styles = StyleSheet.create({
   txTitle: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: "#0F172A",
+    color: "#FFFFFF",
   },
 
   txMeta: {
@@ -827,7 +954,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: "#64748B",
+    color: "rgba(255,255,255,0.70)",
   },
 
   txAmount: {

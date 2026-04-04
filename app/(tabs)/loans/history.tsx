@@ -1,5 +1,4 @@
 // app/(tabs)/loans/history.tsx
-
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -14,15 +13,50 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
-import { SPACING } from "@/constants/theme";
+import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import { getApiErrorMessage, getMyLoans, Loan } from "@/services/loans";
 
-/* ---------------- HELPERS ---------------- */
+const UI = {
+  page: "#062C49",
+
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.88)",
+  textMuted: "rgba(255,255,255,0.72)",
+
+  mint: "#8CF0C7",
+  aqua: "#0CC0B7",
+  careGreen: "#197D71",
+
+  glass: "rgba(255,255,255,0.10)",
+  glassStrong: "rgba(255,255,255,0.14)",
+  border: "rgba(255,255,255,0.12)",
+
+  supportCard: "rgba(52, 198, 191, 0.22)",
+  supportBorder: "rgba(195, 255, 250, 0.16)",
+  supportIconBg: "rgba(236, 255, 252, 0.76)",
+  supportIcon: "#148C84",
+
+  successCard: "rgba(98, 192, 98, 0.23)",
+  successBorder: "rgba(194, 255, 188, 0.16)",
+  successIconBg: "rgba(236, 255, 235, 0.76)",
+  successIcon: "#379B4A",
+
+  infoCard: "rgba(49, 180, 217, 0.22)",
+  infoBorder: "rgba(189, 244, 255, 0.15)",
+  infoIconBg: "rgba(236, 251, 255, 0.76)",
+  infoIcon: "#0A6E8A",
+
+  warningCard: "rgba(255, 204, 102, 0.16)",
+  warningBorder: "rgba(255, 220, 140, 0.18)",
+  warningIconBg: "rgba(255, 247, 224, 0.88)",
+  warningIcon: "#B7791F",
+
+  dangerCard: "rgba(220,53,69,0.18)",
+};
 
 function toNum(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -31,14 +65,21 @@ function toNum(value?: string | number | null) {
 
 function fmtKES(amount?: string | number | null) {
   const n = toNum(amount);
-  return `KES ${n.toLocaleString("en-KE")}`;
+  return `KES ${n.toLocaleString("en-KE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
 }
 
 function fmtDate(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString("en-KE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatStatus(status?: string | null) {
@@ -51,33 +92,85 @@ function getStatusTone(status?: string | null) {
   const value = String(status || "").toUpperCase();
 
   if (value === "COMPLETED") {
-    return { text: "#8CF0C7", bg: "rgba(140,240,199,0.18)" };
+    return {
+      text: UI.mint,
+      bg: "rgba(140,240,199,0.18)",
+    };
   }
 
   if (["PENDING", "UNDER_REVIEW"].includes(value)) {
-    return { text: "#FFD166", bg: "rgba(255,204,102,0.18)" };
+    return {
+      text: "#FFD166",
+      bg: "rgba(255,204,102,0.18)",
+    };
   }
 
   if (["REJECTED", "CANCELLED", "DEFAULTED"].includes(value)) {
-    return { text: "#FF6B6B", bg: "rgba(220,53,69,0.18)" };
+    return {
+      text: "#FF8A8A",
+      bg: "rgba(220,53,69,0.18)",
+    };
   }
 
-  return { text: "#FFFFFF", bg: "rgba(255,255,255,0.12)" };
+  return {
+    text: "#FFFFFF",
+    bg: "rgba(255,255,255,0.12)",
+  };
 }
 
 function getLoanTitle(loan: Loan) {
   return loan.product_detail?.name || loan.product_name || `Support #${loan.id}`;
 }
 
-/* ---------------- ROW ---------------- */
+function HistoryHero({
+  onBack,
+  count,
+}: {
+  onBack: () => void;
+  count: number;
+}) {
+  return (
+    <View style={styles.heroCard}>
+      <View style={styles.heroOrbOne} />
+      <View style={styles.heroOrbTwo} />
+      <View style={styles.heroOrbThree} />
+
+      <View style={styles.heroTopRow}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        <View style={styles.heroBadge}>
+          <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+          <Text style={styles.heroBadgeText}>SUPPORT HISTORY</Text>
+        </View>
+      </View>
+
+      <Text style={styles.heroTitle}>Support history</Text>
+      <Text style={styles.heroAmount}>{count}</Text>
+      <Text style={styles.heroSubtitle}>
+        Review your current and past community support activity.
+      </Text>
+    </View>
+  );
+}
 
 function LoanRow({ loan }: { loan: Loan }) {
   const tone = getStatusTone(loan.status);
 
   return (
     <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={() => router.push(ROUTES.dynamic.loanDetail(loan.id) as any)}
+      activeOpacity={0.92}
+      onPress={() =>
+        router.push({
+          pathname: "/(tabs)/loans/[id]" as any,
+          params: { id: String(loan.id) },
+        })
+      }
       style={styles.row}
     >
       <View style={styles.rowGlow1} />
@@ -85,7 +178,7 @@ function LoanRow({ loan }: { loan: Loan }) {
 
       <View style={styles.rowLeft}>
         <View style={styles.iconWrap}>
-          <Ionicons name="document-text-outline" size={18} color="#0A6E8A" />
+          <Ionicons name="document-text-outline" size={18} color={UI.infoIcon} />
         </View>
 
         <View style={styles.rowContent}>
@@ -95,6 +188,10 @@ function LoanRow({ loan }: { loan: Loan }) {
 
           <Text style={styles.rowSubtitle}>
             {fmtKES(loan.principal)} • {fmtDate(loan.created_at)}
+          </Text>
+
+          <Text style={styles.rowMeta}>
+            Remaining: {fmtKES(loan.outstanding_balance || 0)}
           </Text>
         </View>
       </View>
@@ -111,8 +208,6 @@ function LoanRow({ loan }: { loan: Loan }) {
     </TouchableOpacity>
   );
 }
-
-/* ---------------- SCREEN ---------------- */
 
 export default function LoanHistoryScreen() {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -158,61 +253,79 @@ export default function LoanHistoryScreen() {
     return [...loans].sort((a, b) => Number(b.id) - Number(a.id));
   }, [loans]);
 
-  /* ---------------- LOADING ---------------- */
+  const handleBack = useCallback(() => {
+    const canGoBack =
+      typeof (router as any)?.canGoBack === "function"
+        ? (router as any).canGoBack()
+        : false;
+
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+
+    router.replace(ROUTES.tabs.loans as any);
+  }, []);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
+          <ActivityIndicator color={UI.mint} />
         </View>
       </SafeAreaView>
     );
   }
 
-  /* ---------------- UI ---------------- */
-
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={UI.mint}
+            colors={[UI.mint, UI.aqua]}
+          />
         }
+        showsVerticalScrollIndicator={false}
       >
-        {/* BACKGROUND BLOBS */}
-        <View style={styles.bgBlob1} />
-        <View style={styles.bgBlob2} />
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
 
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Support history</Text>
-          <Text style={styles.headerSubtitle}>
-            Your past and current community support
-          </Text>
-        </View>
+        <HistoryHero onBack={handleBack} count={sortedLoans.length} />
 
         {error ? (
-          <Card style={styles.errorCard}>
+          <TouchableOpacity activeOpacity={0.92} onPress={onRefresh} style={styles.errorCard}>
             <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
-          </Card>
+            <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
         ) : null}
 
         {sortedLoans.length === 0 ? (
-          <EmptyState
-            title="No activity yet"
-            subtitle="Your community support history will appear here."
-            actionLabel="Back"
-            onAction={() => router.replace(ROUTES.tabs.loans as any)}
-          />
-        ) : (
-          <View style={styles.list}>
-            {sortedLoans.map((loan) => (
-              <LoanRow key={loan.id} loan={loan} />
-            ))}
+          <View style={styles.emptyWrap}>
+            <EmptyState
+              title="No activity yet"
+              subtitle="Your community support history will appear here."
+              actionLabel="Back to support"
+              onAction={() => router.replace(ROUTES.tabs.loans as any)}
+            />
           </View>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>Your activity</Text>
+            <View style={styles.list}>
+              {sortedLoans.map((loan) => (
+                <LoanRow key={loan.id} loan={loan} />
+              ))}
+            </View>
+          </>
         )}
 
         <View style={{ height: 20 }} />
@@ -221,78 +334,207 @@ export default function LoanHistoryScreen() {
   );
 }
 
-/* ---------------- STYLES ---------------- */
-
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: UI.page,
   },
 
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: UI.page,
   },
 
   content: {
     padding: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
 
   loadingWrap: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0C6A80",
+    backgroundColor: UI.page,
   },
 
-  bgBlob1: {
+  backgroundBlobTop: {
     position: "absolute",
-    top: -100,
+    top: -120,
     right: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
 
-  bgBlob2: {
+  backgroundBlobMiddle: {
     position: "absolute",
-    bottom: -100,
-    left: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: -120,
+    right: -40,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
-  header: {
-    marginBottom: SPACING.md,
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 120,
+    right: 20,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(12,192,183,0.10)",
   },
 
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "900",
+  backgroundGlowTwo: {
+    position: "absolute",
+    bottom: 160,
+    left: 10,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(140,240,199,0.08)",
+  },
+
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: UI.supportCard,
+    borderRadius: 26,
+    padding: 20,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: UI.supportBorder,
+  },
+
+  heroOrbOne: {
+    position: "absolute",
+    top: -34,
+    right: -14,
+    width: 126,
+    height: 126,
+    borderRadius: 63,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+
+  heroOrbTwo: {
+    position: "absolute",
+    bottom: -26,
+    left: -16,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: "rgba(236,251,255,0.10)",
+  },
+
+  heroOrbThree: {
+    position: "absolute",
+    top: 76,
+    right: 42,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: "rgba(12,192,183,0.10)",
+  },
+
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.14)",
+  },
+
+  heroBadgeText: {
+    fontSize: 11,
     color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    letterSpacing: 0.8,
   },
 
-  headerSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: "rgba(255,255,255,0.8)",
+  heroTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+    marginBottom: 8,
+  },
+
+  heroAmount: {
+    fontSize: 30,
+    lineHeight: 36,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+  },
+
+  heroSubtitle: {
+    marginTop: 10,
+    fontSize: 14,
+    lineHeight: 21,
+    color: UI.textSoft,
+    fontFamily: FONT.regular,
   },
 
   errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    gap: SPACING.sm,
-    backgroundColor: "rgba(220,53,69,0.18)",
+    minHeight: 56,
     borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    backgroundColor: UI.dangerCard,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: SPACING.lg,
   },
 
   errorText: {
     flex: 1,
     color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
+  },
+
+  sectionTitle: {
+    marginBottom: 12,
+    fontSize: 17,
+    color: "#FFFFFF",
+    fontFamily: FONT.bold,
+  },
+
+  emptyWrap: {
+    marginTop: SPACING.sm,
   },
 
   list: {
@@ -302,12 +544,12 @@ const styles = StyleSheet.create({
   row: {
     position: "relative",
     overflow: "hidden",
-    minHeight: 70,
+    minHeight: 78,
     padding: SPACING.md,
     borderRadius: 20,
-    backgroundColor: "rgba(49,180,217,0.22)",
+    backgroundColor: UI.infoCard,
     borderWidth: 1,
-    borderColor: "rgba(189,244,255,0.15)",
+    borderColor: UI.infoBorder,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -317,9 +559,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -20,
     right: -20,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: "rgba(255,255,255,0.08)",
   },
 
@@ -327,9 +569,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: -20,
     left: -20,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
@@ -341,12 +583,12 @@ const styles = StyleSheet.create({
   },
 
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(236,251,255,0.9)",
+    backgroundColor: UI.infoIconBg,
   },
 
   rowContent: {
@@ -355,20 +597,29 @@ const styles = StyleSheet.create({
 
   rowTitle: {
     fontSize: 14,
-    fontWeight: "800",
     color: "#FFFFFF",
+    fontFamily: FONT.bold,
   },
 
   rowSubtitle: {
     marginTop: 3,
     fontSize: 12,
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: FONT.regular,
+  },
+
+  rowMeta: {
+    marginTop: 4,
+    fontSize: 11,
+    color: UI.textMuted,
+    fontFamily: FONT.regular,
   },
 
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
+    marginLeft: 10,
   },
 
   statusPill: {
@@ -379,6 +630,6 @@ const styles = StyleSheet.create({
 
   statusText: {
     fontSize: 11,
-    fontWeight: "900",
+    fontFamily: FONT.bold,
   },
 });

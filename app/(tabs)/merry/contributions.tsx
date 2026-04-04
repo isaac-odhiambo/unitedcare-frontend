@@ -1,4 +1,3 @@
-// app/(tabs)/merry/contributions.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -33,19 +32,15 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryPaymentsUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const PAGE_BG = "#0C6A80";
+const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
-const BRAND_DARK = "#09586A";
 const WHITE = "#FFFFFF";
-const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
 const SOFT_WHITE = "rgba(255,255,255,0.10)";
 const SOFT_WHITE_2 = "rgba(255,255,255,0.14)";
 const SURFACE_CARD = "rgba(255,255,255,0.10)";
 const SURFACE_BORDER = "rgba(255,255,255,0.12)";
-const SUCCESS = "#379B4A";
-const WARNING = "#C98912";
-const DANGER = "#C24141";
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -176,7 +171,13 @@ function FilterChip({
   );
 }
 
-function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
+function PaymentCard({
+  payment,
+  onOpenMerry,
+}: {
+  payment: MerryPaymentRow;
+  onOpenMerry: (payment: MerryPaymentRow) => void;
+}) {
   return (
     <View style={styles.paymentCard}>
       <View style={styles.cardGlowTop} />
@@ -232,9 +233,7 @@ function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.secondaryAction}
-          onPress={() =>
-            router.push(ROUTES.dynamic.merryDetail(payment.merry_id) as any)
-          }
+          onPress={() => onOpenMerry(payment)}
         >
           <Ionicons name="open-outline" size={16} color={WHITE} />
           <Text style={styles.secondaryActionText}>Open Merry</Text>
@@ -246,7 +245,7 @@ function PaymentCard({ payment }: { payment: MerryPaymentRow }) {
 
 export default function MerryContributionsScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ merryId?: string }>();
+  const params = useLocalSearchParams<{ merryId?: string; returnTo?: string }>();
   const initialMerryId = params.merryId ? Number(params.merryId) : null;
 
   const [user, setUser] = useState<MerryPaymentsUser | null>(null);
@@ -258,6 +257,15 @@ export default function MerryContributionsScreen() {
   const [selectedMerryId, setSelectedMerryId] = useState<number | null>(
     Number.isFinite(initialMerryId as number) ? initialMerryId : null
   );
+
+  const backToMerryIndex = useCallback(() => {
+    const target =
+      typeof params.returnTo === "string" && params.returnTo.trim()
+        ? params.returnTo
+        : ROUTES.tabs.merry;
+
+    router.replace(target as any);
+  }, [params.returnTo]);
 
   const load = useCallback(async () => {
     try {
@@ -383,6 +391,18 @@ export default function MerryContributionsScreen() {
     return toNumber(wallet?.wallet_balance || 0);
   }, [wallet]);
 
+  const openMerryFromPayment = useCallback((payment: MerryPaymentRow) => {
+    router.push({
+      pathname: "/(tabs)/merry/[id]" as any,
+      params: {
+        id: String(payment.merry_id),
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
+    });
+  }, []);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top"]}>
@@ -458,7 +478,7 @@ export default function MerryContributionsScreen() {
 
             <TouchableOpacity
               activeOpacity={0.92}
-              onPress={() => router.back()}
+              onPress={backToMerryIndex}
               style={styles.iconBtn}
             >
               <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
@@ -609,7 +629,7 @@ export default function MerryContributionsScreen() {
           <TouchableOpacity
             activeOpacity={0.92}
             style={styles.historyAction}
-            onPress={() => router.push(ROUTES.tabs.merry as any)}
+            onPress={backToMerryIndex}
           >
             <Ionicons name="people-outline" size={16} color={WHITE} />
             <Text style={styles.historyActionText}>Open Merry</Text>
@@ -632,15 +652,17 @@ export default function MerryContributionsScreen() {
               }
               actionLabel={selectedMerryId ? "Show All Merries" : "Go to Merry"}
               onAction={() =>
-                selectedMerryId
-                  ? setSelectedMerryId(null)
-                  : router.push(ROUTES.tabs.merry)
+                selectedMerryId ? setSelectedMerryId(null) : backToMerryIndex()
               }
             />
           </View>
         ) : (
           filteredPayments.map((payment) => (
-            <PaymentCard key={payment.id} payment={payment} />
+            <PaymentCard
+              key={payment.id}
+              payment={payment}
+              onOpenMerry={openMerryFromPayment}
+            />
           ))
         )}
 
@@ -675,6 +697,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: PAGE_BG,
     padding: 24,
+  },
+
+  emptyWrap: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
   },
 
   backgroundBlobTop: {
@@ -779,8 +806,8 @@ const styles = StyleSheet.create({
   },
 
   iconBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -792,13 +819,13 @@ const styles = StyleSheet.create({
   heroShell: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(12,106,128,0.48)",
     borderRadius: 28,
     paddingHorizontal: 18,
     paddingVertical: 18,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(176, 243, 234, 0.10)",
   },
 
   heroOrbOne: {
@@ -880,8 +907,8 @@ const styles = StyleSheet.create({
   heroStatValue: {
     marginTop: 4,
     fontFamily: FONT.bold,
-    fontSize: 15,
-    color: "#FFFFFF",
+    fontSize: 16,
+    color: WHITE,
   },
 
   errorCard: {
@@ -909,8 +936,8 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     color: "#FECACA",
   },
 
@@ -942,7 +969,7 @@ const styles = StyleSheet.create({
 
   sectionCardTitle: {
     color: WHITE,
-    fontSize: 16,
+    fontSize: 17,
     fontFamily: FONT.bold,
   },
 
@@ -983,7 +1010,7 @@ const styles = StyleSheet.create({
 
   filterChipText: {
     fontFamily: FONT.medium,
-    fontSize: 12,
+    fontSize: 13,
     color: WHITE,
   },
 
@@ -993,13 +1020,14 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontFamily: FONT.bold,
-    fontSize: 17,
+    fontSize: 18,
     color: WHITE,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
 
   sectionSubtitle: {
     marginTop: 4,
+    marginBottom: SPACING.sm,
     fontFamily: FONT.regular,
     fontSize: 12,
     color: TEXT_ON_DARK_SOFT,
@@ -1022,8 +1050,8 @@ const styles = StyleSheet.create({
   },
 
   summaryIconWrap: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1040,7 +1068,7 @@ const styles = StyleSheet.create({
   summaryValue: {
     marginTop: 8,
     fontFamily: FONT.bold,
-    fontSize: 15,
+    fontSize: 16,
     color: WHITE,
   },
 
@@ -1119,8 +1147,8 @@ const styles = StyleSheet.create({
   },
 
   paymentIconWrap: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -1131,7 +1159,7 @@ const styles = StyleSheet.create({
 
   paymentTitle: {
     fontFamily: FONT.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: WHITE,
   },
 
@@ -1149,7 +1177,7 @@ const styles = StyleSheet.create({
 
   paymentAmount: {
     fontFamily: FONT.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: WHITE,
   },
 
@@ -1177,7 +1205,7 @@ const styles = StyleSheet.create({
   kvValue: {
     flexShrink: 1,
     textAlign: "right",
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
     fontSize: 12,
     color: WHITE,
   },
@@ -1202,7 +1230,7 @@ const styles = StyleSheet.create({
   },
 
   secondaryActionText: {
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
     fontSize: 13,
     color: WHITE,
   },
@@ -1213,27 +1241,18 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: RADIUS.round,
+    borderRadius: 999,
     borderWidth: 1,
   },
 
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 999,
   },
 
   statusPillText: {
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
     fontSize: 11,
-  },
-
-  emptyWrap: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    overflow: "hidden",
-    ...SHADOW.card,
   },
 });

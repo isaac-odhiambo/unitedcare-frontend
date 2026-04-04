@@ -14,10 +14,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import EmptyState from "@/components/ui/EmptyState";
-
 import { ROUTES } from "@/constants/routes";
-import { FONT, SPACING } from "@/constants/theme";
-
+import { SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   createGroupJoinRequest,
@@ -27,12 +25,7 @@ import {
   listGroupMemberships,
   listMyGroupJoinRequests,
 } from "@/services/groups";
-import {
-  canJoinGroup,
-  getMe,
-  isKycComplete,
-  MeResponse,
-} from "@/services/profile";
+import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type GroupsUser = Partial<MeResponse> & Partial<SessionUser>;
@@ -79,6 +72,20 @@ function getJoinActionLabel(group: Group) {
   return "Closed";
 }
 
+function getMemberIdentity(user: GroupsUser | null) {
+  return (
+    (user as any)?.full_name ||
+    (user as any)?.name ||
+    user?.username ||
+    (typeof user?.phone === "string" ? user.phone : "") ||
+    "Member"
+  );
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
 function StatPill({
   label,
   value,
@@ -94,11 +101,7 @@ function StatPill({
   );
 }
 
-function SectionTitle({ title }: { title: string }) {
-  return <Text style={styles.sectionTitle}>{title}</Text>;
-}
-
-function SoftActionCard({
+function ActionCard({
   title,
   subtitle,
   icon,
@@ -115,12 +118,17 @@ function SoftActionCard({
     <TouchableOpacity
       activeOpacity={0.92}
       onPress={onPress}
-      style={[styles.actionCard, primary ? styles.actionCardPrimary : styles.actionCardSecondary]}
+      style={[
+        styles.actionCard,
+        primary ? styles.actionCardPrimary : styles.actionCardSecondary,
+      ]}
     >
       <View
         style={[
           styles.actionIconWrap,
-          primary ? styles.actionIconWrapPrimary : styles.actionIconWrapSecondary,
+          primary
+            ? styles.actionIconWrapPrimary
+            : styles.actionIconWrapSecondary,
         ]}
       >
         <Ionicons
@@ -140,39 +148,38 @@ function GroupCard({
   group,
   isMember,
   hasPendingRequest,
-  joinAllowed,
-  onRequireProfile,
   onJoin,
+  onContribute,
   busy,
 }: {
   group: Group;
   isMember: boolean;
   hasPendingRequest: boolean;
-  joinAllowed: boolean;
-  onRequireProfile: () => void;
   onJoin: (group: Group) => void;
+  onContribute: (group: Group) => void;
   busy: boolean;
 }) {
   const joinPolicy = String(group.join_policy || "").toUpperCase().trim();
   const isClosed = joinPolicy === "CLOSED";
   const canAct = !isMember && !hasPendingRequest && !isClosed;
-
-  const actionTitle = !joinAllowed
-    ? "Complete profile"
-    : getJoinActionLabel(group);
+  const actionTitle = getJoinActionLabel(group);
 
   return (
     <TouchableOpacity
-      activeOpacity={0.94}
+      activeOpacity={0.95}
       onPress={() => router.push(ROUTES.dynamic.groupDetail(group.id) as any)}
-      style={styles.groupCard}
+      style={[styles.groupCard, isMember && styles.groupCardActive]}
     >
       <View style={styles.groupGlowTop} />
       <View style={styles.groupGlowBottom} />
 
       <View style={styles.groupTopRow}>
         <View style={styles.groupIconWrap}>
-          <Ionicons name="people-outline" size={20} color="#0A6E8A" />
+          <Ionicons
+            name={isMember ? "checkmark-circle-outline" : "people-outline"}
+            size={22}
+            color="#0A6E8A"
+          />
         </View>
 
         <View style={styles.groupTextWrap}>
@@ -221,7 +228,7 @@ function GroupCard({
       <View style={styles.badgesRow}>
         {isMember ? (
           <View style={[styles.badgePill, styles.badgeMember]}>
-            <Text style={styles.badgeText}>JOINED</Text>
+            <Text style={styles.badgeText}>ACTIVE</Text>
           </View>
         ) : null}
 
@@ -252,17 +259,21 @@ function GroupCard({
 
       <View style={styles.cardFooter}>
         <View style={styles.cardFooterLeft}>
-          <Text style={styles.cardFooterText}>Enter space</Text>
+          <Text style={styles.cardFooterText}>
+            {isMember ? "You are active here" : "Enter space"}
+          </Text>
           <Text style={styles.cardFooterSub}>
-            Read more and continue with your community.
+            {isMember
+              ? "Continue contributing and participating in this group."
+              : "Read more and continue with your community."}
           </Text>
         </View>
 
         <TouchableOpacity
           activeOpacity={0.92}
           onPress={() => {
-            if (!joinAllowed) {
-              onRequireProfile();
+            if (isMember) {
+              onContribute(group);
               return;
             }
 
@@ -273,23 +284,29 @@ function GroupCard({
 
             onJoin(group);
           }}
-          disabled={busy || isClosed}
+          disabled={busy || (!isMember && isClosed)}
           style={[
             styles.footerButton,
-            joinAllowed && canAct ? styles.footerButtonPrimary : styles.footerButtonSecondary,
-            (busy || isClosed) && styles.footerButtonDisabled,
+            isMember
+              ? styles.footerButtonContribute
+              : canAct
+              ? styles.footerButtonPrimary
+              : styles.footerButtonSecondary,
+            (busy || (!isMember && isClosed)) && styles.footerButtonDisabled,
           ]}
         >
           <Text
             style={[
               styles.footerButtonText,
-              joinAllowed && canAct
+              isMember
+                ? styles.footerButtonTextContribute
+                : canAct
                 ? styles.footerButtonTextPrimary
                 : styles.footerButtonTextSecondary,
             ]}
           >
             {isMember
-              ? "Open"
+              ? "Contribute"
               : hasPendingRequest
               ? "View"
               : busy
@@ -305,20 +322,15 @@ function GroupCard({
 export default function GroupsIndexScreen() {
   const [user, setUser] = useState<GroupsUser | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>([]);
+  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>(
+    []
+  );
   const [pendingJoinGroupIds, setPendingJoinGroupIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [showAvailableGroups, setShowAvailableGroups] = useState(true);
   const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null);
-
-  const kycComplete = isKycComplete(user);
-  const joinAllowed = canJoinGroup(user);
-
-  const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profile as any);
-  }, []);
 
   const load = useCallback(async (mountedRef?: { current: boolean }) => {
     const safeSet = (fn: () => void) => {
@@ -377,7 +389,8 @@ export default function GroupsIndexScreen() {
       const pendingIds = toUniqueNumberArray(
         joinRequests
           .filter(
-            (r: any) => String(r.status || "").toUpperCase().trim() === "PENDING"
+            (r: any) =>
+              String(r.status || "").toUpperCase().trim() === "PENDING"
           )
           .map((r: any) =>
             r.group_id ?? (typeof r.group === "number" ? r.group : r.group?.id)
@@ -398,7 +411,8 @@ export default function GroupsIndexScreen() {
           getApiErrorMessage(meRes.reason) || getErrorMessage(meRes.reason);
       } else if (groupsRes.status === "rejected") {
         nextError =
-          getApiErrorMessage(groupsRes.reason) || getErrorMessage(groupsRes.reason);
+          getApiErrorMessage(groupsRes.reason) ||
+          getErrorMessage(groupsRes.reason);
       } else if (membershipsRes.status === "rejected") {
         nextError =
           getApiErrorMessage(membershipsRes.reason) ||
@@ -457,11 +471,6 @@ export default function GroupsIndexScreen() {
       const isOpen = joinPolicy === "OPEN";
       const isClosed = joinPolicy === "CLOSED";
 
-      if (!joinAllowed) {
-        goToKyc();
-        return;
-      }
-
       if (isClosed) {
         Alert.alert(
           "Space closed",
@@ -505,8 +514,19 @@ export default function GroupsIndexScreen() {
         ]
       );
     },
-    [goToKyc, joinAllowed, load]
+    [load]
   );
+
+  const handleContribute = useCallback((group: Group) => {
+    router.push({
+      pathname: "/(tabs)/groups/contribute" as any,
+      params: {
+        groupId: String(group.id),
+        group_id: String(group.id),
+        group_name: group.name,
+      },
+    });
+  }, []);
 
   const stats = useMemo(() => {
     return {
@@ -516,9 +536,21 @@ export default function GroupsIndexScreen() {
     };
   }, [groups, myMembershipGroupIds, pendingJoinGroupIds]);
 
+  const activeGroups = useMemo(
+    () => groups.filter((g) => myMembershipGroupIds.includes(g.id)),
+    [groups, myMembershipGroupIds]
+  );
+
+  const availableGroups = useMemo(
+    () => groups.filter((g) => !myMembershipGroupIds.includes(g.id)),
+    [groups, myMembershipGroupIds]
+  );
+
+  const memberName = useMemo(() => getMemberIdentity(user), [user]);
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.loadingWrap}>
           <ActivityIndicator color="#8CF0C7" />
         </View>
@@ -528,7 +560,7 @@ export default function GroupsIndexScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.page}>
           <EmptyState
             title="Session unavailable"
@@ -542,7 +574,7 @@ export default function GroupsIndexScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView
         style={styles.page}
         contentContainerStyle={styles.content}
@@ -567,25 +599,16 @@ export default function GroupsIndexScreen() {
           <View style={styles.heroOrbTwo} />
           <View style={styles.heroOrbThree} />
 
-          <Text style={styles.heroTag}>COMMUNITY SPACES</Text>
-
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.heroTitle}>Your community spaces</Text>
-              <Text style={styles.heroCaption}>
-                Join, belong, contribute together, and stay active in the spaces
-                that matter to your community.
-              </Text>
-            </View>
-
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="people-outline" size={22} color="#FFFFFF" />
-            </View>
-          </View>
+          <Text style={styles.heroTag}>COMMUNITY GROUPS</Text>
+          <Text style={styles.heroTitle}>Hello, {memberName}</Text>
+          <Text style={styles.heroCaption}>
+            Open your active groups first, contribute easily, and explore more
+            community spaces below.
+          </Text>
 
           <View style={styles.heroStatsRow}>
-            <StatPill label="Available" value={stats.totalGroups} />
-            <StatPill label="Joined" value={stats.myMemberships} />
+            <StatPill label="All groups" value={stats.totalGroups} />
+            <StatPill label="Active" value={stats.myMemberships} />
             <StatPill label="Requests" value={stats.pendingRequests} />
           </View>
         </View>
@@ -599,55 +622,25 @@ export default function GroupsIndexScreen() {
           </View>
         ) : null}
 
-        {!kycComplete ? (
-          <View style={styles.noticeCard}>
-            <View style={styles.noticeTop}>
-              <View style={styles.noticeIconWrap}>
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={18}
-                  color="#0C6A80"
-                />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.noticeTitle}>Complete profile to join</Text>
-                <Text style={styles.noticeText}>
-                  You can explore community spaces now. Complete your profile
-                  before joining or sending requests.
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={goToKyc}
-              style={styles.noticeButton}
-            >
-              <Text style={styles.noticeButtonText}>Complete profile</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
         <SectionTitle title="Quick actions" />
         <View style={styles.actionsGrid}>
-          <SoftActionCard
+          <ActionCard
             primary
-            icon={showAvailableGroups ? "eye-off-outline" : "eye-outline"}
-            title={showAvailableGroups ? "Hide spaces" : "Explore spaces"}
-            subtitle="Browse the spaces where your community connects and contributes."
-            onPress={() => setShowAvailableGroups((prev) => !prev)}
+            icon="people-outline"
+            title="Your joined groups"
+            subtitle="Open the groups you already belong to and continue contributing."
+            onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
           />
 
-          <SoftActionCard
-            icon="people-outline"
-            title="Your spaces"
-            subtitle="Open the community spaces you already belong to."
-            onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
+          <ActionCard
+            icon={showAvailableGroups ? "eye-off-outline" : "eye-outline"}
+            title={showAvailableGroups ? "Hide available" : "Show available"}
+            subtitle="Control whether available groups appear below."
+            onPress={() => setShowAvailableGroups((prev) => !prev)}
           />
         </View>
 
-        <SectionTitle title="Requests" />
+        <SectionTitle title="Join requests" />
         <TouchableOpacity
           activeOpacity={0.92}
           onPress={() => router.push("/(tabs)/groups/join-requests" as any)}
@@ -662,14 +655,14 @@ export default function GroupsIndexScreen() {
               />
             </View>
 
-            <View style={{ flex: 1 }}>
+            <View style={styles.requestSummaryTextWrap}>
               <Text style={styles.requestSummaryTitle}>Your join requests</Text>
               <Text style={styles.requestSummarySub}>
                 {stats.pendingRequests > 0
                   ? `${stats.pendingRequests} request${
                       stats.pendingRequests > 1 ? "s" : ""
                     } currently waiting`
-                  : "Track current and past requests here"}
+                  : "Track current and past join requests here"}
               </Text>
             </View>
           </View>
@@ -677,35 +670,55 @@ export default function GroupsIndexScreen() {
           <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
         </TouchableOpacity>
 
+        <SectionTitle title="Your active groups" />
+        {activeGroups.length === 0 ? (
+          <View style={styles.emptyHolder}>
+            <EmptyState
+              icon="people-outline"
+              title="No active groups yet"
+              subtitle="The groups you join will appear here first."
+            />
+          </View>
+        ) : (
+          activeGroups.map((g) => (
+            <GroupCard
+              key={g.id}
+              group={g}
+              isMember={true}
+              hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
+              onJoin={handleJoinFromCard}
+              onContribute={handleContribute}
+              busy={joiningGroupId === g.id}
+            />
+          ))
+        )}
+
         {showAvailableGroups ? (
           <>
-            <SectionTitle title="Open community spaces" />
-            {groups.length === 0 ? (
+            <SectionTitle title="Available groups" />
+            {availableGroups.length === 0 ? (
               <View style={styles.emptyHolder}>
                 <EmptyState
                   icon="people-outline"
-                  title="No spaces yet"
-                  subtitle="Community spaces will appear here once available."
+                  title="No available groups"
+                  subtitle="Available groups will appear here once ready."
                 />
               </View>
             ) : (
-              groups.map((g) => (
+              availableGroups.map((g) => (
                 <GroupCard
                   key={g.id}
                   group={g}
-                  isMember={myMembershipGroupIds.includes(g.id)}
+                  isMember={false}
                   hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
-                  joinAllowed={joinAllowed}
-                  onRequireProfile={goToKyc}
                   onJoin={handleJoinFromCard}
+                  onContribute={handleContribute}
                   busy={joiningGroupId === g.id}
                 />
               ))
             )}
           </>
         ) : null}
-
-        <View style={{ height: 28 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -714,24 +727,24 @@ export default function GroupsIndexScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
   },
 
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
   },
 
   content: {
     padding: SPACING.lg,
-    paddingBottom: 28,
+    paddingBottom: 12,
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C6A80",
+    backgroundColor: "#062C49",
   },
 
   backgroundBlobTop: {
@@ -741,7 +754,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundBlobMiddle: {
@@ -751,7 +764,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
 
   backgroundBlobBottom: {
@@ -761,7 +774,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundGlowOne: {
@@ -771,7 +784,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: "rgba(12, 192, 183, 0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   backgroundGlowTwo: {
@@ -781,18 +794,17 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: "rgba(140, 240, 199, 0.08)",
+    backgroundColor: "rgba(140,240,199,0.06)",
   },
 
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.10)",
+    overflow: "hidden",
   },
 
   heroOrbOne: {
@@ -802,7 +814,7 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     borderRadius: 75,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
 
   heroOrbTwo: {
@@ -812,7 +824,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(140,240,199,0.10)",
+    backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroOrbThree: {
@@ -822,7 +834,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   heroTag: {
@@ -830,81 +842,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    color: "#DFFFE8",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    color: "#E8FFF5",
     fontSize: 11,
-    fontFamily: FONT.bold,
+    fontWeight: "800",
     marginBottom: 12,
   },
 
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-
-  heroIconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
-  },
-
   heroTitle: {
-    fontSize: 24,
+    fontSize: 26,
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
+    fontWeight: "900",
   },
 
   heroCaption: {
     marginTop: 8,
-    fontSize: 13,
-    lineHeight: 20,
-    color: "rgba(255,255,255,0.88)",
-    fontFamily: FONT.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: "rgba(255,255,255,0.85)",
+    fontWeight: "700",
   },
 
   heroStatsRow: {
     flexDirection: "row",
-    gap: SPACING.sm as any,
     marginTop: SPACING.lg,
+    gap: 12,
   },
 
   heroStatPill: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 16,
+    padding: 12,
   },
 
   heroStatLabel: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.74)",
-    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.65)",
+    fontWeight: "700",
   },
 
   heroStatValue: {
     marginTop: 4,
-    fontSize: 17,
+    fontSize: 18,
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
+    fontWeight: "900",
   },
 
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
+    fontWeight: "900",
     marginBottom: 12,
-    marginTop: 4,
+    marginTop: 6,
   },
 
   errorCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.sm,
+    gap: 10,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
     borderRadius: 22,
@@ -925,62 +921,9 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     color: "#FFFFFF",
-    fontFamily: FONT.regular,
+    fontWeight: "700",
     fontSize: 12,
     lineHeight: 18,
-  },
-
-  noticeCard: {
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  noticeTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  noticeIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(236, 251, 255, 0.90)",
-  },
-
-  noticeTitle: {
-    fontSize: 14,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  noticeText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.84)",
-    fontFamily: FONT.regular,
-    lineHeight: 18,
-  },
-
-  noticeButton: {
-    alignSelf: "flex-start",
-    marginTop: SPACING.md,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-
-  noticeButtonText: {
-    color: "#0C6A80",
-    fontFamily: FONT.bold,
-    fontSize: 12,
   },
 
   actionsGrid: {
@@ -991,18 +934,18 @@ const styles = StyleSheet.create({
 
   actionCard: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: 22,
     padding: SPACING.md,
     borderWidth: 1,
   },
 
   actionCardPrimary: {
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderColor: "rgba(255,255,255,0.12)",
   },
 
   actionCardSecondary: {
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderColor: "rgba(255,255,255,0.10)",
   },
 
@@ -1016,31 +959,31 @@ const styles = StyleSheet.create({
   },
 
   actionIconWrapPrimary: {
-    backgroundColor: "rgba(236, 251, 255, 0.92)",
+    backgroundColor: "rgba(236,251,255,0.95)",
   },
 
   actionIconWrapSecondary: {
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   actionTitle: {
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    fontSize: 14,
+    fontWeight: "900",
+    fontSize: 15,
   },
 
   actionSubtitle: {
     marginTop: 6,
-    color: "rgba(255,255,255,0.82)",
-    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.75)",
+    fontWeight: "600",
     fontSize: 11,
     lineHeight: 17,
   },
 
   requestSummaryCard: {
     padding: SPACING.md,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
@@ -1063,20 +1006,23 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(236, 251, 255, 0.92)",
+    backgroundColor: "rgba(236,251,255,0.95)",
+  },
+
+  requestSummaryTextWrap: {
+    flex: 1,
   },
 
   requestSummaryTitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
+    fontWeight: "900",
   },
 
   requestSummarySub: {
     marginTop: 4,
     fontSize: 12,
-    color: "rgba(255,255,255,0.82)",
-    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.75)",
     lineHeight: 18,
   },
 
@@ -1085,10 +1031,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: "rgba(49, 180, 217, 0.22)",
-    borderRadius: 26,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(189, 244, 255, 0.15)",
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
+  groupCardActive: {
+    backgroundColor: "rgba(29,196,182,0.20)",
+    borderColor: "rgba(129,244,231,0.20)",
   },
 
   groupGlowTop: {
@@ -1098,7 +1049,7 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   groupGlowBottom: {
@@ -1108,7 +1059,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(236,251,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   groupTopRow: {
@@ -1117,22 +1068,22 @@ const styles = StyleSheet.create({
   },
 
   groupIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(236, 251, 255, 0.88)",
+    backgroundColor: "rgba(236,251,255,0.92)",
     marginRight: 12,
   },
 
   groupArrowWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
 
   groupTextWrap: {
@@ -1141,30 +1092,28 @@ const styles = StyleSheet.create({
   },
 
   groupTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 15,
+    fontSize: 16,
     color: "#FFFFFF",
+    fontWeight: "900",
   },
 
   groupMeta: {
     marginTop: 4,
     fontSize: 12,
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.70)",
   },
 
   groupDescription: {
-    marginTop: SPACING.sm,
-    fontSize: 12,
-    lineHeight: 18,
-    color: "rgba(255,255,255,0.84)",
-    fontFamily: FONT.regular,
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "rgba(255,255,255,0.85)",
   },
 
   groupInfoBox: {
     marginTop: SPACING.md,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 16,
     padding: SPACING.sm,
   },
 
@@ -1178,21 +1127,20 @@ const styles = StyleSheet.create({
 
   infoDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   infoLabel: {
-    fontFamily: FONT.regular,
     fontSize: 12,
-    color: "rgba(255,255,255,0.72)",
+    color: "rgba(255,255,255,0.65)",
   },
 
   infoValue: {
     flexShrink: 1,
     textAlign: "right",
-    fontFamily: FONT.bold,
     fontSize: 12,
     color: "#FFFFFF",
+    fontWeight: "700",
   },
 
   badgesRow: {
@@ -1206,7 +1154,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   badgeMember: {
@@ -1218,7 +1166,7 @@ const styles = StyleSheet.create({
   },
 
   badgeOpen: {
-    backgroundColor: "rgba(236,251,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   badgeReview: {
@@ -1226,75 +1174,80 @@ const styles = StyleSheet.create({
   },
 
   badgeClosed: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   badgeText: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
     color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
   },
 
   cardFooter: {
     marginTop: SPACING.md,
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.sm,
   },
 
   cardFooterLeft: {
     flex: 1,
-    paddingRight: 8,
+    paddingRight: 12,
   },
 
   cardFooterText: {
     color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    fontSize: 12,
+    fontWeight: "800",
+    fontSize: 14,
   },
 
   cardFooterSub: {
     marginTop: 4,
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FONT.regular,
+    color: "rgba(255,255,255,0.88)",
+    fontWeight: "700",
     fontSize: 11,
     lineHeight: 16,
   },
 
   footerButton: {
-    minWidth: 118,
+    minHeight: 44,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
   },
 
   footerButtonPrimary: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0C6A80",
+    borderColor: "#0C6A80",
+  },
+
+  footerButtonContribute: {
+    backgroundColor: "#197D71",
+    borderColor: "#197D71",
   },
 
   footerButtonSecondary: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.14)",
   },
 
   footerButtonDisabled: {
-    opacity: 0.65,
+    opacity: 0.6,
   },
 
   footerButtonText: {
-    fontFamily: FONT.bold,
     fontSize: 12,
+    fontWeight: "800",
   },
 
   footerButtonTextPrimary: {
-    color: "#0C6A80",
+    color: "#FFFFFF",
+  },
+
+  footerButtonTextContribute: {
+    color: "#FFFFFF",
   },
 
   footerButtonTextSecondary: {
@@ -1302,10 +1255,6 @@ const styles = StyleSheet.create({
   },
 
   emptyHolder: {
-    borderRadius: 24,
-    overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    marginBottom: SPACING.lg,
   },
 });

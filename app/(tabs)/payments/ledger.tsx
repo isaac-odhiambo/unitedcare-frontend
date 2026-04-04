@@ -1,4 +1,3 @@
-// app/(tabs)/payments/ledger.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -27,34 +26,89 @@ import { getMe, isAdminUser, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type LedgerUser = Partial<MeResponse> & Partial<SessionUser>;
+type SpaceTone = "savings" | "merry" | "groups" | "support";
+type NoticeTone = "primary" | "success" | "warning" | "info";
 
 const PAGE_BG = "#062C49";
-const BRAND = "#0C6A80";
 const WHITE = "#FFFFFF";
 const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
+const GLASS_CARD = "rgba(255,255,255,0.08)";
+const GLASS_BORDER = "rgba(255,255,255,0.10)";
 
-const TEXT_MAIN = "#0F172A";
-const TEXT_SOFT = "#334155";
-const TEXT_MUTED = "#64748B";
+function getSpaceTonePalette(tone: SpaceTone) {
+  const map = {
+    savings: {
+      card: "rgba(29, 196, 182, 0.22)",
+      border: "rgba(129, 244, 231, 0.15)",
+      iconBg: "rgba(220, 255, 250, 0.75)",
+      icon: "#0B6A80",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    merry: {
+      card: "rgba(98, 192, 98, 0.23)",
+      border: "rgba(194, 255, 188, 0.16)",
+      iconBg: "rgba(236, 255, 235, 0.76)",
+      icon: "#379B4A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    groups: {
+      card: "rgba(49, 180, 217, 0.22)",
+      border: "rgba(189, 244, 255, 0.15)",
+      iconBg: "rgba(236, 251, 255, 0.76)",
+      icon: "#0A6E8A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    support: {
+      card: "rgba(52, 198, 191, 0.22)",
+      border: "rgba(195, 255, 250, 0.16)",
+      iconBg: "rgba(236, 255, 252, 0.76)",
+      icon: "#148C84",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+  };
 
-const TINT_PRIMARY = "rgba(49, 180, 217, 0.22)";
-const TINT_PRIMARY_BORDER = "rgba(189, 244, 255, 0.15)";
+  return map[tone];
+}
 
-const TINT_SAVINGS = "rgba(29, 196, 182, 0.22)";
-const TINT_SAVINGS_BORDER = "rgba(129, 244, 231, 0.15)";
+function getOverviewTonePalette(tone: NoticeTone) {
+  const map = {
+    primary: {
+      iconBg: "rgba(12,106,128,0.12)",
+      icon: "#0C6A80",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
+      soft: "rgba(12,106,128,0.05)",
+    },
+    success: {
+      iconBg: "rgba(65,163,87,0.12)",
+      icon: "#379B4A",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
+      soft: "rgba(65,163,87,0.05)",
+    },
+    warning: {
+      iconBg: "rgba(24,140,132,0.12)",
+      icon: "#148C84",
+      buttonBg: "#FFFFFF",
+      buttonBorder: "rgba(12,106,128,0.20)",
+      soft: "rgba(20,140,132,0.05)",
+    },
+    info: {
+      iconBg: "rgba(12,106,128,0.12)",
+      icon: "#0C6A80",
+      buttonBg: "#FFFFFF",
+      buttonBorder: "rgba(12,106,128,0.20)",
+      soft: "rgba(12,106,128,0.05)",
+    },
+  };
 
-const TINT_MERRY = "rgba(98, 192, 98, 0.23)";
-const TINT_MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
-
-const TINT_SUPPORT = "rgba(52, 198, 191, 0.22)";
-const TINT_SUPPORT_BORDER = "rgba(195, 255, 250, 0.16)";
-
-const TINT_WARNING = "rgba(242, 140, 40, 0.16)";
-const TINT_WARNING_BORDER = "rgba(242, 140, 40, 0.24)";
-
-const TINT_SOFT = "rgba(255,255,255,0.10)";
-const TINT_SOFT_BORDER = "rgba(255,255,255,0.14)";
+  return map[tone];
+}
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -86,7 +140,7 @@ function categoryIcon(category?: string) {
   if (c === "LOANS") return "heart-outline";
   if (c === "MERRY") return "repeat-outline";
   if (c === "GROUP") return "people-outline";
-  if (c === "WITHDRAWAL") return "arrow-up-circle-outline";
+  if (c === "WITHDRAWAL") return "paper-plane-outline";
   if (c === "WITHDRAWAL_FEE") return "remove-circle-outline";
   if (c === "TRANSACTION_FEE") return "receipt-outline";
   return "list-outline";
@@ -99,9 +153,9 @@ function categoryLabel(category?: string) {
   if (c === "LOANS") return "Support";
   if (c === "MERRY") return "Merry";
   if (c === "GROUP") return "Group";
-  if (c === "WITHDRAWAL") return "Withdrawal";
-  if (c === "WITHDRAWAL_FEE") return "Service Fee";
-  if (c === "TRANSACTION_FEE") return "Service Fee";
+  if (c === "WITHDRAWAL") return "Request";
+  if (c === "WITHDRAWAL_FEE") return "Service fee";
+  if (c === "TRANSACTION_FEE") return "Service fee";
   return c || "Activity";
 }
 
@@ -113,66 +167,48 @@ function isFeeCategory(category?: string) {
 function getCategoryPalette(category?: string) {
   const c = String(category || "").toUpperCase();
 
-  if (c === "SAVINGS") {
-    return {
-      card: TINT_SAVINGS,
-      border: TINT_SAVINGS_BORDER,
-      iconBg: "rgba(220, 255, 250, 0.75)",
-      icon: "#0B6A80",
-    };
-  }
-
-  if (c === "MERRY") {
-    return {
-      card: TINT_MERRY,
-      border: TINT_MERRY_BORDER,
-      iconBg: "rgba(236, 255, 235, 0.76)",
-      icon: "#379B4A",
-    };
-  }
-
-  if (c === "LOANS" || c === "WITHDRAWAL") {
-    return {
-      card: TINT_SUPPORT,
-      border: TINT_SUPPORT_BORDER,
-      iconBg: "rgba(236, 255, 252, 0.76)",
-      icon: "#148C84",
-    };
-  }
+  if (c === "SAVINGS") return getSpaceTonePalette("savings");
+  if (c === "MERRY") return getSpaceTonePalette("merry");
+  if (c === "GROUP") return getSpaceTonePalette("groups");
+  if (c === "LOANS" || c === "WITHDRAWAL") return getSpaceTonePalette("support");
 
   if (c === "WITHDRAWAL_FEE" || c === "TRANSACTION_FEE") {
     return {
-      card: TINT_WARNING,
-      border: TINT_WARNING_BORDER,
+      card: "rgba(242, 140, 40, 0.16)",
+      border: "rgba(242, 140, 40, 0.24)",
       iconBg: "rgba(255, 244, 224, 0.85)",
       icon: "#9A5B00",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
     };
   }
 
-  return {
-    card: TINT_PRIMARY,
-    border: TINT_PRIMARY_BORDER,
-    iconBg: "rgba(236, 251, 255, 0.76)",
-    icon: "#0A6E8A",
-  };
+  return getSpaceTonePalette("groups");
 }
 
 function StatCard({
   label,
   value,
   valueColor,
-  tintStyle,
+  tone,
 }: {
   label: string;
   value: string;
   valueColor?: string;
-  tintStyle?: any;
+  tone: SpaceTone;
 }) {
+  const palette = getSpaceTonePalette(tone);
+
   return (
-    <View style={[styles.summaryCard, tintStyle]}>
-      <Text style={styles.summaryLabel}>{label}</Text>
+    <View
+      style={[
+        styles.statCard,
+        { backgroundColor: palette.card, borderColor: palette.border },
+      ]}
+    >
+      <Text style={styles.statLabel}>{label}</Text>
       <Text
-        style={[styles.summaryValue, valueColor ? { color: valueColor } : null]}
+        style={[styles.statValue, valueColor ? { color: valueColor } : null]}
         numberOfLines={1}
       >
         {value}
@@ -185,24 +221,69 @@ function QuickActionCard({
   title,
   icon,
   onPress,
-  tintStyle,
-  iconColor,
+  tone,
 }: {
   title: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  tintStyle?: any;
-  iconColor: string;
+  tone: SpaceTone;
 }) {
+  const palette = getSpaceTonePalette(tone);
+
   return (
-    <Card onPress={onPress} style={[styles.quickActionCard, tintStyle]}>
+    <Card
+      onPress={onPress}
+      style={[
+        styles.quickActionCard,
+        { backgroundColor: palette.card, borderColor: palette.border },
+      ]}
+    >
       <View style={styles.quickActionInner}>
-        <View style={[styles.quickActionIcon, { backgroundColor: `${iconColor}18` }]}>
-          <Ionicons name={icon} size={18} color={iconColor} />
+        <View
+          style={[
+            styles.quickActionIcon,
+            { backgroundColor: palette.iconBg },
+          ]}
+        >
+          <Ionicons name={icon} size={18} color={palette.icon} />
         </View>
         <Text style={styles.quickActionText}>{title}</Text>
       </View>
     </Card>
+  );
+}
+
+function NoticeBanner({
+  tone,
+  icon,
+  text,
+}: {
+  tone: NoticeTone;
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+}) {
+  const palette = getOverviewTonePalette(tone);
+
+  return (
+    <View style={styles.noticeCard}>
+      <View
+        style={[
+          styles.noticeGlow,
+          { backgroundColor: palette.soft },
+        ]}
+      />
+      <View style={styles.noticeRow}>
+        <View
+          style={[
+            styles.noticeIconWrap,
+            { backgroundColor: palette.iconBg },
+          ]}
+        >
+          <Ionicons name={icon} size={18} color={palette.icon} />
+        </View>
+        <Text style={styles.noticeText}>{text}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -263,10 +344,10 @@ function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
           <Ionicons
             name="information-circle-outline"
             size={14}
-            color="#9A5B00"
+            color="#F4C46A"
           />
           <Text style={styles.feeNoteText}>
-            This row shows a service fee applied during payment processing.
+            This line shows a small service fee linked to this activity.
           </Text>
         </View>
       ) : null}
@@ -383,7 +464,7 @@ export default function LedgerScreen() {
       <View style={styles.page}>
         <EmptyState
           title="Not signed in"
-          subtitle="Please login to access your community activity."
+          subtitle="Please log in to open your community space."
           actionLabel="Go to Login"
           onAction={() => router.replace(ROUTES.auth.login)}
         />
@@ -411,23 +492,31 @@ export default function LedgerScreen() {
       <View style={styles.backgroundGlowOne} />
       <View style={styles.backgroundGlowTwo} />
 
-      <View style={styles.heroCard}>
+      <View
+        style={[
+          styles.heroCard,
+          {
+            backgroundColor: getSpaceTonePalette("groups").card,
+            borderColor: getSpaceTonePalette("groups").border,
+          },
+        ]}
+      >
         <View style={styles.heroGlowOne} />
         <View style={styles.heroGlowTwo} />
 
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.hEyebrow}>COMMUNITY ACTIVITY</Text>
-            <Text style={styles.hTitle}>Activity Ledger</Text>
+            <Text style={styles.hEyebrow}>COMMUNITY SPACE</Text>
+            <Text style={styles.hTitle}>Shared Activity</Text>
             <Text style={styles.hSub}>
-              Contributions, withdrawals, service fees and activity entries •{" "}
+              Follow your contributions, requests, service fees, and other shared updates •{" "}
               {isAdmin ? "Admin" : "Member"}
             </Text>
           </View>
 
           <TouchableOpacity
             activeOpacity={0.92}
-            onPress={() => router.back()}
+            onPress={() => router.replace(ROUTES.tabs.payments)}
             style={styles.backBtn}
           >
             <Ionicons
@@ -440,7 +529,7 @@ export default function LedgerScreen() {
 
         <View style={styles.heroFooter}>
           <View style={styles.heroPill}>
-            <Text style={styles.heroPillText}>{stats.count} entries</Text>
+            <Text style={styles.heroPillText}>{stats.count} updates</Text>
           </View>
           <View style={styles.heroPill}>
             <Text style={styles.heroPillText}>
@@ -451,24 +540,26 @@ export default function LedgerScreen() {
       </View>
 
       {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+        <View style={styles.errorCard}>
+          <View style={styles.errorIcon}>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFD4D4" />
+          </View>
           <Text style={styles.errorText}>{error}</Text>
-        </Card>
+        </View>
       ) : null}
 
       <View style={styles.summaryGrid}>
         <StatCard
-          label="Added in"
+          label="Added"
           value={formatKes(stats.credits)}
           valueColor={COLORS.success}
-          tintStyle={styles.summarySavings}
+          tone="savings"
         />
         <StatCard
-          label="Moved out"
+          label="Shared out"
           value={formatKes(stats.debits)}
           valueColor={COLORS.danger}
-          tintStyle={styles.summarySupport}
+          tone="support"
         />
       </View>
 
@@ -476,41 +567,47 @@ export default function LedgerScreen() {
         <StatCard
           label="Service fees"
           value={formatKes(stats.fees)}
-          valueColor="#9A5B00"
-          tintStyle={styles.summaryWarning}
+          valueColor="#F4C46A"
+          tone="merry"
         />
         <StatCard
-          label="Entries"
+          label="Updates"
           value={String(stats.count)}
-          tintStyle={styles.summaryPrimary}
+          tone="groups"
         />
       </View>
 
       <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <QuickActionCard
-          title="Add Contribution"
+          title="Add contribution"
           icon="arrow-down-circle-outline"
           onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
-          tintStyle={styles.summarySavings}
-          iconColor="#0B6A80"
+          tone="savings"
         />
 
         <QuickActionCard
-          title="Withdraw"
-          icon="arrow-up-circle-outline"
+          title="Send request"
+          icon="paper-plane-outline"
           onPress={() => router.push(ROUTES.tabs.paymentsRequestWithdrawal)}
-          tintStyle={styles.summarySupport}
-          iconColor="#148C84"
+          tone="support"
         />
       </View>
 
-      <Section title="Activity Entries">
+      {!ledger.length && !error ? (
+        <NoticeBanner
+          tone="info"
+          icon="information-circle-outline"
+          text="Your contributions, requests, and service fees will appear here."
+        />
+      ) : null}
+
+      <Section title="Recent updates">
         {ledger.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
-            title="No activity entries"
-            subtitle="Contributions, withdrawals and service fees will appear here."
-            actionLabel="Add Contribution"
+            title="No activity yet"
+            subtitle="When you support the community or send a request, it will appear here."
+            actionLabel="Add contribution"
             onAction={() => router.push(ROUTES.tabs.paymentsDeposit)}
           />
         ) : (
@@ -600,13 +697,11 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: TINT_SOFT,
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: TINT_SOFT_BORDER,
     ...SHADOW.strong,
   },
 
@@ -702,6 +797,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(239,68,68,0.18)",
   },
 
+  errorIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+
   errorText: {
     flex: 1,
     fontSize: 12,
@@ -710,12 +814,54 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
+  noticeCard: {
+    position: "relative",
+    overflow: "hidden",
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+    borderRadius: RADIUS.xl,
+    backgroundColor: GLASS_CARD,
+  },
+
+  noticeGlow: {
+    position: "absolute",
+    right: -18,
+    top: -12,
+    width: 90,
+    height: 90,
+    borderRadius: 999,
+  },
+
+  noticeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  noticeIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  noticeText: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontFamily: FONT.medium,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
   summaryGrid: {
     flexDirection: "row",
     gap: SPACING.sm as any,
   },
 
-  summaryCard: {
+  statCard: {
     flex: 1,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
@@ -723,37 +869,17 @@ const styles = StyleSheet.create({
     ...SHADOW.card,
   },
 
-  summarySavings: {
-    backgroundColor: TINT_SAVINGS,
-    borderColor: TINT_SAVINGS_BORDER,
-  },
-
-  summarySupport: {
-    backgroundColor: TINT_SUPPORT,
-    borderColor: TINT_SUPPORT_BORDER,
-  },
-
-  summaryWarning: {
-    backgroundColor: TINT_WARNING,
-    borderColor: TINT_WARNING_BORDER,
-  },
-
-  summaryPrimary: {
-    backgroundColor: TINT_PRIMARY,
-    borderColor: TINT_PRIMARY_BORDER,
-  },
-
-  summaryLabel: {
+  statLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
   },
 
-  summaryValue: {
+  statValue: {
     marginTop: 8,
     fontFamily: FONT.bold,
     fontSize: 16,
-    color: TEXT_MAIN,
+    color: WHITE,
   },
 
   quickActionCard: {
@@ -781,7 +907,7 @@ const styles = StyleSheet.create({
 
   quickActionText: {
     flex: 1,
-    color: TEXT_MAIN,
+    color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 13,
   },
@@ -810,14 +936,14 @@ const styles = StyleSheet.create({
   entryTitle: {
     fontFamily: FONT.bold,
     fontSize: 13,
-    color: TEXT_MAIN,
+    color: WHITE,
   },
 
   entryMeta: {
     marginTop: 6,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: TEXT_SOFT,
+    color: TEXT_ON_DARK_SOFT,
   },
 
   entryAmount: {
@@ -829,7 +955,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
     borderTopWidth: 1,
-    borderTopColor: "rgba(154,91,0,0.16)",
+    borderTopColor: "rgba(244,196,106,0.18)",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -839,6 +965,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: "#9A5B00",
+    color: "#F4C46A",
   },
 });

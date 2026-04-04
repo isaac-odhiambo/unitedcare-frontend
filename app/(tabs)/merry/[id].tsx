@@ -198,9 +198,22 @@ function InfoStrip({
 
 export default function MerryDetailScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id?: string; includeNext?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    includeNext?: string;
+    returnTo?: string;
+  }>();
   const merryId = Number(params.id);
   const initialIncludeNext = toBool(params.includeNext, false);
+
+  const backToMerryIndex = useCallback(() => {
+    const target =
+      typeof params.returnTo === "string" && params.returnTo.trim()
+        ? params.returnTo
+        : ROUTES.tabs.merry;
+
+    router.replace(target as any);
+  }, [params.returnTo]);
 
   const [user, setUser] = useState<MerryUser | null>(null);
   const [detail, setDetail] = useState<MerryDetail | null>(null);
@@ -419,6 +432,9 @@ export default function MerryDetailScreen() {
         merryId: String(merryId),
         amount: String(payableAfterWallet || rawSelectedAmount || 0),
         editableAmount: "true",
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
       },
     });
   }, [merryId, payableAfterWallet, rawSelectedAmount]);
@@ -426,7 +442,7 @@ export default function MerryDetailScreen() {
   const openMembers = useCallback(() => {
     router.push({
       pathname: "/(tabs)/merry/members" as any,
-      params: { merryId: String(merryId) },
+      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
     });
   }, [merryId]);
 
@@ -448,7 +464,7 @@ export default function MerryDetailScreen() {
             title="Invalid merry"
             subtitle="The selected merry could not be opened."
             actionLabel="Go Back"
-            onAction={() => router.back()}
+            onAction={backToMerryIndex}
           />
         </View>
       </SafeAreaView>
@@ -534,7 +550,7 @@ export default function MerryDetailScreen() {
 
             <TouchableOpacity
               activeOpacity={0.92}
-              onPress={() => router.back()}
+              onPress={backToMerryIndex}
               style={styles.iconBtn}
             >
               <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
@@ -627,7 +643,7 @@ export default function MerryDetailScreen() {
                   onPress={() =>
                     router.push({
                       pathname: "/(tabs)/merry/contribute" as any,
-                      params: { merryId: String(merryId) },
+                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
                     })
                   }
                   disabled={!canPaySelected}
@@ -640,7 +656,7 @@ export default function MerryDetailScreen() {
                   onPress={() =>
                     router.push({
                       pathname: ROUTES.tabs.merryPayments as any,
-                      params: { merryId: String(merryId) },
+                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
                     })
                   }
                   style={{ flex: 1 }}
@@ -853,7 +869,7 @@ export default function MerryDetailScreen() {
                   onPress={() =>
                     router.push({
                       pathname: "/(tabs)/merry/join-request" as any,
-                      params: { merryId: String(merryId) },
+                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
                     })
                   }
                 />
@@ -863,7 +879,7 @@ export default function MerryDetailScreen() {
                   onPress={() =>
                     router.push({
                       pathname: "/(tabs)/merry/join-request" as any,
-                      params: { merryId: String(merryId) },
+                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
                     })
                   }
                 />
@@ -972,7 +988,7 @@ export default function MerryDetailScreen() {
           <Button
             title="Back to Merry"
             variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.merry as any)}
+            onPress={backToMerryIndex}
             style={{ flex: 1 }}
           />
         </View>

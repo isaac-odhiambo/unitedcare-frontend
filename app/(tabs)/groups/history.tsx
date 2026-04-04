@@ -226,7 +226,7 @@ export default function GroupHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#8CF0C7" />
+        <ActivityIndicator color="#062C49" />
       </View>
     );
   }

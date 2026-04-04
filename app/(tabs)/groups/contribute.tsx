@@ -49,7 +49,13 @@ export default function GroupContributeScreen() {
         params: {
           title: "Community Contribution",
           purpose: "GROUP_CONTRIBUTION",
-          reference: `grp${groupId}`,
+
+          // In-app STK can continue using group-based reference.
+          reference: `GROUP${groupId}`,
+
+          // Manual paybill can use this in deposit.tsx to build UN2, WF15, etc.
+          groupCode: (loadedGroup as any)?.payment_code || "",
+
           narration,
           amount: suggestedAmount,
           groupId: String(groupId),
@@ -89,10 +95,6 @@ export default function GroupContributeScreen() {
     }, [loadAndContinue])
   );
 
-  /* ----------------------------------------------- */
-  /* LOADING UI (COMMUNITY STYLE) */
-  /* ----------------------------------------------- */
-
   if (loading) {
     return (
       <View style={styles.page}>
@@ -113,10 +115,6 @@ export default function GroupContributeScreen() {
     );
   }
 
-  /* ----------------------------------------------- */
-  /* FAILED UI */
-  /* ----------------------------------------------- */
-
   if (failed) {
     return (
       <View style={styles.page}>
@@ -136,10 +134,6 @@ export default function GroupContributeScreen() {
     );
   }
 
-  /* ----------------------------------------------- */
-  /* FALLBACK (VERY SHORT — USER WON'T SEE LONG) */
-  /* ----------------------------------------------- */
-
   return (
     <View style={styles.page}>
       <View style={styles.card}>
@@ -155,10 +149,6 @@ export default function GroupContributeScreen() {
     </View>
   );
 }
-
-/* ----------------------------------------------- */
-/* STYLES (DASHBOARD MATCH) */
-/* ----------------------------------------------- */
 
 const styles = StyleSheet.create({
   page: {

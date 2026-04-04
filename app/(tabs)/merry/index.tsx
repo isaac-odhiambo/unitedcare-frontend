@@ -360,24 +360,53 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
 
   const onPrimaryPress = () => {
     if (item.is_member) {
-      router.push(`/(tabs)/merry/${item.id}` as any);
+      router.push({
+        pathname: "/(tabs)/merry/[id]" as any,
+        params: {
+          id: String(item.id),
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
+      });
       return;
     }
 
     if (requestStatus === "PENDING") {
-      router.push(`/(tabs)/merry/${item.id}` as any);
+      router.push({
+        pathname: "/(tabs)/merry/[id]" as any,
+        params: {
+          id: String(item.id),
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
+      });
       return;
     }
 
     if (canJoinDirect) {
       router.push({
         pathname: "/(tabs)/merry/join-request" as any,
-        params: { merryId: String(item.id) },
+        params: {
+          merryId: String(item.id),
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
       });
       return;
     }
 
-    router.push(`/(tabs)/merry/${item.id}` as any);
+    router.push({
+        pathname: "/(tabs)/merry/[id]" as any,
+        params: {
+          id: String(item.id),
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
+      });
   };
 
   return (
@@ -437,7 +466,17 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
         <Button
           title="View"
           variant="secondary"
-          onPress={() => router.push(`/(tabs)/merry/${item.id}` as any)}
+          onPress={() =>
+            router.push({
+              pathname: "/(tabs)/merry/[id]" as any,
+              params: {
+                id: String(item.id),
+                returnTo: ROUTES.tabs.merry,
+                backLabel: "Back to Merry",
+                landingTitle: "Merry",
+              },
+            })
+          }
           style={{ flex: 1 }}
         />
       </View>
@@ -630,15 +669,43 @@ export default function MerryIndexScreen() {
 
   const merryReference = useMemo(() => getMerryReferenceByUser(user), [user]);
 
+  const goToMerryLanding = useCallback(() => {
+    router.replace(ROUTES.tabs.merry as any);
+  }, []);
+
+  const openContributionRecords = useCallback(() => {
+    router.push({
+      pathname: "/(tabs)/merry/contributions" as any,
+      params: {
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
+    });
+  }, []);
+
   const onContribute = useCallback((item: MerryDueSummaryItem) => {
     router.push({
       pathname: "/(tabs)/merry/contribute" as any,
-      params: { merryId: String(item.merry_id) },
+      params: {
+        merryId: String(item.merry_id),
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
     });
   }, []);
 
   const openMerryDetail = useCallback((item: MerryDueSummaryItem) => {
-    router.push(`/(tabs)/merry/${item.merry_id}` as any);
+    router.push({
+      pathname: "/(tabs)/merry/[id]" as any,
+      params: {
+        id: String(item.merry_id),
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
+    });
   }, []);
 
   const openHeroContribution = useCallback(() => {
@@ -655,7 +722,12 @@ export default function MerryIndexScreen() {
 
     router.push({
       pathname: "/(tabs)/merry/contribute" as any,
-      params: { merryId: String(payable.merry_id) },
+      params: {
+        merryId: String(payable.merry_id),
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
     });
   }, [summary]);
 
@@ -768,7 +840,7 @@ export default function MerryIndexScreen() {
 
             <TouchableOpacity
               activeOpacity={0.92}
-              onPress={() => router.back()}
+              onPress={goToMerryLanding}
               style={styles.iconBtn}
             >
               <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
@@ -885,7 +957,7 @@ export default function MerryIndexScreen() {
             title="Your Contributions"
             subtitle="See how you’ve been supporting your merry"
             icon="time-outline"
-            onPress={() => router.push("/(tabs)/merry/history" as any)}
+            onPress={openContributionRecords}
           />
 
           {firstJoinableMerry ? (
@@ -896,7 +968,12 @@ export default function MerryIndexScreen() {
               onPress={() =>
                 router.push({
                   pathname: "/(tabs)/merry/join-request" as any,
-                  params: { merryId: String(firstJoinableMerry.id) },
+                  params: {
+                    merryId: String(firstJoinableMerry.id),
+                    returnTo: ROUTES.tabs.merry,
+                    backLabel: "Back to Merry",
+                    landingTitle: "Merry",
+                  },
                 })
               }
             />
@@ -1078,8 +1155,8 @@ const styles = StyleSheet.create({
   },
 
   iconBtn: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -1140,16 +1217,16 @@ const styles = StyleSheet.create({
 
   pageTitle: {
     color: WHITE,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 26,
+    lineHeight: 32,
     fontFamily: FONT.bold,
   },
 
   pageSubtitle: {
     color: TEXT_ON_DARK,
     marginTop: 8,
-    lineHeight: 20,
-    fontSize: 13,
+    lineHeight: 21,
+    fontSize: 14,
     fontFamily: FONT.regular,
   },
 
@@ -1162,8 +1239,9 @@ const styles = StyleSheet.create({
 
   summaryTile: {
     flexGrow: 1,
-    minWidth: 94,
-    padding: SPACING.sm,
+    minWidth: 98,
+    minHeight: 112,
+    padding: 14,
     borderRadius: RADIUS.lg,
     backgroundColor: SOFT_WHITE_2,
     borderWidth: 1,
@@ -1185,16 +1263,16 @@ const styles = StyleSheet.create({
   },
 
   summaryLabel: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.regular,
     color: "rgba(255,255,255,0.80)",
   },
 
   summaryValue: {
-    marginTop: 4,
-    fontSize: 16,
-    lineHeight: 20,
+    marginTop: 6,
+    fontSize: 18,
+    lineHeight: 22,
     fontFamily: FONT.bold,
     color: WHITE,
   },
@@ -1208,8 +1286,8 @@ const styles = StyleSheet.create({
 
   summaryActionText: {
     color: WHITE,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.medium,
   },
 
@@ -1240,15 +1318,15 @@ const styles = StyleSheet.create({
   },
 
   heroTitle: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 26,
     fontFamily: FONT.bold,
     color: WHITE,
   },
 
   heroSubtitle: {
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: FONT.regular,
     color: TEXT_ON_DARK,
     marginTop: 4,
@@ -1256,7 +1334,8 @@ const styles = StyleSheet.create({
 
   heroAmountBox: {
     marginTop: SPACING.md,
-    padding: SPACING.md,
+    padding: 16,
+    minHeight: 92,
     borderRadius: RADIUS.lg,
     backgroundColor: SOFT_WHITE,
   },
@@ -1269,8 +1348,8 @@ const styles = StyleSheet.create({
   },
 
   heroAmountLabel: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 17,
     fontFamily: FONT.regular,
     color: TEXT_ON_DARK,
   },
@@ -1283,14 +1362,14 @@ const styles = StyleSheet.create({
 
   heroAmountActionText: {
     color: WHITE,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.medium,
   },
 
   heroAmountValue: {
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 26,
+    lineHeight: 32,
     marginTop: 4,
     fontFamily: FONT.bold,
     color: WHITE,
@@ -1322,16 +1401,16 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     color: WHITE,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 18,
+    lineHeight: 24,
     fontFamily: FONT.bold,
     marginBottom: 6,
   },
 
   sectionSubtitle: {
     color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     fontFamily: FONT.regular,
     marginBottom: SPACING.sm,
   },
@@ -1400,15 +1479,15 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     color: WHITE,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 22,
     fontFamily: FONT.bold,
   },
 
   cardSubtitle: {
     color: TEXT_ON_DARK,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     marginTop: 4,
     fontFamily: FONT.medium,
   },
@@ -1466,17 +1545,17 @@ const styles = StyleSheet.create({
   },
 
   amountPanelValue: {
-    marginTop: 4,
+    marginTop: 6,
     color: WHITE,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 30,
     fontFamily: FONT.bold,
   },
 
   helperText: {
     color: TEXT_ON_DARK,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 19,
     marginTop: SPACING.sm,
     fontFamily: FONT.regular,
   },
@@ -1484,11 +1563,13 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: "row",
     marginTop: SPACING.md,
+    alignItems: "stretch",
   },
 
   inlineAction: {
     marginTop: SPACING.sm,
     paddingTop: SPACING.sm,
+    paddingBottom: 4,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.08)",
     flexDirection: "row",
@@ -1498,8 +1579,8 @@ const styles = StyleSheet.create({
 
   inlineActionText: {
     color: WHITE,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: FONT.medium,
   },
 
@@ -1541,8 +1622,8 @@ const styles = StyleSheet.create({
   },
 
   metaPillText: {
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 15,
     fontFamily: FONT.medium,
     color: WHITE,
   },
@@ -1553,7 +1634,7 @@ const styles = StyleSheet.create({
   },
 
   quickLinkCard: {
-    minHeight: 68,
+    minHeight: 74,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: RADIUS.xl,
@@ -1584,16 +1665,16 @@ const styles = StyleSheet.create({
   },
 
   quickLinkTitle: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 20,
     fontFamily: FONT.bold,
     color: WHITE,
   },
 
   quickLinkSubtitle: {
-    marginTop: 3,
-    fontSize: 12,
-    lineHeight: 17,
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: FONT.regular,
     color: TEXT_ON_DARK_SOFT,
   },

@@ -22,23 +22,100 @@ import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getApiErrorMessage, money, requestWithdrawal } from "@/services/payments";
 import { canWithdraw, getMe, isKycComplete } from "@/services/profile";
 import { getSessionUser, saveSessionUser } from "@/services/session";
 
 const SOURCES = ["SAVINGS", "MERRY", "GROUP"] as const;
 type WithdrawalSource = (typeof SOURCES)[number];
+type SpaceTone = "savings" | "merry" | "groups" | "support";
+type NoticeTone = "primary" | "success" | "warning" | "info";
 
 const NOTIFICATIONS_ROUTE =
   (ROUTES as any)?.tabs?.notifications || "/(tabs)/notifications";
 
-const BRAND = "#0C6A80";
-const BRAND_DARK = "#09586A";
-const BRAND_SOFT = "rgba(12,106,128,0.10)";
-const BRAND_SOFT_2 = "rgba(12,106,128,0.16)";
-const SURFACE_TINT = "#F4FBFC";
-const CARD_TINT = "#EEF7F9";
+const PAGE_BG = "#062C49";
+const WHITE = "#FFFFFF";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
+const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.76)";
+const TEXT_ON_DARK_MUTED = "rgba(255,255,255,0.58)";
+const INPUT_BG = "#0A2234";
+const INPUT_BORDER = "rgba(255,255,255,0.12)";
+
+function getSpaceTonePalette(tone: SpaceTone) {
+  const map = {
+    savings: {
+      card: "rgba(29, 196, 182, 0.22)",
+      border: "rgba(129, 244, 231, 0.15)",
+      iconBg: "rgba(220, 255, 250, 0.75)",
+      icon: "#0B6A80",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    merry: {
+      card: "rgba(98, 192, 98, 0.23)",
+      border: "rgba(194, 255, 188, 0.16)",
+      iconBg: "rgba(236, 255, 235, 0.76)",
+      icon: "#379B4A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    groups: {
+      card: "rgba(49, 180, 217, 0.22)",
+      border: "rgba(189, 244, 255, 0.15)",
+      iconBg: "rgba(236, 251, 255, 0.76)",
+      icon: "#0A6E8A",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+    support: {
+      card: "rgba(52, 198, 191, 0.22)",
+      border: "rgba(195, 255, 250, 0.16)",
+      iconBg: "rgba(236, 255, 252, 0.76)",
+      icon: "#148C84",
+      chip: "rgba(255,255,255,0.14)",
+      amountBg: "rgba(255,255,255,0.10)",
+    },
+  };
+
+  return map[tone];
+}
+
+function getOverviewTonePalette(tone: NoticeTone) {
+  const map = {
+    primary: {
+      iconBg: "rgba(12,106,128,0.12)",
+      icon: "#0C6A80",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
+      soft: "rgba(12,106,128,0.05)",
+    },
+    success: {
+      iconBg: "rgba(65,163,87,0.12)",
+      icon: "#379B4A",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
+      soft: "rgba(65,163,87,0.05)",
+    },
+    warning: {
+      iconBg: "rgba(24,140,132,0.12)",
+      icon: "#148C84",
+      buttonBg: "#FFFFFF",
+      buttonBorder: "rgba(12,106,128,0.20)",
+      soft: "rgba(20,140,132,0.05)",
+    },
+    info: {
+      iconBg: "rgba(12,106,128,0.12)",
+      icon: "#0C6A80",
+      buttonBg: "#FFFFFF",
+      buttonBorder: "rgba(12,106,128,0.20)",
+      soft: "rgba(12,106,128,0.05)",
+    },
+  };
+
+  return map[tone];
+}
 
 function normalizePhone(v: string) {
   const val = String(v || "").trim().replace(/\s+/g, "").replace(/-/g, "");
@@ -77,6 +154,19 @@ function sourceLabel(value: WithdrawalSource) {
   }
 }
 
+function sourceTone(value: WithdrawalSource): SpaceTone {
+  switch (value) {
+    case "SAVINGS":
+      return "savings";
+    case "MERRY":
+      return "merry";
+    case "GROUP":
+      return "groups";
+    default:
+      return "support";
+  }
+}
+
 function QuickLink({
   title,
   icon,
@@ -89,23 +179,54 @@ function QuickLink({
   return (
     <TouchableOpacity activeOpacity={0.88} onPress={onPress} style={styles.quickLink}>
       <View style={styles.quickLinkIcon}>
-        <Ionicons name={icon} size={18} color={BRAND} />
+        <Ionicons name={icon} size={18} color="#0A6E8A" />
       </View>
       <Text style={styles.quickLinkText}>{title}</Text>
-      <Ionicons name="chevron-forward" size={18} color={stylesVars.textMuted} />
+      <Ionicons name="chevron-forward" size={18} color={TEXT_ON_DARK_MUTED} />
     </TouchableOpacity>
   );
 }
 
-const stylesVars = {
-  text: COLORS.text || "#16313A",
-  textMuted: COLORS.textMuted || "#6B7C85",
-  border: COLORS.border || "rgba(12,106,128,0.12)",
-  white: COLORS.white || "#FFFFFF",
-  warning: COLORS.warning || "#D97706",
-  danger: COLORS.danger || "#DC2626",
-  background: COLORS.background || "#F3F8FA",
-};
+function NoticeBanner({
+  tone,
+  icon,
+  title,
+  text,
+  buttonLabel,
+  onPress,
+}: {
+  tone: NoticeTone;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  text: string;
+  buttonLabel?: string;
+  onPress?: () => void;
+}) {
+  const palette = getOverviewTonePalette(tone);
+
+  return (
+    <View style={styles.noticeCard}>
+      <View style={[styles.noticeGlow, { backgroundColor: palette.soft }]} />
+
+      <View style={styles.noticeTop}>
+        <View style={[styles.noticeIconWrap, { backgroundColor: palette.iconBg }]}>
+          <Ionicons name={icon} size={18} color={palette.icon} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.noticeTitle}>{title}</Text>
+          <Text style={styles.noticeText}>{text}</Text>
+        </View>
+      </View>
+
+      {buttonLabel && onPress ? (
+        <View style={{ marginTop: SPACING.sm }}>
+          <Button title={buttonLabel} variant="secondary" onPress={onPress} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 export default function RequestWithdrawalScreen() {
   const insets = useSafeAreaInsets();
@@ -141,6 +262,7 @@ export default function RequestWithdrawalScreen() {
   const amountOk = useMemo(() => Number(amount) > 0, [amount]);
 
   const canSubmit = allowed && phoneOk && amountOk && !submitting;
+  const activePalette = getSpaceTonePalette(sourceTone(source));
 
   const load = useCallback(async () => {
     try {
@@ -189,12 +311,12 @@ export default function RequestWithdrawalScreen() {
     }
 
     if (!phoneOk) {
-      Alert.alert("Withdraw", "Enter a valid Kenyan phone number.");
+      Alert.alert("Community wallet", "Enter a valid Kenyan phone number.");
       return;
     }
 
     if (!amountOk) {
-      Alert.alert("Withdraw", "Enter a valid amount.");
+      Alert.alert("Community wallet", "Enter a valid amount.");
       return;
     }
 
@@ -210,10 +332,10 @@ export default function RequestWithdrawalScreen() {
 
       Alert.alert(
         "Request sent",
-        res?.message || "Your withdrawal request has been submitted successfully.",
+        res?.message || "Your request has been shared successfully.",
         [
           {
-            text: "Open Withdrawals",
+            text: "Open My Requests",
             onPress: () =>
               router.replace(ROUTES.tabs.paymentsWithdrawals as any),
           },
@@ -222,7 +344,7 @@ export default function RequestWithdrawalScreen() {
     } catch (e: any) {
       const message = getApiErrorMessage(e);
       setError(message);
-      Alert.alert("Withdraw", message);
+      Alert.alert("Community wallet", message);
     } finally {
       setSubmitting(false);
     }
@@ -232,7 +354,7 @@ export default function RequestWithdrawalScreen() {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.center}>
-          <ActivityIndicator color={BRAND} />
+          <ActivityIndicator color="#8CF0C7" />
         </View>
       </SafeAreaView>
     );
@@ -243,9 +365,9 @@ export default function RequestWithdrawalScreen() {
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.page}>
           <EmptyState
-            title="Not signed in"
-            subtitle="Login to continue"
-            actionLabel="Login"
+            title="You are not signed in"
+            subtitle="Log in to continue"
+            actionLabel="Log in"
             onAction={() => router.replace(ROUTES.auth.login as any)}
           />
         </View>
@@ -262,39 +384,76 @@ export default function RequestWithdrawalScreen() {
           { paddingBottom: Math.max(insets.bottom + 24, 32) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BRAND} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
         }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.hero}>
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
+        <View
+          style={[
+            styles.hero,
+            {
+              backgroundColor: activePalette.card,
+              borderColor: activePalette.border,
+            },
+          ]}
+        >
+          <View style={styles.heroGlowOne} />
+          <View style={styles.heroGlowTwo} />
+
           <View style={styles.heroTopRow}>
             <TouchableOpacity
               activeOpacity={0.88}
-              onPress={() => router.back()}
+              onPress={() => router.replace(ROUTES.tabs.payments as any)}
               style={styles.backBtn}
             >
-              <Ionicons name="arrow-back-outline" size={18} color={BRAND} />
+              <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
             </TouchableOpacity>
 
-            <View style={styles.heroBadge}>
-              <Ionicons name="wallet-outline" size={14} color={BRAND} />
-              <Text style={styles.heroBadgeText}>Money out</Text>
+            <View
+              style={[
+                styles.heroBadge,
+                { backgroundColor: activePalette.chip },
+              ]}
+            >
+              <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.heroBadgeText}>Community wallet</Text>
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Withdraw from your community wallet</Text>
+          <Text style={styles.heroTitle}>Request money from your community wallet</Text>
           <Text style={styles.heroSubtitle}>
-            Send your request from savings, merry, or group funds in one simple step.
+            Choose where the money should come from, add your phone number, and enter the amount.
           </Text>
 
           <View style={styles.heroSummaryRow}>
-            <View style={styles.heroSummaryPill}>
-              <Text style={styles.heroSummaryLabel}>Source</Text>
+            <View
+              style={[
+                styles.heroSummaryPill,
+                { backgroundColor: activePalette.chip },
+              ]}
+            >
+              <Text style={styles.heroSummaryLabel}>From</Text>
               <Text style={styles.heroSummaryValue}>{sourceLabel(source)}</Text>
             </View>
 
-            <View style={styles.heroSummaryPill}>
+            <View
+              style={[
+                styles.heroSummaryPill,
+                { backgroundColor: activePalette.chip },
+              ]}
+            >
               <Text style={styles.heroSummaryLabel}>Amount</Text>
               <Text style={styles.heroSummaryValue}>{money(Number(amount || 0))}</Text>
             </View>
@@ -302,50 +461,58 @@ export default function RequestWithdrawalScreen() {
         </View>
 
         {!kycComplete ? (
-          <Card style={styles.warningCard}>
-            <View style={styles.warningRow}>
-              <View style={styles.warningIconWrap}>
-                <Ionicons
-                  name="shield-checkmark-outline"
-                  size={18}
-                  color={stylesVars.warning}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.warningTitle}>KYC needed</Text>
-                <Text style={styles.warningText}>
-                  Complete your KYC details before requesting a withdrawal.
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ marginTop: SPACING.sm }}>
-              <Button
-                title="Open KYC"
-                variant="secondary"
-                onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-              />
-            </View>
-          </Card>
+          <NoticeBanner
+            tone="warning"
+            icon="shield-checkmark-outline"
+            title="Complete your profile"
+            text="Please finish your KYC details before sending this request."
+            buttonLabel="Open KYC"
+            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
+          />
         ) : null}
 
         {error ? (
-          <Card style={styles.errorCard}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={stylesVars.danger}
-            />
+          <View style={styles.errorCard}>
+            <View style={styles.errorIconWrap}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color="#FFD7D7"
+              />
+            </View>
             <Text style={styles.errorText}>{error}</Text>
-          </Card>
+          </View>
         ) : null}
 
-        <Card style={styles.card}>
+        <Card
+          style={[
+            styles.card,
+            {
+              backgroundColor: getSpaceTonePalette("support").card,
+              borderColor: getSpaceTonePalette("support").border,
+            },
+          ]}
+        >
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Request details</Text>
-            <Text style={styles.sectionSubtitle}>
-              Fill in your phone, amount, and the wallet to use.
-            </Text>
+            <View
+              style={[
+                styles.sectionIconWrap,
+                { backgroundColor: getSpaceTonePalette("support").iconBg },
+              ]}
+            >
+              <Ionicons
+                name="cash-outline"
+                size={18}
+                color={getSpaceTonePalette("support").icon}
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Your request</Text>
+              <Text style={styles.sectionSubtitle}>
+                Add your phone number, amount, and where you want the money to come from.
+              </Text>
+            </View>
           </View>
 
           <Text style={styles.label}>Phone number</Text>
@@ -354,7 +521,7 @@ export default function RequestWithdrawalScreen() {
             onChangeText={(v) => setPhone(normalizePhone(v))}
             style={styles.input}
             placeholder="07XXXXXXXX"
-            placeholderTextColor={stylesVars.textMuted}
+            placeholderTextColor="rgba(255,255,255,0.45)"
             keyboardType="phone-pad"
             autoCapitalize="none"
           />
@@ -365,22 +532,35 @@ export default function RequestWithdrawalScreen() {
             onChangeText={(v) => setAmount(sanitizeAmount(v))}
             style={styles.input}
             placeholder="e.g. 1500"
-            placeholderTextColor={stylesVars.textMuted}
+            placeholderTextColor="rgba(255,255,255,0.45)"
             keyboardType="numeric"
           />
 
-          <Text style={styles.label}>Choose source</Text>
+          <Text style={styles.label}>Choose where it comes from</Text>
           <View style={styles.sources}>
             {SOURCES.map((s) => {
               const active = source === s;
+              const palette = getSpaceTonePalette(sourceTone(s));
+
               return (
                 <TouchableOpacity
                   key={s}
                   onPress={() => setSource(s)}
                   activeOpacity={0.88}
-                  style={[styles.source, active && styles.sourceActive]}
+                  style={[
+                    styles.source,
+                    {
+                      backgroundColor: active ? palette.card : INPUT_BG,
+                      borderColor: active ? palette.border : INPUT_BORDER,
+                    },
+                  ]}
                 >
-                  <Text style={[styles.sourceText, active && styles.sourceTextActive]}>
+                  <Text
+                    style={[
+                      styles.sourceText,
+                      active && styles.sourceTextActive,
+                    ]}
+                  >
                     {sourceLabel(s)}
                   </Text>
                 </TouchableOpacity>
@@ -390,16 +570,16 @@ export default function RequestWithdrawalScreen() {
 
           <View style={styles.amountBox}>
             <View style={styles.amountTopRow}>
-              <Text style={styles.amountLabel}>Request summary</Text>
+              <Text style={styles.amountLabel}>Summary</Text>
               <View style={styles.amountChip}>
-                <Ionicons name="checkmark-circle-outline" size={14} color={BRAND} />
+                <Ionicons name="checkmark-circle-outline" size={14} color="#0A6E8A" />
                 <Text style={styles.amountChipText}>Ready</Text>
               </View>
             </View>
 
             <Text style={styles.amountValue}>{money(Number(amount || 0))}</Text>
             <Text style={styles.amountMeta}>
-              Source: {sourceLabel(source)} • Phone: {normalizedPhone || "Not added"}
+              From: {sourceLabel(source)} • Phone: {normalizedPhone || "Not added"}
             </Text>
           </View>
 
@@ -408,8 +588,8 @@ export default function RequestWithdrawalScreen() {
               !allowed
                 ? "Complete KYC"
                 : submitting
-                ? "Submitting..."
-                : "Request Withdrawal"
+                ? "Sending request..."
+                : "Send Request"
             }
             onPress={
               !allowed
@@ -421,7 +601,7 @@ export default function RequestWithdrawalScreen() {
               <Ionicons
                 name={!allowed ? "shield-outline" : "send-outline"}
                 size={18}
-                color={stylesVars.white}
+                color={WHITE}
               />
             }
           />
@@ -429,7 +609,7 @@ export default function RequestWithdrawalScreen() {
 
         <View style={styles.linksWrap}>
           <QuickLink
-            title="My Withdrawals"
+            title="My Requests"
             icon="cash-outline"
             onPress={() => router.push(ROUTES.tabs.paymentsWithdrawals as any)}
           />
@@ -448,7 +628,7 @@ export default function RequestWithdrawalScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: SURFACE_TINT,
+    backgroundColor: PAGE_BG,
   },
 
   content: {
@@ -459,15 +639,86 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: SURFACE_TINT,
+    backgroundColor: PAGE_BG,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   hero: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: BRAND,
     marginBottom: SPACING.md,
+    borderWidth: 1,
+    overflow: "hidden",
     ...SHADOW.card,
+  },
+
+  heroGlowOne: {
+    position: "absolute",
+    right: -28,
+    top: -18,
+    width: 130,
+    height: 130,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  heroGlowTwo: {
+    position: "absolute",
+    left: -20,
+    bottom: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   heroTopRow: {
@@ -495,23 +746,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   heroBadgeText: {
     fontSize: 12,
     lineHeight: 16,
     fontFamily: FONT.medium,
-    color: stylesVars.white,
+    color: WHITE,
   },
 
   heroTitle: {
     fontSize: 24,
     lineHeight: 30,
     fontFamily: FONT.bold,
-    color: stylesVars.white,
+    color: WHITE,
   },
 
   heroSubtitle: {
@@ -519,7 +769,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     fontFamily: FONT.regular,
-    color: "rgba(255,255,255,0.88)",
+    color: TEXT_ON_DARK,
   },
 
   heroSummaryRow: {
@@ -532,16 +782,15 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: SPACING.sm,
     borderRadius: RADIUS.lg,
-    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   heroSummaryLabel: {
     fontSize: 11,
     lineHeight: 15,
     fontFamily: FONT.regular,
-    color: "rgba(255,255,255,0.76)",
+    color: TEXT_ON_DARK_SOFT,
   },
 
   heroSummaryValue: {
@@ -549,27 +798,115 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     fontFamily: FONT.bold,
-    color: stylesVars.white,
+    color: WHITE,
+  },
+
+  noticeCard: {
+    position: "relative",
+    overflow: "hidden",
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: RADIUS.xl,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  noticeGlow: {
+    position: "absolute",
+    right: -18,
+    top: -12,
+    width: 90,
+    height: 90,
+    borderRadius: 999,
+  },
+
+  noticeTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  noticeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  noticeTitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.bold,
+    color: WHITE,
+    marginBottom: 2,
+  },
+
+  noticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_ON_DARK,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.20)",
+    backgroundColor: "rgba(239,68,68,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+
+  errorIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: WHITE,
   },
 
   card: {
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
-    backgroundColor: CARD_TINT,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.10)",
     ...SHADOW.card,
   },
 
   sectionHeader: {
     marginBottom: SPACING.md,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+  },
+
+  sectionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   sectionTitle: {
     fontSize: 18,
     lineHeight: 24,
     fontFamily: FONT.bold,
-    color: BRAND_DARK,
+    color: WHITE,
   },
 
   sectionSubtitle: {
@@ -577,26 +914,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: stylesVars.textMuted,
+    color: TEXT_ON_DARK_SOFT,
   },
 
   label: {
     marginBottom: 8,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.medium,
-    color: BRAND_DARK,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.bold,
+    color: WHITE,
   },
 
   input: {
-    height: 50,
+    height: 56,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.14)",
+    borderColor: INPUT_BORDER,
     borderRadius: RADIUS.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     marginBottom: SPACING.md,
-    backgroundColor: "rgba(255,255,255,0.72)",
-    color: stylesVars.text,
+    backgroundColor: INPUT_BG,
+    color: WHITE,
+    fontFamily: FONT.bold,
+    fontSize: 16,
   },
 
   sources: {
@@ -607,30 +946,23 @@ const styles = StyleSheet.create({
 
   source: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.14)",
     borderRadius: RADIUS.md,
-    backgroundColor: "rgba(255,255,255,0.58)",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  sourceActive: {
-    backgroundColor: BRAND,
-    borderColor: BRAND,
   },
 
   sourceText: {
     fontSize: 12,
     lineHeight: 16,
     fontFamily: FONT.medium,
-    color: BRAND_DARK,
+    color: TEXT_ON_DARK,
   },
 
   sourceTextActive: {
-    color: stylesVars.white,
+    color: WHITE,
     fontFamily: FONT.bold,
   },
 
@@ -638,9 +970,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: BRAND_SOFT,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: BRAND_SOFT_2,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   amountTopRow: {
@@ -654,7 +986,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontFamily: FONT.regular,
-    color: stylesVars.textMuted,
+    color: TEXT_ON_DARK_SOFT,
   },
 
   amountChip: {
@@ -664,22 +996,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.65)",
+    backgroundColor: "rgba(255,255,255,0.80)",
   },
 
   amountChipText: {
     fontSize: 11,
     lineHeight: 14,
     fontFamily: FONT.medium,
-    color: BRAND,
+    color: "#0A6E8A",
   },
 
   amountValue: {
     marginTop: 2,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 22,
+    lineHeight: 28,
     fontFamily: FONT.bold,
-    color: BRAND_DARK,
+    color: WHITE,
   },
 
   amountMeta: {
@@ -687,67 +1019,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    color: stylesVars.textMuted,
-  },
-
-  warningCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.20)",
-    backgroundColor: "#FFF7E8",
-  },
-
-  warningRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  warningIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(245,158,11,0.10)",
-  },
-
-  warningTitle: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: FONT.bold,
-    color: "#8A5A00",
-    marginBottom: 2,
-  },
-
-  warningText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    color: stylesVars.text,
-  },
-
-  errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.18)",
-    backgroundColor: "#FFF1F2",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-  },
-
-  errorText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    color: stylesVars.danger,
+    color: TEXT_ON_DARK_SOFT,
   },
 
   linksWrap: {
@@ -760,9 +1032,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
     borderRadius: RADIUS.lg,
-    backgroundColor: CARD_TINT,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.10)",
+    borderColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
@@ -775,7 +1047,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: BRAND_SOFT,
+    backgroundColor: "rgba(236,251,255,0.86)",
   },
 
   quickLinkText: {
@@ -783,6 +1055,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     fontFamily: FONT.medium,
-    color: BRAND_DARK,
+    color: WHITE,
   },
 });

@@ -3,93 +3,142 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { ROUTES } from "@/constants/routes";
+import { COLORS, FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
-import { getApiErrorMessage, getLoanDetail, Loan } from "@/services/loans";
+import {
+  fmtKES,
+  getApiErrorMessage,
+  getMerryDetail,
+  getMerryPaymentBreakdown,
+  MerryDetail,
+  MerryPaymentBreakdownResponse,
+} from "@/services/merry";
+import { getMe, MeResponse } from "@/services/profile";
+import { getSessionUser, SessionUser } from "@/services/session";
 
-function toNum(value?: string | number | null) {
+type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
+
+const PAGE_BG = "#062C49";
+const BRAND = "#0C6A80";
+const WHITE = "#FFFFFF";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
+const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
+const TEXT_ON_DARK_MUTED = "rgba(255,255,255,0.62)";
+const SOFT_WHITE = "rgba(255,255,255,0.10)";
+const CARD_BG = "rgba(255,255,255,0.08)";
+const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
+const CARD_BORDER = "rgba(255,255,255,0.10)";
+const MERRY_CARD = "rgba(98, 192, 98, 0.23)";
+const MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
+const MERRY_ICON_BG = "rgba(236, 255, 235, 0.76)";
+const MERRY_ICON = "#379B4A";
+const SUCCESS_BG = "rgba(34,197,94,0.16)";
+const SUCCESS_TEXT = "#DCFCE7";
+const WARNING_BG = "rgba(245,158,11,0.18)";
+const WARNING_TEXT = "#FEF3C7";
+const DANGER_BG = "rgba(239,68,68,0.18)";
+const DANGER_TEXT = "#FECACA";
+const ACCENT_BG = "rgba(12,106,128,0.20)";
+const ACCENT_TEXT = "#D9F3F9";
+
+function toBool(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(v)) return true;
+    if (["0", "false", "no", "off"].includes(v)) return false;
+  }
+  return fallback;
+}
+
+function hasAmount(value?: string | number | null) {
   const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) && n > 0;
 }
 
-function formatKes(value?: string | number | null) {
-  const n = toNum(value);
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
-
-function statusText(status?: string | null) {
-  if (!status) return "—";
-  return String(status).replaceAll("_", " ");
-}
-
-function getStatusColors(status?: string | null) {
-  const s = String(status || "").toUpperCase();
-
-  if (s === "APPROVED") {
-    return {
-      bg: "rgba(140,240,199,0.18)",
-      color: "#FFFFFF",
-    };
+function statusTone(bucket?: string) {
+  switch ((bucket || "").toLowerCase()) {
+    case "overdue":
+      return { bg: DANGER_BG, text: DANGER_TEXT, label: "Overdue" };
+    case "current":
+      return { bg: WARNING_BG, text: WARNING_TEXT, label: "Due now" };
+    case "future":
+      return { bg: SUCCESS_BG, text: SUCCESS_TEXT, label: "Next due" };
+    default:
+      return { bg: ACCENT_BG, text: ACCENT_TEXT, label: "Open" };
   }
-
-  if (s === "COMPLETED") {
-    return {
-      bg: "rgba(236,251,255,0.18)",
-      color: "#FFFFFF",
-    };
-  }
-
-  if (s === "REJECTED" || s === "DEFAULTED" || s === "CANCELLED") {
-    return {
-      bg: "rgba(220,53,69,0.18)",
-      color: "#FFFFFF",
-    };
-  }
-
-  if (s === "UNDER_REVIEW") {
-    return {
-      bg: "rgba(12,192,183,0.18)",
-      color: "#FFFFFF",
-    };
-  }
-
-  return {
-    bg: "rgba(255,204,102,0.18)",
-    color: "#FFFFFF",
-  };
 }
 
-function StatusPill({ status }: { status: string }) {
-  const { bg, color } = getStatusColors(status);
+function SummaryBox({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <Card style={styles.summaryBox} variant="default">
+      <View style={styles.summaryIconWrap}>
+        <Ionicons name={icon} size={18} color={BRAND} />
+      </View>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </Card>
+  );
+}
+
+function DueLine({
+  item,
+}: {
+  item: MerryPaymentBreakdownResponse["items"][number];
+}) {
+  const tone = statusTone(item.bucket);
 
   return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      <Text style={[styles.pillText, { color }]}>
-        {String(statusText(status)).toUpperCase()}
-      </Text>
+    <View style={styles.dueLine}>
+      <View style={{ flex: 1, paddingRight: SPACING.sm }}>
+        <View style={styles.dueLineTop}>
+          <Text style={styles.dueLineTitle}>
+            Seat {item.seat_no} • Slot {item.slot_no}
+          </Text>
+          <View style={[styles.dueBadge, { backgroundColor: tone.bg }]}>
+            <Text style={[styles.dueBadgeText, { color: tone.text }]}>
+              {tone.label}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.dueLineSub}>
+          {item.period_key}
+          {item.due_date ? ` • ${item.due_date}` : ""}
+        </Text>
+      </View>
+
+      <Text style={styles.dueLineAmount}>{fmtKES(item.outstanding)}</Text>
     </View>
   );
 }
@@ -97,66 +146,190 @@ function StatusPill({ status }: { status: string }) {
 function DetailRow({
   label,
   value,
-  strong,
 }: {
   label: string;
-  value: string;
-  strong?: boolean;
+  value: string | number | null | undefined;
 }) {
   return (
     <View style={styles.kvRow}>
-      <Text style={[styles.kLabel, strong && styles.kLabelStrong]}>{label}</Text>
-      <Text style={[styles.kValue, strong && styles.kValueStrong]}>{value}</Text>
+      <Text style={styles.kvLabel}>{label}</Text>
+      <Text style={styles.kvValue}>
+        {value == null || value === "" ? "—" : String(value)}
+      </Text>
     </View>
   );
 }
 
-function productLabel(loan?: Loan | null) {
-  if (!loan) return "—";
-  return loan.product_detail?.name || loan.product_name || "Support plan";
+function InfoStrip({
+  icon,
+  text,
+  tone = "neutral",
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  tone?: "neutral" | "warning" | "danger";
+}) {
+  const toneStyle =
+    tone === "warning"
+      ? {
+          bg: WARNING_BG,
+          border: "rgba(245,158,11,0.22)",
+          color: WARNING_TEXT,
+        }
+      : tone === "danger"
+        ? {
+            bg: DANGER_BG,
+            border: "rgba(239,68,68,0.22)",
+            color: DANGER_TEXT,
+          }
+        : { bg: SOFT_WHITE, border: CARD_BORDER, color: TEXT_ON_DARK };
+
+  return (
+    <View
+      style={[
+        styles.infoStrip,
+        { backgroundColor: toneStyle.bg, borderColor: toneStyle.border },
+      ]}
+    >
+      <Ionicons name={icon} size={16} color={toneStyle.color} />
+      <Text style={[styles.infoStripText, { color: toneStyle.color }]}>
+        {text}
+      </Text>
+    </View>
+  );
 }
 
-export default function LoanDetailScreen() {
-  const params = useLocalSearchParams();
+export default function MerryDetailScreen() {
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{
+    id?: string;
+    includeNext?: string;
+    returnTo?: string;
+  }>();
+  const merryId = Number(params.id);
+  const initialIncludeNext = toBool(params.includeNext, false);
 
-  const rawId =
-    (Array.isArray(params.id) ? params.id[0] : params.id) ||
-    (Array.isArray(params.loan) ? params.loan[0] : params.loan) ||
-    (Array.isArray(params.loanId) ? params.loanId[0] : params.loanId) ||
-    (Array.isArray(params.Id) ? params.Id[0] : params.Id);
+  const backToMerryIndex = useCallback(() => {
+    const target =
+      typeof params.returnTo === "string" && params.returnTo.trim()
+        ? params.returnTo
+        : ROUTES.tabs.merry;
 
-  const loanId = rawId ? Number(rawId) : NaN;
+    router.replace(target as any);
+  }, [params.returnTo]);
 
-  const [loan, setLoan] = useState<Loan | null>(null);
+  const [user, setUser] = useState<MerryUser | null>(null);
+  const [detail, setDetail] = useState<MerryDetail | null>(null);
+  const [breakdown, setBreakdown] =
+    useState<MerryPaymentBreakdownResponse | null>(null);
+
+  const [includeNext, setIncludeNext] = useState(initialIncludeNext);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
   const [error, setError] = useState("");
+  const [breakdownError, setBreakdownError] = useState("");
 
-  const load = useCallback(async () => {
-    if (!Number.isFinite(loanId) || loanId <= 0) {
-      setLoan(null);
-      setError("This support record could not be opened.");
-      return;
-    }
+  const loadBreakdown = useCallback(
+    async (includeNextValue: boolean, showPop = false) => {
+      if (!merryId || Number.isNaN(merryId)) return;
 
-    try {
-      setError("");
-      const data = await getLoanDetail(loanId);
-      setLoan(data);
-    } catch (e: any) {
-      setLoan(null);
-      setError(getApiErrorMessage(e) || getErrorMessage(e));
-    }
-  }, [loanId]);
+      try {
+        setBreakdownError("");
+        const breakdownRes = await getMerryPaymentBreakdown(
+          merryId,
+          includeNextValue
+        );
+        setBreakdown(breakdownRes);
+      } catch (e: any) {
+        const message =
+          getApiErrorMessage(e) ||
+          getErrorMessage(e) ||
+          "Unable to load contribution summary.";
+        setBreakdown(null);
+        setBreakdownError(message);
+
+        if (showPop) {
+          Alert.alert("Contribution summary unavailable", message);
+        }
+      }
+    },
+    [merryId]
+  );
+
+  const load = useCallback(
+    async (includeNextValue = includeNext, showBreakdownPop = false) => {
+      if (!merryId || Number.isNaN(merryId)) {
+        setError("Invalid merry selected.");
+        setDetail(null);
+        setBreakdown(null);
+        setBreakdownError("");
+        return;
+      }
+
+      try {
+        setError("");
+
+        const [sessionRes, meRes, detailRes] = await Promise.allSettled([
+          getSessionUser(),
+          getMe(),
+          getMerryDetail(merryId),
+        ]);
+
+        const sessionUser =
+          sessionRes.status === "fulfilled" ? sessionRes.value : null;
+        const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+
+        const mergedUser: MerryUser | null =
+          sessionUser || meUser
+            ? {
+                ...(sessionUser ?? {}),
+                ...(meUser ?? {}),
+              }
+            : null;
+
+        setUser(mergedUser);
+
+        if (detailRes.status !== "fulfilled") {
+          setDetail(null);
+          setBreakdown(null);
+          setBreakdownError("");
+          setError(
+            getApiErrorMessage(detailRes.reason) ||
+              getErrorMessage(detailRes.reason)
+          );
+          return;
+        }
+
+        const nextDetail = detailRes.value;
+        setDetail(nextDetail);
+
+        if (nextDetail.is_member) {
+          await loadBreakdown(includeNextValue, showBreakdownPop);
+        } else {
+          setBreakdown(null);
+          setBreakdownError("");
+        }
+      } catch (e: any) {
+        setDetail(null);
+        setBreakdown(null);
+        setBreakdownError("");
+        setError(getApiErrorMessage(e) || getErrorMessage(e));
+      }
+    },
+    [includeNext, loadBreakdown, merryId]
+  );
 
   const initialLoad = useCallback(async () => {
     try {
       setLoading(true);
-      await load();
+      await load(initialIncludeNext, false);
+      setIncludeNext(initialIncludeNext);
     } finally {
       setLoading(false);
     }
-  }, [load]);
+  }, [initialIncludeNext, load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -165,69 +338,120 @@ export default function LoanDetailScreen() {
   );
 
   const onRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      setRefreshing(true);
-      await load();
+      await load(includeNext, false);
     } finally {
       setRefreshing(false);
     }
-  }, [load]);
+  }, [includeNext, load]);
 
-  const isPendingOrReview = useMemo(() => {
-    const s = String(loan?.status || "").toUpperCase();
-    return s === "PENDING" || s === "UNDER_REVIEW";
-  }, [loan?.status]);
+  const onToggleIncludeNext = useCallback(
+    async (value: boolean) => {
+      if (!detail?.is_member) return;
+      try {
+        setToggling(true);
+        setIncludeNext(value);
+        await load(value, true);
+      } finally {
+        setToggling(false);
+      }
+    },
+    [detail?.is_member, load]
+  );
 
-  const canPay = useMemo(() => {
-    const s = String(loan?.status || "").toUpperCase();
-    const outstanding = toNum(loan?.outstanding_balance);
-    return (s === "APPROVED" || s === "DEFAULTED") && outstanding > 0;
-  }, [loan?.status, loan?.outstanding_balance]);
+  const isMember = !!detail?.is_member;
+  const joinStatus = detail?.my_join_request?.status || null;
+  const canRequestJoin = !!detail?.can_request_join && !isMember;
 
-  const guarantors = useMemo(() => {
-    return Array.isArray(loan?.guarantors) ? loan.guarantors : [];
-  }, [loan]);
+  const rawSelectedAmount = useMemo(() => {
+    if (!isMember || !breakdown) return "0.00";
+    return includeNext ? breakdown.pay_with_next : breakdown.required_now;
+  }, [breakdown, includeNext, isMember]);
 
-  const installments = useMemo(() => {
-    return Array.isArray(loan?.installments) ? loan.installments : [];
-  }, [loan]);
+  const walletBalance = useMemo(() => {
+    if (!isMember) return 0;
+    return Number(breakdown?.wallet_balance || 0) || 0;
+  }, [breakdown, isMember]);
 
-  const payments = useMemo(() => {
-    return Array.isArray(loan?.payments) ? loan.payments : [];
-  }, [loan]);
+  const payableAfterWallet = useMemo(() => {
+    if (!isMember || !breakdown) return 0;
 
-  const summaryCards = useMemo(() => {
-    return [
-      {
-        label: "Support received",
-        value: formatKes(loan?.principal),
-        tone: "primary",
-        icon: "heart-outline" as const,
+    if (!includeNext && breakdown.net_required_now_after_wallet != null) {
+      const n = Number(breakdown.net_required_now_after_wallet || 0);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    }
+
+    const gross = Number(rawSelectedAmount || 0);
+    if (!Number.isFinite(gross)) return 0;
+    return Math.max(0, gross - walletBalance);
+  }, [breakdown, includeNext, isMember, rawSelectedAmount, walletBalance]);
+
+  const canPaySelected = isMember && hasAmount(payableAfterWallet);
+  const groupedPreview = useMemo(
+    () => (isMember && breakdown?.items?.length ? breakdown.items : []),
+    [breakdown, isMember]
+  );
+
+  const title = breakdown?.merry_name || detail?.name || "Merry";
+  const seatCount = isMember
+    ? breakdown?.seat_count ?? 0
+    : detail?.members_count ?? 0;
+  const seatNumbers = isMember ? breakdown?.seat_numbers ?? [] : [];
+  const contributionPerSeat =
+    breakdown?.amount_per_seat || detail?.contribution_amount || "0.00";
+
+  const availableSeatText = useMemo(() => {
+    if (detail?.available_seats == null) return "Unlimited seats";
+    return `${detail.available_seats} seat${detail.available_seats === 1 ? "" : "s"} left`;
+  }, [detail?.available_seats]);
+
+  const membershipLabel = useMemo(() => {
+    if (isMember) return "Joined";
+    if (joinStatus === "PENDING") return "Join request pending";
+    if (joinStatus === "APPROVED") return "Approved";
+    if (joinStatus === "REJECTED") return "Request rejected";
+    if (canRequestJoin) return "Open to join";
+    if (detail?.is_open === false) return "Closed";
+    return "View merry";
+  }, [canRequestJoin, detail?.is_open, isMember, joinStatus]);
+
+  const nextContributionDate = useMemo(() => {
+    if (breakdown?.next_due_date) return breakdown.next_due_date;
+
+    const nextFutureItem = breakdown?.items?.find(
+      (item) =>
+        String(item.bucket || "").toLowerCase() === "future" && item.due_date
+    );
+
+    return nextFutureItem?.due_date || null;
+  }, [breakdown]);
+
+  const goToDeposit = useCallback(() => {
+    router.replace({
+      pathname: "/(tabs)/payments/deposit" as any,
+      params: {
+        source: "merry",
+        merryId: String(merryId),
+        amount: String(payableAfterWallet || rawSelectedAmount || 0),
+        editableAmount: "true",
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
       },
-      {
-        label: "Balance remaining",
-        value: formatKes(loan?.outstanding_balance ?? "0.00"),
-        tone: "warning",
-        icon: "wallet-outline" as const,
-      },
-      {
-        label: "Amount settled",
-        value: formatKes(loan?.total_paid ?? "0.00"),
-        tone: "success",
-        icon: "checkmark-circle-outline" as const,
-      },
-      {
-        label: "Repayment period",
-        value: loan?.term_weeks ? `${loan.term_weeks} week(s)` : "—",
-        tone: "info",
-        icon: "calendar-outline" as const,
-      },
-    ];
-  }, [loan]);
+    });
+  }, [merryId, payableAfterWallet, rawSelectedAmount]);
 
-  if (loading && !loan) {
+  const openMembers = useCallback(() => {
+    router.push({
+      pathname: "/(tabs)/merry/members" as any,
+      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
+    });
+  }, [merryId]);
+
+  if (loading) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
           <ActivityIndicator color="#8CF0C7" />
         </View>
@@ -235,32 +459,59 @@ export default function LoanDetailScreen() {
     );
   }
 
-  if (!Number.isFinite(loanId) || loanId <= 0) {
+  if (!merryId || Number.isNaN(merryId)) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.center}>
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
           <EmptyState
-            title="Support not available"
-            subtitle="This support record could not be opened."
+            title="Invalid merry"
+            subtitle="The selected merry could not be opened."
+            actionLabel="Go Back"
+            onAction={backToMerryIndex}
           />
-          <View style={{ marginTop: SPACING.md }}>
-            <Button
-              title="Back to Support"
-              variant="secondary"
-              onPress={() => router.replace("/(tabs)/loans" as any)}
-            />
-          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to continue."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Unable to load merry"
+            subtitle={error || "This merry could not be loaded."}
+            actionLabel="Back to Merry"
+            onAction={() => router.replace(ROUTES.tabs.merry as any)}
+          />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        style={styles.page}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -269,6 +520,7 @@ export default function LoanDetailScreen() {
             colors={["#8CF0C7", "#0CC0B7"]}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.backgroundBlobTop} />
         <View style={styles.backgroundBlobMiddle} />
@@ -276,791 +528,1057 @@ export default function LoanDetailScreen() {
         <View style={styles.backgroundGlowOne} />
         <View style={styles.backgroundGlowTwo} />
 
-        <View style={styles.hero}>
-          <View style={styles.heroGlowPrimary} />
-          <View style={styles.heroGlowAccent} />
-          <View style={styles.heroGlowThird} />
-
-          <View style={styles.heroTop}>
-            <View style={styles.heroIcon}>
-              <Ionicons name="heart-outline" size={20} color={COLORS.white} />
+        <View style={styles.topBar}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBadge}>
+              <Ionicons name="people-outline" size={22} color={WHITE} />
             </View>
 
-            {loan?.status ? <StatusPill status={loan.status} /> : null}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandWordmark}>
+                MERRY <Text style={styles.brandWordmarkGreen}>DETAILS</Text>
+              </Text>
+              <Text style={styles.brandSub}>Community sharing space</Text>
+            </View>
           </View>
 
-          <Text style={styles.heroTag}>SUPPORT DETAILS</Text>
-          <Text style={styles.heroTitle}>Support details</Text>
-          <Text style={styles.heroSub}>
-            {productLabel(loan)}
-            {loan?.term_weeks ? ` • ${loan.term_weeks} week(s)` : ""}
-          </Text>
+          <View style={styles.topBarActions}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={onRefresh}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="refresh-outline" size={18} color={WHITE} />
+            </TouchableOpacity>
 
-          <View style={styles.heroMiniWrap}>
-            <View style={styles.heroMiniPill}>
-              <Ionicons name="wallet-outline" size={14} color={COLORS.white} />
-              <Text style={styles.heroMiniText}>
-                {formatKes(loan?.outstanding_balance ?? "0.00")} remaining
-              </Text>
-            </View>
-
-            <View style={styles.heroMiniPill}>
-              <Ionicons
-                name="checkmark-done-outline"
-                size={14}
-                color={COLORS.white}
-              />
-              <Text style={styles.heroMiniText}>
-                {formatKes(loan?.total_paid ?? "0.00")} settled
-              </Text>
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={backToMerryIndex}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
+            </TouchableOpacity>
           </View>
         </View>
 
+        <Card style={styles.heroCard} variant="default">
+          <View style={styles.spaceGlowTop} />
+          <View style={styles.spaceGlowBottom} />
+
+          <View style={styles.heroTop}>
+            <View style={{ flex: 1, paddingRight: SPACING.md }}>
+              <Text style={styles.heroEyebrow}>MERRY</Text>
+              <Text style={styles.heroTitle}>{title}</Text>
+              <Text style={styles.heroSubtitle}>
+                {isMember
+                  ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
+                      seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
+                    }`
+                  : `${detail.payouts_per_period || 1} slot${
+                      Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
+                    } per period • ${availableSeatText}`}
+              </Text>
+            </View>
+
+            <View style={styles.heroIconWrap}>
+              <Ionicons name="people-outline" size={22} color={MERRY_ICON} />
+            </View>
+          </View>
+
+          {isMember ? (
+            <>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={canPaySelected ? goToDeposit : undefined}
+                style={[
+                  styles.heroAmountBox,
+                  canPaySelected ? styles.heroAmountBoxPressable : null,
+                ]}
+              >
+                <View style={styles.heroAmountTopRow}>
+                  <Text style={styles.heroAmountLabel}>
+                    {includeNext ? "Selected total" : "Required now"}
+                  </Text>
+
+                  {canPaySelected ? (
+                    <View style={styles.heroAmountAction}>
+                      <Text style={styles.heroAmountActionText}>Deposit</Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color={WHITE}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text style={styles.heroAmountValue}>
+                  {fmtKES(rawSelectedAmount)}
+                </Text>
+
+                <View style={styles.heroMiniDivider} />
+
+                <View style={styles.heroMiniRow}>
+                  <Text style={styles.heroMiniLabel}>Wallet balance</Text>
+                  <Text style={styles.heroMiniValue}>
+                    {fmtKES(walletBalance)}
+                  </Text>
+                </View>
+
+                <View style={styles.heroMiniRow}>
+                  <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
+                    You pay now
+                  </Text>
+                  <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
+                    {fmtKES(payableAfterWallet)}
+                  </Text>
+                </View>
+
+                {nextContributionDate ? (
+                  <View style={styles.heroMiniRow}>
+                    <Text style={styles.heroMiniLabel}>Next contribution</Text>
+                    <Text style={styles.heroMiniValue}>
+                      {nextContributionDate}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+
+              <View style={styles.heroActions}>
+                <Button
+                  title={canPaySelected ? "Contribute" : "Covered by Wallet"}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/contribute" as any,
+                      params: {
+                        merryId: String(merryId),
+                        returnTo: ROUTES.tabs.merry,
+                      },
+                    })
+                  }
+                  disabled={!canPaySelected}
+                  style={{ flex: 1 }}
+                />
+                <View style={{ width: SPACING.sm }} />
+                <Button
+                  title="Contribution Records"
+                  variant="secondary"
+                  onPress={() =>
+                    router.push({
+                      pathname: ROUTES.tabs.merryPayments as any,
+                      params: {
+                        merryId: String(merryId),
+                        returnTo: ROUTES.tabs.merry,
+                      },
+                    })
+                  }
+                  style={{ flex: 1 }}
+                />
+              </View>
+
+              <View style={{ height: SPACING.sm }} />
+
+              <Button
+                title="View Members"
+                variant="secondary"
+                onPress={openMembers}
+              />
+            </>
+          ) : (
+            <View style={styles.heroAmountBox}>
+              <Text style={styles.heroAmountLabel}>Contribution per seat</Text>
+              <Text style={styles.heroAmountValue}>
+                {fmtKES(detail.contribution_amount)}
+              </Text>
+
+              <View style={styles.heroMiniDivider} />
+
+              <View style={styles.heroMiniRow}>
+                <Text style={styles.heroMiniLabel}>Status</Text>
+                <Text style={styles.heroMiniValue}>{membershipLabel}</Text>
+              </View>
+
+              <View style={styles.heroMiniRow}>
+                <Text style={styles.heroMiniLabel}>Cycle duration</Text>
+                <Text style={styles.heroMiniValue}>
+                  {detail.cycle_duration_weeks} week
+                  {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
+                </Text>
+              </View>
+
+              <View style={{ marginTop: SPACING.md }}>
+                <Button
+                  title="View Members"
+                  variant="secondary"
+                  onPress={openMembers}
+                />
+              </View>
+            </View>
+          )}
+        </Card>
+
         {error ? (
-          <Card style={styles.errorCard}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color="#FFFFFF"
-            />
+          <Card style={styles.errorCard} variant="default">
+            <Ionicons name="alert-circle-outline" size={18} color="#FECACA" />
             <Text style={styles.errorText}>{error}</Text>
           </Card>
         ) : null}
 
-        <Section title="Overview">
-          <View style={styles.summaryGrid}>
-            {summaryCards.map((item, index) => {
-              const toneStyle =
-                item.tone === "success"
-                  ? styles.summaryCardSuccess
-                  : item.tone === "warning"
-                  ? styles.summaryCardWarning
-                  : item.tone === "info"
-                  ? styles.summaryCardInfo
-                  : styles.summaryCardPrimary;
-
-              const valueToneStyle =
-                item.tone === "success"
-                  ? styles.summaryValueSuccess
-                  : item.tone === "warning"
-                  ? styles.summaryValueWarning
-                  : item.tone === "info"
-                  ? styles.summaryValueInfo
-                  : styles.summaryValuePrimary;
-
-              const iconBg =
-                item.tone === "success"
-                  ? "rgba(236,255,235,0.92)"
-                  : item.tone === "warning"
-                  ? "rgba(255,244,228,0.92)"
-                  : item.tone === "info"
-                  ? "rgba(236,251,255,0.92)"
-                  : "rgba(236,251,255,0.92)";
-
-              const iconColor =
-                item.tone === "success"
-                  ? COLORS.success
-                  : item.tone === "warning"
-                  ? COLORS.accent
-                  : item.tone === "info"
-                  ? COLORS.info
-                  : COLORS.primary;
-
-              return (
-                <Card
-                  key={`${item.label}-${index}`}
-                  style={[styles.summaryCard, toneStyle]}
-                >
-                  <View style={styles.summaryTopRow}>
-                    <View
-                      style={[
-                        styles.summaryIconWrap,
-                        { backgroundColor: iconBg },
-                      ]}
-                    >
-                      <Ionicons name={item.icon} size={16} color={iconColor} />
-                    </View>
-                  </View>
-
-                  <Text style={styles.summaryLabel}>{item.label}</Text>
-                  <Text style={[styles.summaryValue, valueToneStyle]}>
-                    {item.value}
-                  </Text>
-                </Card>
-              );
-            })}
+        {breakdownError && isMember ? (
+          <View style={{ marginBottom: SPACING.md }}>
+            <InfoStrip
+              icon="warning-outline"
+              text={`Contribution summary is not available right now. ${breakdownError}`}
+              tone="warning"
+            />
           </View>
-        </Section>
-
-        <Section title="Support information">
-          <Card style={styles.card}>
-            {!loan ? (
-              <EmptyState
-                title="Support not found"
-                subtitle="Please refresh and try again."
-              />
-            ) : (
-              <View style={styles.group}>
-                <DetailRow
-                  label="Total payable"
-                  value={
-                    toNum(loan.total_payable) > 0
-                      ? formatKes(loan.total_payable)
-                      : "Pending review"
-                  }
-                  strong
-                />
-                <DetailRow label="Status" value={statusText(loan.status)} />
-                <DetailRow label="Plan" value={productLabel(loan)} />
-                <DetailRow
-                  label="Created"
-                  value={formatDateTime(loan.created_at)}
-                />
-                <DetailRow
-                  label="Approved"
-                  value={formatDateTime(loan.approved_at)}
-                />
-                <DetailRow
-                  label="Rejected"
-                  value={formatDateTime(loan.rejected_at)}
-                />
-                <DetailRow
-                  label="Completed"
-                  value={formatDateTime(loan.completed_at)}
-                />
-              </View>
-            )}
-          </Card>
-        </Section>
-
-        <Section title="People supporting this request">
-          <Card style={styles.card}>
-            {!loan ? (
-              <Text style={styles.muted}>—</Text>
-            ) : guarantors.length === 0 ? (
-              <Text style={styles.muted}>No guarantors added yet.</Text>
-            ) : (
-              <View style={styles.group}>
-                {guarantors.map((g) => (
-                  <View key={g.id} style={styles.listRow}>
-                    <View style={styles.listIconWrap}>
-                      <Ionicons
-                        name={g.accepted ? "checkmark-circle" : "time-outline"}
-                        size={18}
-                        color={g.accepted ? COLORS.success : COLORS.accent}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={styles.listTitle}>
-                        {g.guarantor_detail?.full_name || "Community member"}
-                      </Text>
-                      <Text style={styles.listSub}>
-                        {g.accepted ? "Accepted" : "Pending response"}
-                      </Text>
-                    </View>
-
-                    <Text
-                      style={[
-                        styles.smallBadge,
-                        { color: g.accepted ? "#8CF0C7" : "#FFD166" },
-                      ]}
-                    >
-                      {g.accepted ? "ACCEPTED" : "PENDING"}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </Card>
-        </Section>
-
-        <Section title="Repayment schedule">
-          <Card style={styles.card}>
-            {!loan ? (
-              <Text style={styles.muted}>—</Text>
-            ) : installments.length === 0 ? (
-              <Text style={styles.muted}>
-                Repayment steps will appear after approval.
-              </Text>
-            ) : (
-              <View style={styles.group}>
-                {installments.map((inst) => (
-                  <View key={inst.id} style={styles.listRow}>
-                    <View style={styles.listIconWrap}>
-                      <Ionicons
-                        name={
-                          inst.is_paid
-                            ? "checkmark-done-circle"
-                            : "calendar-outline"
-                        }
-                        size={18}
-                        color={inst.is_paid ? COLORS.success : COLORS.primary}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={styles.listTitle}>
-                        Installment {inst.installment_no}
-                      </Text>
-                      <Text style={styles.listSub}>
-                        Due {formatDateTime(inst.due_date)}
-                      </Text>
-                    </View>
-
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={styles.listAmount}>
-                        {formatKes(inst.total_due)}
-                      </Text>
-                      <Text style={styles.listMeta}>
-                        {inst.is_paid ? "Paid" : "Pending"}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </Card>
-        </Section>
-
-        <Section title="Payments made">
-          <Card style={styles.card}>
-            {!loan ? (
-              <Text style={styles.muted}>—</Text>
-            ) : payments.length === 0 ? (
-              <Text style={styles.muted}>No payments recorded yet.</Text>
-            ) : (
-              <View style={styles.group}>
-                {payments.map((p) => (
-                  <View key={p.id} style={styles.listRow}>
-                    <View style={styles.listIconWrap}>
-                      <Ionicons
-                        name="cash-outline"
-                        size={18}
-                        color={COLORS.primary}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={styles.listTitle}>{formatKes(p.amount)}</Text>
-                      <Text style={styles.listSub}>
-                        {p.method}
-                        {p.reference ? ` • ${p.reference}` : ""}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.listMeta}>
-                      {formatDateTime(p.paid_at)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </Card>
-        </Section>
-
-        {loan?.member_note || loan?.admin_note ? (
-          <Section title="Notes">
-            <Card style={styles.card}>
-              <View style={styles.group}>
-                {loan.member_note ? (
-                  <View style={styles.noteBox}>
-                    <Text style={styles.noteTitle}>Your note</Text>
-                    <Text style={styles.noteText}>{loan.member_note}</Text>
-                  </View>
-                ) : null}
-
-                {loan.admin_note ? (
-                  <View style={styles.noteBox}>
-                    <Text style={styles.noteTitle}>Admin note</Text>
-                    <Text style={styles.noteText}>{loan.admin_note}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </Card>
-          </Section>
         ) : null}
 
-        <Section title="Actions">
-          <View style={{ gap: SPACING.sm }}>
-            <Button
-              title="Add guarantor"
-              variant="secondary"
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/loans/add-guarantor" as any,
-                  params: { loan: String(loanId) },
-                })
-              }
-              disabled={!isPendingOrReview}
-            />
+        {isMember ? (
+          <>
+            <Section title="Summary">
+              <View style={styles.summaryGrid}>
+                <SummaryBox
+                  label="Overdue"
+                  value={fmtKES(breakdown?.overdue)}
+                  icon="warning-outline"
+                />
+                <View style={{ width: SPACING.sm }} />
+                <SummaryBox
+                  label="Due now"
+                  value={fmtKES(breakdown?.current_due)}
+                  icon="calendar-outline"
+                />
+              </View>
 
-            <Button
-              title="Make payment"
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/loans/pay" as any,
-                  params: {
-                    loan: String(loanId),
-                    due: String(loan?.outstanding_balance ?? "0.00"),
-                  },
-                })
-              }
-              disabled={!canPay}
-            />
+              <View style={{ height: SPACING.sm }} />
 
-            <Button
-              title="Back to support"
-              variant="secondary"
-              onPress={() => router.back()}
-            />
-          </View>
+              <View style={styles.summaryGrid}>
+                <SummaryBox
+                  label="Next due"
+                  value={fmtKES(breakdown?.next_due)}
+                  icon="arrow-forward-circle-outline"
+                />
+                <View style={{ width: SPACING.sm }} />
+                <SummaryBox
+                  label="Per seat"
+                  value={fmtKES(contributionPerSeat)}
+                  icon="grid-outline"
+                />
+              </View>
 
-          <View style={styles.hintRow}>
-            <Ionicons
-              name="information-circle-outline"
-              size={16}
-              color="rgba(255,255,255,0.78)"
+              <View style={{ height: SPACING.sm }} />
+
+              <View style={styles.summaryGrid}>
+                <SummaryBox
+                  label="Wallet"
+                  value={fmtKES(walletBalance)}
+                  icon="wallet-outline"
+                />
+                <View style={{ width: SPACING.sm }} />
+                <SummaryBox
+                  label="You pay now"
+                  value={fmtKES(payableAfterWallet)}
+                  icon="cash-outline"
+                />
+              </View>
+
+              {nextContributionDate ? (
+                <View style={{ marginTop: SPACING.sm }}>
+                  <InfoStrip
+                    icon="time-outline"
+                    text={`Next contribution date: ${nextContributionDate}`}
+                  />
+                </View>
+              ) : null}
+            </Section>
+
+            <Section title="Option">
+              <Card style={styles.optionCard} variant="default">
+                <View style={styles.optionTop}>
+                  <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                    <Text style={styles.optionTitle}>Include next due</Text>
+                    <Text style={styles.optionText}>
+                      Add the next contribution to this summary.
+                    </Text>
+                  </View>
+
+                  <Switch
+                    value={includeNext}
+                    onValueChange={onToggleIncludeNext}
+                    disabled={toggling || !!breakdownError}
+                    thumbColor={COLORS.white}
+                    trackColor={{
+                      false: "rgba(255,255,255,0.18)",
+                      true: BRAND,
+                    }}
+                  />
+                </View>
+
+                {breakdown?.next_due_date ? (
+                  <Text style={styles.nextDueHint}>
+                    Next due date: {breakdown.next_due_date}
+                  </Text>
+                ) : null}
+
+                <View style={styles.optionInfoBox}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={18}
+                    color={WHITE}
+                  />
+                  <Text style={styles.optionInfoText}>
+                    Your merry wallet is deducted first before new payment is
+                    needed.
+                  </Text>
+                </View>
+              </Card>
+            </Section>
+
+            <Section title="Included items">
+              {!groupedPreview.length ? (
+                <Card style={styles.emptyCard} variant="default">
+                  <EmptyState
+                    icon="receipt-outline"
+                    title={
+                      breakdownError
+                        ? "Contribution summary unavailable"
+                        : "Nothing open right now"
+                    }
+                    subtitle={
+                      breakdownError
+                        ? "Merry details are available, but the contribution summary could not be loaded."
+                        : "This merry has no payable items at the moment."
+                    }
+                  />
+                </Card>
+              ) : (
+                <Card style={styles.listCard} variant="default">
+                  {groupedPreview.map((item, index) => (
+                    <View key={`due-${item.due_id}`}>
+                      <DueLine item={item} />
+                      {index < groupedPreview.length - 1 ? (
+                        <View style={styles.lineDivider} />
+                      ) : null}
+                    </View>
+                  ))}
+                </Card>
+              )}
+            </Section>
+          </>
+        ) : (
+          <Section title="Join">
+            <Card style={styles.ctaCard} variant="default">
+              <Text style={styles.ctaTitle}>Join this merry</Text>
+              <Text style={styles.ctaText}>
+                Request seats and send your request to the admin for approval.
+              </Text>
+
+              <View style={{ height: SPACING.md }} />
+
+              {joinStatus === "PENDING" ? (
+                <Button
+                  title="Request Pending"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: {
+                        merryId: String(merryId),
+                        returnTo: ROUTES.tabs.merry,
+                      },
+                    })
+                  }
+                />
+              ) : canRequestJoin ? (
+                <Button
+                  title="Join Merry"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/merry/join-request" as any,
+                      params: {
+                        merryId: String(merryId),
+                        returnTo: ROUTES.tabs.merry,
+                      },
+                    })
+                  }
+                />
+              ) : (
+                <Button
+                  title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
+                  disabled
+                  onPress={() => {}}
+                />
+              )}
+
+              <View style={{ height: SPACING.sm }} />
+
+              <Text style={styles.helperText}>
+                Seats available: {availableSeatText}
+              </Text>
+
+              <Text style={styles.helperText}>
+                Contribution: {fmtKES(detail.contribution_amount)}
+              </Text>
+
+              {joinStatus === "PENDING" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="time-outline"
+                    text="Your join request has already been sent and is waiting for admin approval."
+                    tone="warning"
+                  />
+                </View>
+              ) : null}
+
+              {joinStatus === "REJECTED" ? (
+                <View style={{ marginTop: SPACING.md }}>
+                  <InfoStrip
+                    icon="close-circle-outline"
+                    text="Your previous join request was rejected. You can submit another request if joining is still allowed."
+                    tone="danger"
+                  />
+                </View>
+              ) : null}
+            </Card>
+          </Section>
+        )}
+
+        <Section title="Details">
+          <Card style={styles.detailsCard} variant="default">
+            <DetailRow
+              label="Contribution per seat"
+              value={fmtKES(detail?.contribution_amount)}
             />
-            <Text style={styles.hintText}>
-              Payment updates may take a short moment to reflect after
-              confirmation.
-            </Text>
-          </View>
+            <DetailRow label="Frequency" value={detail?.payout_frequency} />
+            <DetailRow
+              label="Slots per period"
+              value={detail?.payouts_per_period}
+            />
+            <DetailRow label="Next payout" value={detail?.next_payout_date} />
+            <DetailRow
+              label="Cycle duration"
+              value={`${detail?.cycle_duration_weeks ?? "—"} week${
+                Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"
+              }`}
+            />
+            <DetailRow label="Members" value={detail?.members_count} />
+            <DetailRow label="Seats" value={detail?.seats_count} />
+            {isMember ? (
+              <>
+                <DetailRow
+                  label="Wallet balance"
+                  value={fmtKES(walletBalance)}
+                />
+                <DetailRow
+                  label="Payable after wallet"
+                  value={fmtKES(payableAfterWallet)}
+                />
+                <DetailRow
+                  label="Next contribution date"
+                  value={nextContributionDate}
+                />
+              </>
+            ) : (
+              <DetailRow label="Available seats" value={availableSeatText} />
+            )}
+
+            {!isMember &&
+            Array.isArray(detail.available_seat_numbers) &&
+            detail.available_seat_numbers.length > 0 ? (
+              <View style={{ marginTop: SPACING.md }}>
+                <InfoStrip
+                  icon="grid-outline"
+                  text={`Available seat numbers: ${detail.available_seat_numbers.join(", ")}`}
+                />
+              </View>
+            ) : null}
+
+            <View style={{ marginTop: SPACING.md }}>
+              <Button
+                title="View Members"
+                variant="secondary"
+                onPress={openMembers}
+              />
+            </View>
+          </Card>
         </Section>
 
-        <View style={{ height: 24 }} />
+        <View style={styles.bottomActions}>
+          <Button
+            title="Back to Merry"
+            variant="secondary"
+            onPress={backToMerryIndex}
+            style={{ flex: 1 }}
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
   content: {
-    padding: SPACING.lg,
-    paddingBottom: 24,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    position: "relative",
   },
 
   loadingWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
-  center: {
+  emptyWrap: {
     flex: 1,
-    padding: SPACING.lg,
+    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
+    padding: 24,
   },
 
   backgroundBlobTop: {
     position: "absolute",
-    top: -120,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
   },
 
   backgroundBlobMiddle: {
     position: "absolute",
-    top: 240,
+    top: 260,
     left: -80,
     width: 220,
     height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
   },
 
   backgroundBlobBottom: {
     position: "absolute",
-    bottom: -120,
+    bottom: 80,
     right: -40,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
   },
 
   backgroundGlowOne: {
     position: "absolute",
-    top: 120,
-    right: 20,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
   },
 
   backgroundGlowTwo: {
     position: "absolute",
-    bottom: 160,
-    left: 10,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(140,240,199,0.08)",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
-  hero: {
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+  },
+
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+
+  logoBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CARD_BG_STRONG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  brandWordmark: {
+    color: WHITE,
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    letterSpacing: 0.8,
+  },
+
+  brandWordmarkGreen: {
+    color: "#74D16C",
+  },
+
+  brandSub: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 11,
+    marginTop: 2,
+    fontFamily: FONT.regular,
+  },
+
+  topBarActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CARD_BG_STRONG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  heroCard: {
     position: "relative",
     overflow: "hidden",
-    borderRadius: RADIUS.xl,
+    backgroundColor: MERRY_CARD,
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     marginBottom: SPACING.lg,
-    backgroundColor: "rgba(49, 180, 217, 0.22)",
     borderWidth: 1,
-    borderColor: "rgba(189, 244, 255, 0.15)",
-    padding: SPACING.lg,
-    ...SHADOW.card,
+    borderColor: MERRY_BORDER,
   },
 
-  heroGlowPrimary: {
+  spaceGlowTop: {
     position: "absolute",
-    right: -25,
-    top: -24,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    top: -18,
+    right: -10,
+    width: 108,
+    height: 108,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
 
-  heroGlowAccent: {
+  spaceGlowBottom: {
     position: "absolute",
-    left: -18,
-    bottom: -28,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(236,251,255,0.10)",
-  },
-
-  heroGlowThird: {
-    position: "absolute",
-    right: 30,
-    bottom: -16,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    bottom: -26,
+    left: -10,
+    width: 130,
+    height: 80,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   heroTop: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: SPACING.md,
-  },
-
-  heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-
-  heroTag: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    color: "#DFFFE8",
-    fontSize: 11,
-    fontFamily: FONT.bold,
-    marginBottom: 12,
-  },
-
-  heroTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 22,
-    color: COLORS.white,
-  },
-
-  heroSub: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    fontSize: 13,
-    color: "rgba(255,255,255,0.88)",
-    lineHeight: 19,
-  },
-
-  heroMiniWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: SPACING.md,
-  },
-
-  heroMiniPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-
-  heroMiniText: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
-    color: COLORS.white,
-  },
-
-  card: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    ...SHADOW.card,
-  },
-
-  summaryGrid: {
-    gap: SPACING.sm,
-  },
-
-  summaryCard: {
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    ...SHADOW.card,
-    borderWidth: 1,
-  },
-
-  summaryCardPrimary: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  summaryCardSuccess: {
-    backgroundColor: "rgba(140,240,199,0.12)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  summaryCardWarning: {
-    backgroundColor: "rgba(255,204,102,0.12)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  summaryCardInfo: {
-    backgroundColor: "rgba(236,251,255,0.12)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  summaryTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  summaryIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  summaryLabel: {
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.72)",
-    marginBottom: 6,
-  },
-
-  summaryValue: {
-    fontFamily: FONT.bold,
-    fontSize: 16,
-  },
-
-  summaryValuePrimary: {
-    color: "#FFFFFF",
-  },
-
-  summaryValueSuccess: {
-    color: "#FFFFFF",
-  },
-
-  summaryValueWarning: {
-    color: "#FFFFFF",
-  },
-
-  summaryValueInfo: {
-    color: "#FFFFFF",
-  },
-
-  errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.lg,
-    backgroundColor: "rgba(220,53,69,0.18)",
-  },
-
-  errorText: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  muted: {
-    fontFamily: FONT.regular,
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  group: {
-    gap: 12,
-  },
-
-  kvRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-
-  kLabel: {
-    flex: 1,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.72)",
-  },
-
-  kLabelStrong: {
-    color: "#FFFFFF",
-  },
-
-  kValue: {
-    flex: 1,
-    textAlign: "right",
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: "#FFFFFF",
-  },
-
-  kValueStrong: {
-    fontFamily: FONT.bold,
-  },
-
-  listRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 6,
-  },
-
-  listIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(236,251,255,0.90)",
-  },
-
-  listTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 13,
-    color: "#FFFFFF",
-  },
-
-  listSub: {
-    marginTop: 4,
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.72)",
-  },
-
-  listAmount: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: "#FFFFFF",
-    textAlign: "right",
-  },
-
-  listMeta: {
-    marginTop: 4,
-    fontFamily: FONT.regular,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.72)",
-    textAlign: "right",
-  },
-
-  smallBadge: {
-    fontFamily: FONT.bold,
-    fontSize: 11,
-  },
-
-  noteBox: {
-    padding: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-  },
-
-  noteTitle: {
-    fontFamily: FONT.bold,
-    fontSize: 12,
-    color: "#FFFFFF",
-    marginBottom: 4,
-  },
-
-  noteText: {
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.84)",
-    lineHeight: 18,
-  },
-
-  hintRow: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    gap: 8,
     alignItems: "flex-start",
   },
 
-  hintText: {
-    flex: 1,
-    fontFamily: FONT.regular,
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.82)",
     fontSize: 12,
-    color: "rgba(255,255,255,0.78)",
-    lineHeight: 18,
+    fontFamily: FONT.bold,
+    letterSpacing: 1.2,
+    marginBottom: 10,
   },
 
-  pill: {
+  heroTitle: {
+    color: WHITE,
+    fontSize: 25,
+    lineHeight: 32,
+    fontFamily: FONT.bold,
+  },
+
+  heroSubtitle: {
+    color: TEXT_ON_DARK,
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: FONT.medium || FONT.regular,
+    marginTop: 8,
+  },
+
+  heroIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: MERRY_ICON_BG,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+
+  heroAmountBox: {
+    marginTop: SPACING.md,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  heroAmountBoxPressable: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  heroAmountTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+
+  heroAmountLabel: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.medium || FONT.regular,
+  },
+
+  heroAmountAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: BRAND,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
 
-  pillText: {
-    fontFamily: FONT.bold,
+  heroAmountActionText: {
+    color: WHITE,
     fontSize: 11,
-    letterSpacing: 0.3,
+    fontFamily: FONT.bold,
+  },
+
+  heroAmountValue: {
+    color: WHITE,
+    fontSize: 28,
+    lineHeight: 34,
+    fontFamily: FONT.bold,
+    marginTop: 12,
+  },
+
+  heroMiniDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    marginVertical: 12,
+  },
+
+  heroMiniRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.md,
+    marginTop: 8,
+  },
+
+  heroMiniLabel: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+    flex: 1,
+  },
+
+  heroMiniValue: {
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.bold,
+    textAlign: "right",
+    flexShrink: 1,
+  },
+
+  heroMiniStrong: {
+    color: WHITE,
+    fontFamily: FONT.bold,
+  },
+
+  heroActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: SPACING.md,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: 20,
+    backgroundColor: DANGER_BG,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.20)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  errorText: {
+    flex: 1,
+    color: WHITE,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.medium || FONT.regular,
+  },
+
+  summaryGrid: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+
+  summaryBox: {
+    flex: 1,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+    minHeight: 116,
+  },
+
+  summaryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(236,251,255,0.88)",
+    marginBottom: 10,
+  },
+
+  summaryLabel: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.medium || FONT.regular,
+  },
+
+  summaryValue: {
+    color: WHITE,
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    marginTop: 6,
+  },
+
+  optionCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  optionTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  optionTitle: {
+    color: WHITE,
+    fontSize: 15,
+    fontFamily: FONT.bold,
+  },
+
+  optionText: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginTop: 4,
+  },
+
+  nextDueHint: {
+    marginTop: SPACING.sm,
+    color: TEXT_ON_DARK,
+    fontSize: 12,
+    fontFamily: FONT.medium || FONT.regular,
+  },
+
+  optionInfoBox: {
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    borderRadius: 16,
+    backgroundColor: SOFT_WHITE,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+
+  optionInfoText: {
+    flex: 1,
+    color: TEXT_ON_DARK,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
+
+  listCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  emptyCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  dueLine: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+    paddingVertical: 6,
+  },
+
+  dueLineTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  dueLineTitle: {
+    color: WHITE,
+    fontSize: 13,
+    fontFamily: FONT.bold,
+  },
+
+  dueLineSub: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginTop: 4,
+  },
+
+  dueLineAmount: {
+    color: WHITE,
+    fontSize: 13,
+    fontFamily: FONT.bold,
+    textAlign: "right",
+  },
+
+  dueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+
+  dueBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT.bold,
+  },
+
+  lineDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginVertical: 10,
+  },
+
+  ctaCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  ctaTitle: {
+    color: WHITE,
+    fontSize: 16,
+    fontFamily: FONT.bold,
+  },
+
+  ctaText: {
+    marginTop: 6,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
+
+  helperText: {
+    color: TEXT_ON_DARK,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.medium || FONT.regular,
+  },
+
+  detailsCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  kvRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.md,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+
+  kvLabel: {
+    flex: 1,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  kvValue: {
+    flexShrink: 1,
+    textAlign: "right",
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.bold,
+  },
+
+  infoStrip: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+
+  infoStripText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
+
+  bottomActions: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
 });
