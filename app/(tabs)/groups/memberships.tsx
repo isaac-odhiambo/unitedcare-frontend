@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -215,6 +214,7 @@ export default function GroupMembershipsScreen() {
   const [user, setUser] = useState<MembershipsUser | null>(null);
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
@@ -274,7 +274,10 @@ export default function GroupMembershipsScreen() {
           setLoading(true);
           await load();
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
@@ -314,12 +317,10 @@ export default function GroupMembershipsScreen() {
     };
   }, [memberships, grouped]);
 
-  if (loading) {
+  if (!hasBootstrapped) {
     return (
       <SafeAreaView style={styles.page} edges={["top"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
+        <View style={styles.page} />
       </SafeAreaView>
     );
   }

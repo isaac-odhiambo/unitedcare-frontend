@@ -24,16 +24,6 @@ export type SessionUser = {
   is_phone_verified?: boolean;
   is_admin?: boolean;
 
-  kyc_completed?: boolean | null;
-  kyc_status?:
-    | "not_submitted"
-    | "submitted"
-    | "approved"
-    | "rejected"
-    | string
-    | null;
-  is_kyc_approved?: boolean | null;
-
   has_limited_access?: boolean | null;
   has_full_access?: boolean | null;
 };
@@ -110,15 +100,6 @@ export async function isAdmin(): Promise<boolean> {
 export async function isPhoneVerified(): Promise<boolean> {
   const u = await getSessionUser();
   return !!u?.is_phone_verified;
-}
-
-export async function isKycApproved(): Promise<boolean> {
-  const u = await getSessionUser();
-  return (
-    u?.kyc_status === "approved" ||
-    !!u?.is_kyc_approved ||
-    !!u?.kyc_completed
-  );
 }
 
 export async function hasLimitedAccess(): Promise<boolean> {

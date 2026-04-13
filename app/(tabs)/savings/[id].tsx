@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -282,6 +281,7 @@ export default function SavingsAccountDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -319,7 +319,10 @@ export default function SavingsAccountDetailScreen() {
           setLoading(true);
           if (active) await load();
         } finally {
-          if (active) setLoading(false);
+          if (active) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
@@ -363,15 +366,8 @@ export default function SavingsAccountDetailScreen() {
   const canWithdraw = canShowWithdrawAction(account);
   const savingsReference = account?.id ? buildSavingsReference(account.id) : "";
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color="#C7FFF2" />
-          <Text style={styles.loadingText}>Loading your savings space...</Text>
-        </View>
-      </SafeAreaView>
-    );
+  if (!hasBootstrapped) {
+    return <SafeAreaView style={styles.page} edges={["top", "left", "right"]} />;
   }
 
   if (!account && error) {

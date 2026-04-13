@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -238,13 +237,7 @@ export default function PayLoanScreen() {
   };
 
   if (loadingPhone) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.mint} />
-        </View>
-      </SafeAreaView>
-    );
+    return <SafeAreaView style={styles.safe} edges={["top", "bottom"]} />;
   }
 
   return (

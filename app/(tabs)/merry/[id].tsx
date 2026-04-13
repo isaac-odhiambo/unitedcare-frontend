@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -23,7 +22,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, SHADOW, SPACING } from "@/constants/theme";
+import { COLORS, FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   fmtKES,
@@ -41,9 +40,11 @@ type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
 const WHITE = "#FFFFFF";
-const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
+const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
 const SOFT_WHITE = "rgba(255,255,255,0.10)";
+const CARD_BG = "rgba(255,255,255,0.08)";
+const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
 const CARD_BORDER = "rgba(255,255,255,0.10)";
 const MERRY_CARD = "rgba(98, 192, 98, 0.23)";
 const MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
@@ -446,16 +447,6 @@ export default function MerryDetailScreen() {
     });
   }, [merryId]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (!merryId || Number.isNaN(merryId)) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
@@ -471,7 +462,7 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!user) {
+  if (!user && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -486,7 +477,7 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!detail) {
+  if (!detail && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -528,7 +519,7 @@ export default function MerryDetailScreen() {
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
             <View style={styles.logoBadge}>
-              <Ionicons name="people-outline" size={22} color="#FFFFFF" />
+              <Ionicons name="people-outline" size={22} color={WHITE} />
             </View>
 
             <View style={{ flex: 1 }}>
@@ -545,7 +536,7 @@ export default function MerryDetailScreen() {
               onPress={onRefresh}
               style={styles.iconBtn}
             >
-              <Ionicons name="refresh-outline" size={18} color="#FFFFFF" />
+              <Ionicons name="refresh-outline" size={18} color={WHITE} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -553,445 +544,469 @@ export default function MerryDetailScreen() {
               onPress={backToMerryIndex}
               style={styles.iconBtn}
             >
-              <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
+              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
             </TouchableOpacity>
           </View>
         </View>
 
-        <Card style={styles.heroCard} variant="default">
-          <View style={styles.spaceGlowTop} />
-          <View style={styles.spaceGlowBottom} />
-
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1, paddingRight: SPACING.md }}>
-              <Text style={styles.heroEyebrow}>MERRY</Text>
-              <Text style={styles.heroTitle}>{title}</Text>
-              <Text style={styles.heroSubtitle}>
-                {isMember
-                  ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
-                      seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
-                    }`
-                  : `${detail.payouts_per_period || 1} slot${
-                      Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
-                    } per period • ${availableSeatText}`}
-              </Text>
-            </View>
-
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="people-outline" size={22} color={MERRY_ICON} />
-            </View>
-          </View>
-
-          {isMember ? (
-            <>
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={canPaySelected ? goToDeposit : undefined}
-                style={[
-                  styles.heroAmountBox,
-                  canPaySelected ? styles.heroAmountBoxPressable : null,
-                ]}
-              >
-                <View style={styles.heroAmountTopRow}>
-                  <Text style={styles.heroAmountLabel}>
-                    {includeNext ? "Selected total" : "Required now"}
-                  </Text>
-
-                  {canPaySelected ? (
-                    <View style={styles.heroAmountAction}>
-                      <Text style={styles.heroAmountActionText}>Deposit</Text>
-                      <Ionicons name="chevron-forward" size={14} color={WHITE} />
-                    </View>
-                  ) : null}
-                </View>
-
-                <Text style={styles.heroAmountValue}>
-                  {fmtKES(rawSelectedAmount)}
-                </Text>
-
-                <View style={styles.heroMiniDivider} />
-
-                <View style={styles.heroMiniRow}>
-                  <Text style={styles.heroMiniLabel}>Wallet balance</Text>
-                  <Text style={styles.heroMiniValue}>
-                    {fmtKES(walletBalance)}
-                  </Text>
-                </View>
-
-                <View style={styles.heroMiniRow}>
-                  <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
-                    You pay now
-                  </Text>
-                  <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
-                    {fmtKES(payableAfterWallet)}
-                  </Text>
-                </View>
-
-                {nextContributionDate ? (
-                  <View style={styles.heroMiniRow}>
-                    <Text style={styles.heroMiniLabel}>Next contribution</Text>
-                    <Text style={styles.heroMiniValue}>
-                      {nextContributionDate}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-
-              <View style={styles.heroActions}>
-                <Button
-                  title={canPaySelected ? "Contribute" : "Covered by Wallet"}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/merry/contribute" as any,
-                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
-                    })
-                  }
-                  disabled={!canPaySelected}
-                  style={{ flex: 1 }}
-                />
-                <View style={{ width: SPACING.sm }} />
-                <Button
-                  title="Contribution Records"
-                  variant="secondary"
-                  onPress={() =>
-                    router.push({
-                      pathname: ROUTES.tabs.merryPayments as any,
-                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
-                    })
-                  }
-                  style={{ flex: 1 }}
-                />
-              </View>
-
-              <View style={{ height: SPACING.sm }} />
-
-              <Button
-                title="View Members"
-                variant="secondary"
-                onPress={openMembers}
-              />
-            </>
-          ) : (
-            <View style={styles.heroAmountBox}>
-              <Text style={styles.heroAmountLabel}>Contribution per seat</Text>
-              <Text style={styles.heroAmountValue}>
-                {fmtKES(detail.contribution_amount)}
-              </Text>
-
-              <View style={styles.heroMiniDivider} />
-
-              <View style={styles.heroMiniRow}>
-                <Text style={styles.heroMiniLabel}>Status</Text>
-                <Text style={styles.heroMiniValue}>{membershipLabel}</Text>
-              </View>
-
-              <View style={styles.heroMiniRow}>
-                <Text style={styles.heroMiniLabel}>Cycle duration</Text>
-                <Text style={styles.heroMiniValue}>
-                  {detail.cycle_duration_weeks} week
-                  {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
-                </Text>
-              </View>
-
-              <View style={{ marginTop: SPACING.md }}>
-                <Button
-                  title="View Members"
-                  variant="secondary"
-                  onPress={openMembers}
-                />
-              </View>
-            </View>
-          )}
-        </Card>
-
-        {error ? (
-          <Card style={styles.errorCard} variant="default">
-            <Ionicons name="alert-circle-outline" size={18} color="#FECACA" />
-            <Text style={styles.errorText}>{error}</Text>
-          </Card>
-        ) : null}
-
-        {breakdownError && isMember ? (
-          <View style={{ marginBottom: SPACING.md }}>
-            <InfoStrip
-              icon="warning-outline"
-              text={`Contribution summary is not available right now. ${breakdownError}`}
-              tone="warning"
-            />
-          </View>
-        ) : null}
-
-        {isMember ? (
+        {detail ? (
           <>
-            <Section title="Summary">
-              <View style={styles.summaryGrid}>
-                <SummaryBox
-                  label="Overdue"
-                  value={fmtKES(breakdown?.overdue)}
-                  icon="warning-outline"
-                />
-                <View style={{ width: SPACING.sm }} />
-                <SummaryBox
-                  label="Due now"
-                  value={fmtKES(breakdown?.current_due)}
-                  icon="calendar-outline"
-                />
-              </View>
+            <Card style={styles.heroCard} variant="default">
+              <View style={styles.spaceGlowTop} />
+              <View style={styles.spaceGlowBottom} />
 
-              <View style={{ height: SPACING.sm }} />
-
-              <View style={styles.summaryGrid}>
-                <SummaryBox
-                  label="Next due"
-                  value={fmtKES(breakdown?.next_due)}
-                  icon="arrow-forward-circle-outline"
-                />
-                <View style={{ width: SPACING.sm }} />
-                <SummaryBox
-                  label="Per seat"
-                  value={fmtKES(contributionPerSeat)}
-                  icon="grid-outline"
-                />
-              </View>
-
-              <View style={{ height: SPACING.sm }} />
-
-              <View style={styles.summaryGrid}>
-                <SummaryBox
-                  label="Wallet"
-                  value={fmtKES(walletBalance)}
-                  icon="wallet-outline"
-                />
-                <View style={{ width: SPACING.sm }} />
-                <SummaryBox
-                  label="You pay now"
-                  value={fmtKES(payableAfterWallet)}
-                  icon="cash-outline"
-                />
-              </View>
-
-              {nextContributionDate ? (
-                <View style={{ marginTop: SPACING.sm }}>
-                  <InfoStrip
-                    icon="time-outline"
-                    text={`Next contribution date: ${nextContributionDate}`}
-                  />
-                </View>
-              ) : null}
-            </Section>
-
-            <Section title="Option">
-              <Card style={styles.optionCard} variant="default">
-                <View style={styles.optionTop}>
-                  <View style={{ flex: 1, paddingRight: SPACING.md }}>
-                    <Text style={styles.optionTitle}>Include next due</Text>
-                    <Text style={styles.optionText}>
-                      Add the next contribution to this summary.
-                    </Text>
-                  </View>
-
-                  <Switch
-                    value={includeNext}
-                    onValueChange={onToggleIncludeNext}
-                    disabled={toggling || !!breakdownError}
-                    thumbColor={COLORS.white}
-                    trackColor={{
-                      false: "rgba(255,255,255,0.18)",
-                      true: BRAND,
-                    }}
-                  />
-                </View>
-
-                {breakdown?.next_due_date ? (
-                  <Text style={styles.nextDueHint}>
-                    Next due date: {breakdown.next_due_date}
-                  </Text>
-                ) : null}
-
-                <View style={styles.optionInfoBox}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={18}
-                    color={WHITE}
-                  />
-                  <Text style={styles.optionInfoText}>
-                    Your merry wallet is deducted first before new payment is
-                    needed.
+              <View style={styles.heroTop}>
+                <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                  <Text style={styles.heroEyebrow}>MERRY</Text>
+                  <Text style={styles.heroTitle}>{title}</Text>
+                  <Text style={styles.heroSubtitle}>
+                    {isMember
+                      ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
+                          seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
+                        }`
+                      : `${detail.payouts_per_period || 1} slot${
+                          Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
+                        } per period • ${availableSeatText}`}
                   </Text>
                 </View>
-              </Card>
-            </Section>
 
-            <Section title="Included items">
-              {!groupedPreview.length ? (
-                <Card style={styles.emptyCard} variant="default">
-                  <EmptyState
-                    icon="receipt-outline"
-                    title={
-                      breakdownError
-                        ? "Contribution summary unavailable"
-                        : "Nothing open right now"
-                    }
-                    subtitle={
-                      breakdownError
-                        ? "Merry details are available, but the contribution summary could not be loaded."
-                        : "This merry has no payable items at the moment."
-                    }
-                  />
-                </Card>
-              ) : (
-                <Card style={styles.listCard} variant="default">
-                  {groupedPreview.map((item, index) => (
-                    <View key={`due-${item.due_id}`}>
-                      <DueLine item={item} />
-                      {index < groupedPreview.length - 1 ? (
-                        <View style={styles.lineDivider} />
+                <View style={styles.heroIconWrap}>
+                  <Ionicons name="people-outline" size={22} color={MERRY_ICON} />
+                </View>
+              </View>
+
+              {isMember ? (
+                <>
+                  <TouchableOpacity
+                    activeOpacity={0.92}
+                    onPress={canPaySelected ? goToDeposit : undefined}
+                    style={[
+                      styles.heroAmountBox,
+                      canPaySelected ? styles.heroAmountBoxPressable : null,
+                    ]}
+                  >
+                    <View style={styles.heroAmountTopRow}>
+                      <Text style={styles.heroAmountLabel}>
+                        {includeNext ? "Selected total" : "Required now"}
+                      </Text>
+
+                      {canPaySelected ? (
+                        <View style={styles.heroAmountAction}>
+                          <Text style={styles.heroAmountActionText}>Deposit</Text>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={14}
+                            color={WHITE}
+                          />
+                        </View>
                       ) : null}
                     </View>
-                  ))}
-                </Card>
-              )}
-            </Section>
-          </>
-        ) : (
-          <Section title="Join">
-            <Card style={styles.ctaCard} variant="default">
-              <Text style={styles.ctaTitle}>Join this merry</Text>
-              <Text style={styles.ctaText}>
-                Request seats and send your request to the admin for approval.
-              </Text>
 
-              <View style={{ height: SPACING.md }} />
+                    <Text style={styles.heroAmountValue}>
+                      {fmtKES(rawSelectedAmount)}
+                    </Text>
 
-              {joinStatus === "PENDING" ? (
-                <Button
-                  title="Request Pending"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/merry/join-request" as any,
-                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
-                    })
-                  }
-                />
-              ) : canRequestJoin ? (
-                <Button
-                  title="Join Merry"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(tabs)/merry/join-request" as any,
-                      params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
-                    })
-                  }
-                />
+                    <View style={styles.heroMiniDivider} />
+
+                    <View style={styles.heroMiniRow}>
+                      <Text style={styles.heroMiniLabel}>Wallet balance</Text>
+                      <Text style={styles.heroMiniValue}>
+                        {fmtKES(walletBalance)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.heroMiniRow}>
+                      <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
+                        You pay now
+                      </Text>
+                      <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
+                        {fmtKES(payableAfterWallet)}
+                      </Text>
+                    </View>
+
+                    {nextContributionDate ? (
+                      <View style={styles.heroMiniRow}>
+                        <Text style={styles.heroMiniLabel}>Next contribution</Text>
+                        <Text style={styles.heroMiniValue}>
+                          {nextContributionDate}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+
+                  <View style={styles.heroActions}>
+                    <Button
+                      title={canPaySelected ? "Contribute" : "Covered by Wallet"}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/merry/contribute" as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                      disabled={!canPaySelected}
+                      style={{ flex: 1 }}
+                    />
+                    <View style={{ width: SPACING.sm }} />
+                    <Button
+                      title="Contribution Records"
+                      variant="secondary"
+                      onPress={() =>
+                        router.push({
+                          pathname: ROUTES.tabs.merryPayments as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+
+                  <View style={{ height: SPACING.sm }} />
+
+                  <Button
+                    title="View Members"
+                    variant="secondary"
+                    onPress={openMembers}
+                  />
+                </>
               ) : (
-                <Button
-                  title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
-                  disabled
-                  onPress={() => {}}
-                />
+                <View style={styles.heroAmountBox}>
+                  <Text style={styles.heroAmountLabel}>Contribution per seat</Text>
+                  <Text style={styles.heroAmountValue}>
+                    {fmtKES(detail.contribution_amount)}
+                  </Text>
+
+                  <View style={styles.heroMiniDivider} />
+
+                  <View style={styles.heroMiniRow}>
+                    <Text style={styles.heroMiniLabel}>Status</Text>
+                    <Text style={styles.heroMiniValue}>{membershipLabel}</Text>
+                  </View>
+
+                  <View style={styles.heroMiniRow}>
+                    <Text style={styles.heroMiniLabel}>Cycle duration</Text>
+                    <Text style={styles.heroMiniValue}>
+                      {detail.cycle_duration_weeks} week
+                      {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+
+                  <View style={{ marginTop: SPACING.md }}>
+                    <Button
+                      title="View Members"
+                      variant="secondary"
+                      onPress={openMembers}
+                    />
+                  </View>
+                </View>
               )}
-
-              <View style={{ height: SPACING.sm }} />
-
-              <Text style={styles.helperText}>
-                Seats available: {availableSeatText}
-              </Text>
-
-              <Text style={styles.helperText}>
-                Contribution: {fmtKES(detail.contribution_amount)}
-              </Text>
-
-              {joinStatus === "PENDING" ? (
-                <View style={{ marginTop: SPACING.md }}>
-                  <InfoStrip
-                    icon="time-outline"
-                    text="Your join request has already been sent and is waiting for admin approval."
-                    tone="warning"
-                  />
-                </View>
-              ) : null}
-
-              {joinStatus === "REJECTED" ? (
-                <View style={{ marginTop: SPACING.md }}>
-                  <InfoStrip
-                    icon="close-circle-outline"
-                    text="Your previous join request was rejected. You can submit another request if joining is still allowed."
-                    tone="danger"
-                  />
-                </View>
-              ) : null}
             </Card>
-          </Section>
-        )}
 
-        <Section title="Details">
-          <Card style={styles.detailsCard} variant="default">
-            <DetailRow
-              label="Contribution per seat"
-              value={fmtKES(detail?.contribution_amount)}
-            />
-            <DetailRow label="Frequency" value={detail?.payout_frequency} />
-            <DetailRow
-              label="Slots per period"
-              value={detail?.payouts_per_period}
-            />
-            <DetailRow label="Next payout" value={detail?.next_payout_date} />
-            <DetailRow
-              label="Cycle duration"
-              value={`${detail?.cycle_duration_weeks ?? "—"} week${
-                Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"
-              }`}
-            />
-            <DetailRow label="Members" value={detail?.members_count} />
-            <DetailRow label="Seats" value={detail?.seats_count} />
-            {isMember ? (
-              <>
-                <DetailRow
-                  label="Wallet balance"
-                  value={fmtKES(walletBalance)}
+            {error ? (
+              <Card style={styles.errorCard} variant="default">
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#FECACA"
                 />
-                <DetailRow
-                  label="Payable after wallet"
-                  value={fmtKES(payableAfterWallet)}
-                />
-                <DetailRow
-                  label="Next contribution date"
-                  value={nextContributionDate}
-                />
-              </>
-            ) : (
-              <DetailRow label="Available seats" value={availableSeatText} />
-            )}
+                <Text style={styles.errorText}>{error}</Text>
+              </Card>
+            ) : null}
 
-            {!isMember &&
-            Array.isArray(detail.available_seat_numbers) &&
-            detail.available_seat_numbers.length > 0 ? (
-              <View style={{ marginTop: SPACING.md }}>
+            {breakdownError && isMember ? (
+              <View style={{ marginBottom: SPACING.md }}>
                 <InfoStrip
-                  icon="grid-outline"
-                  text={`Available seat numbers: ${detail.available_seat_numbers.join(", ")}`}
+                  icon="warning-outline"
+                  text={`Contribution summary is not available right now. ${breakdownError}`}
+                  tone="warning"
                 />
               </View>
             ) : null}
 
-            <View style={{ marginTop: SPACING.md }}>
+            {isMember ? (
+              <>
+                <Section title="Summary">
+                  <View style={styles.summaryGrid}>
+                    <SummaryBox
+                      label="Overdue"
+                      value={fmtKES(breakdown?.overdue)}
+                      icon="warning-outline"
+                    />
+                    <View style={{ width: SPACING.sm }} />
+                    <SummaryBox
+                      label="Due now"
+                      value={fmtKES(breakdown?.current_due)}
+                      icon="calendar-outline"
+                    />
+                  </View>
+
+                  <View style={{ height: SPACING.sm }} />
+
+                  <View style={styles.summaryGrid}>
+                    <SummaryBox
+                      label="Next due"
+                      value={fmtKES(breakdown?.next_due)}
+                      icon="arrow-forward-circle-outline"
+                    />
+                    <View style={{ width: SPACING.sm }} />
+                    <SummaryBox
+                      label="Per seat"
+                      value={fmtKES(contributionPerSeat)}
+                      icon="grid-outline"
+                    />
+                  </View>
+
+                  <View style={{ height: SPACING.sm }} />
+
+                  <View style={styles.summaryGrid}>
+                    <SummaryBox
+                      label="Wallet"
+                      value={fmtKES(walletBalance)}
+                      icon="wallet-outline"
+                    />
+                    <View style={{ width: SPACING.sm }} />
+                    <SummaryBox
+                      label="You pay now"
+                      value={fmtKES(payableAfterWallet)}
+                      icon="cash-outline"
+                    />
+                  </View>
+
+                  {nextContributionDate ? (
+                    <View style={{ marginTop: SPACING.sm }}>
+                      <InfoStrip
+                        icon="time-outline"
+                        text={`Next contribution date: ${nextContributionDate}`}
+                      />
+                    </View>
+                  ) : null}
+                </Section>
+
+                <Section title="Option">
+                  <Card style={styles.optionCard} variant="default">
+                    <View style={styles.optionTop}>
+                      <View style={{ flex: 1, paddingRight: SPACING.md }}>
+                        <Text style={styles.optionTitle}>Include next due</Text>
+                        <Text style={styles.optionText}>
+                          Add the next contribution to this summary.
+                        </Text>
+                      </View>
+
+                      <Switch
+                        value={includeNext}
+                        onValueChange={onToggleIncludeNext}
+                        disabled={toggling || !!breakdownError}
+                        thumbColor={COLORS.white}
+                        trackColor={{
+                          false: "rgba(255,255,255,0.18)",
+                          true: BRAND,
+                        }}
+                      />
+                    </View>
+
+                    {breakdown?.next_due_date ? (
+                      <Text style={styles.nextDueHint}>
+                        Next due date: {breakdown.next_due_date}
+                      </Text>
+                    ) : null}
+
+                    <View style={styles.optionInfoBox}>
+                      <Ionicons
+                        name="information-circle-outline"
+                        size={18}
+                        color={WHITE}
+                      />
+                      <Text style={styles.optionInfoText}>
+                        Your merry wallet is deducted first before new payment is
+                        needed.
+                      </Text>
+                    </View>
+                  </Card>
+                </Section>
+
+                <Section title="Included items">
+                  {!groupedPreview.length ? (
+                    <Card style={styles.emptyCard} variant="default">
+                      <EmptyState
+                        icon="receipt-outline"
+                        title={
+                          breakdownError
+                            ? "Contribution summary unavailable"
+                            : "Nothing open right now"
+                        }
+                        subtitle={
+                          breakdownError
+                            ? "Merry details are available, but the contribution summary could not be loaded."
+                            : "This merry has no payable items at the moment."
+                        }
+                      />
+                    </Card>
+                  ) : (
+                    <Card style={styles.listCard} variant="default">
+                      {groupedPreview.map((item, index) => (
+                        <View key={`due-${item.due_id}`}>
+                          <DueLine item={item} />
+                          {index < groupedPreview.length - 1 ? (
+                            <View style={styles.lineDivider} />
+                          ) : null}
+                        </View>
+                      ))}
+                    </Card>
+                  )}
+                </Section>
+              </>
+            ) : (
+              <Section title="Join">
+                <Card style={styles.ctaCard} variant="default">
+                  <Text style={styles.ctaTitle}>Join this merry</Text>
+                  <Text style={styles.ctaText}>
+                    Request seats and send your request to the admin for approval.
+                  </Text>
+
+                  <View style={{ height: SPACING.md }} />
+
+                  {joinStatus === "PENDING" ? (
+                    <Button
+                      title="Request Pending"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/merry/join-request" as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                    />
+                  ) : canRequestJoin ? (
+                    <Button
+                      title="Join Merry"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/merry/join-request" as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                    />
+                  ) : (
+                    <Button
+                      title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
+                      disabled
+                      onPress={() => {}}
+                    />
+                  )}
+
+                  <View style={{ height: SPACING.sm }} />
+
+                  <Text style={styles.helperText}>
+                    Seats available: {availableSeatText}
+                  </Text>
+
+                  <Text style={styles.helperText}>
+                    Contribution: {fmtKES(detail.contribution_amount)}
+                  </Text>
+
+                  {joinStatus === "PENDING" ? (
+                    <View style={{ marginTop: SPACING.md }}>
+                      <InfoStrip
+                        icon="time-outline"
+                        text="Your join request has already been sent and is waiting for admin approval."
+                        tone="warning"
+                      />
+                    </View>
+                  ) : null}
+
+                  {joinStatus === "REJECTED" ? (
+                    <View style={{ marginTop: SPACING.md }}>
+                      <InfoStrip
+                        icon="close-circle-outline"
+                        text="Your previous join request was rejected. You can submit another request if joining is still allowed."
+                        tone="danger"
+                      />
+                    </View>
+                  ) : null}
+                </Card>
+              </Section>
+            )}
+
+            <Section title="Details">
+              <Card style={styles.detailsCard} variant="default">
+                <DetailRow
+                  label="Contribution per seat"
+                  value={fmtKES(detail?.contribution_amount)}
+                />
+                <DetailRow label="Frequency" value={detail?.payout_frequency} />
+                <DetailRow
+                  label="Slots per period"
+                  value={detail?.payouts_per_period}
+                />
+                <DetailRow label="Next payout" value={detail?.next_payout_date} />
+                <DetailRow
+                  label="Cycle duration"
+                  value={`${detail?.cycle_duration_weeks ?? "—"} week${
+                    Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"
+                  }`}
+                />
+                <DetailRow label="Members" value={detail?.members_count} />
+                <DetailRow label="Seats" value={detail?.seats_count} />
+                {isMember ? (
+                  <>
+                    <DetailRow
+                      label="Wallet balance"
+                      value={fmtKES(walletBalance)}
+                    />
+                    <DetailRow
+                      label="Payable after wallet"
+                      value={fmtKES(payableAfterWallet)}
+                    />
+                    <DetailRow
+                      label="Next contribution date"
+                      value={nextContributionDate}
+                    />
+                  </>
+                ) : (
+                  <DetailRow label="Available seats" value={availableSeatText} />
+                )}
+
+                {!isMember &&
+                Array.isArray(detail.available_seat_numbers) &&
+                detail.available_seat_numbers.length > 0 ? (
+                  <View style={{ marginTop: SPACING.md }}>
+                    <InfoStrip
+                      icon="grid-outline"
+                      text={`Available seat numbers: ${detail.available_seat_numbers.join(", ")}`}
+                    />
+                  </View>
+                ) : null}
+
+                <View style={{ marginTop: SPACING.md }}>
+                  <Button
+                    title="View Members"
+                    variant="secondary"
+                    onPress={openMembers}
+                  />
+                </View>
+              </Card>
+            </Section>
+
+            <View style={styles.bottomActions}>
               <Button
-                title="View Members"
+                title="Back to Merry"
                 variant="secondary"
-                onPress={openMembers}
+                onPress={backToMerryIndex}
+                style={{ flex: 1 }}
               />
             </View>
-          </Card>
-        </Section>
-
-        <View style={styles.bottomActions}>
-          <Button
-            title="Back to Merry"
-            variant="secondary"
-            onPress={backToMerryIndex}
-            style={{ flex: 1 }}
-          />
-        </View>
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1004,7 +1019,8 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
     position: "relative",
   },
 
@@ -1090,14 +1106,14 @@ const styles = StyleSheet.create({
   },
 
   logoBadge: {
-    width: 54,
-    height: 54,
+    width: 52,
+    height: 52,
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: CARD_BG_STRONG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
   },
 
   brandWordmark: {
@@ -1130,70 +1146,69 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: CARD_BG_STRONG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
     backgroundColor: MERRY_CARD,
+    borderRadius: 28,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: MERRY_BORDER,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    ...SHADOW.card,
   },
 
   spaceGlowTop: {
     position: "absolute",
     top: -18,
     right: -10,
-    width: 96,
-    height: 96,
+    width: 108,
+    height: 108,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)",
   },
 
   spaceGlowBottom: {
     position: "absolute",
-    bottom: -24,
-    left: -8,
-    width: 120,
-    height: 70,
+    bottom: -26,
+    left: -10,
+    width: 130,
+    height: 80,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   heroTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
   },
 
   heroEyebrow: {
-    color: "#D8FFF0",
-    fontSize: 11,
-    lineHeight: 15,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 1.2,
+    marginBottom: 10,
   },
 
   heroTitle: {
     color: WHITE,
-    fontSize: 24,
-    lineHeight: 30,
-    marginTop: 6,
+    fontSize: 25,
+    lineHeight: 32,
     fontFamily: FONT.bold,
   },
 
   heroSubtitle: {
-    color: TEXT_ON_DARK_SOFT,
+    color: TEXT_ON_DARK,
     fontSize: 13,
     lineHeight: 20,
-    marginTop: 8,
     fontFamily: FONT.regular,
+    marginTop: 8,
   },
 
   heroIconWrap: {
@@ -1208,16 +1223,16 @@ const styles = StyleSheet.create({
   },
 
   heroAmountBox: {
-    marginTop: SPACING.lg,
+    marginTop: SPACING.md,
     backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 20,
     padding: SPACING.md,
   },
 
   heroAmountBoxPressable: {
-    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   heroAmountTopRow: {
@@ -1230,18 +1245,22 @@ const styles = StyleSheet.create({
   heroAmountLabel: {
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.regular,
   },
 
   heroAmountAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: BRAND,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
 
   heroAmountActionText: {
     color: WHITE,
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT.bold,
   },
 
@@ -1249,83 +1268,92 @@ const styles = StyleSheet.create({
     color: WHITE,
     fontSize: 28,
     lineHeight: 34,
-    marginTop: 8,
     fontFamily: FONT.bold,
+    marginTop: 12,
   },
 
   heroMiniDivider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.10)",
-    marginVertical: SPACING.md,
+    marginVertical: 12,
   },
 
   heroMiniRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: SPACING.sm,
-    marginTop: 6,
+    gap: SPACING.md,
+    marginTop: 8,
   },
 
   heroMiniLabel: {
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
     fontFamily: FONT.regular,
+    flex: 1,
   },
 
   heroMiniValue: {
     color: WHITE,
     fontSize: 12,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
+    textAlign: "right",
+    flexShrink: 1,
   },
 
   heroMiniStrong: {
-    fontFamily: FONT.bold,
     color: WHITE,
+    fontFamily: FONT.bold,
   },
 
   heroActions: {
     flexDirection: "row",
+    alignItems: "center",
     marginTop: SPACING.md,
   },
 
   errorCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
+    borderRadius: 20,
+    backgroundColor: DANGER_BG,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.20)",
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.22)",
-    backgroundColor: DANGER_BG,
+    gap: 10,
   },
 
   errorText: {
     flex: 1,
-    color: "#FECACA",
+    color: WHITE,
     fontSize: 12,
+    lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
   summaryGrid: {
     flexDirection: "row",
+    alignItems: "stretch",
   },
 
   summaryBox: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: 18,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
+    minHeight: 116,
   },
 
   summaryIconWrap: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: WHITE,
+    backgroundColor: "rgba(236,251,255,0.88)",
     marginBottom: 10,
   },
 
@@ -1337,39 +1365,23 @@ const styles = StyleSheet.create({
 
   summaryValue: {
     color: WHITE,
-    fontSize: 16,
-    marginTop: 6,
+    fontSize: 18,
+    lineHeight: 24,
     fontFamily: FONT.bold,
-  },
-
-  infoStrip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-
-  infoStripText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    marginTop: 6,
   },
 
   optionCard: {
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
     borderRadius: 20,
+    padding: SPACING.md,
   },
 
   optionTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
   },
 
   optionTitle: {
@@ -1382,67 +1394,87 @@ const styles = StyleSheet.create({
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 4,
     fontFamily: FONT.regular,
+    marginTop: 4,
   },
 
   nextDueHint: {
-    color: TEXT_ON_DARK_SOFT,
+    marginTop: SPACING.sm,
+    color: TEXT_ON_DARK,
     fontSize: 12,
-    marginTop: SPACING.md,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.regular,
   },
 
   optionInfoBox: {
     marginTop: SPACING.md,
+    padding: SPACING.sm,
     borderRadius: 16,
-    padding: SPACING.md,
-    backgroundColor: ACCENT_BG,
+    backgroundColor: SOFT_WHITE,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     flexDirection: "row",
-    gap: SPACING.sm,
+    alignItems: "flex-start",
+    gap: 8,
   },
 
   optionInfoText: {
     flex: 1,
-    color: WHITE,
+    color: TEXT_ON_DARK,
     fontSize: 12,
     lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
   listCard: {
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
     borderRadius: 20,
+    padding: SPACING.md,
+  },
+
+  emptyCard: {
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 20,
+    padding: SPACING.md,
   },
 
   dueLine: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    paddingVertical: 6,
   },
 
   dueLineTop: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.sm,
+    flexWrap: "wrap",
+    gap: 8,
   },
 
   dueLineTitle: {
-    flex: 1,
     color: WHITE,
     fontSize: 13,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
   },
 
   dueLineSub: {
     color: TEXT_ON_DARK_SOFT,
-    fontSize: 11,
-    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: FONT.regular,
+    marginTop: 4,
+  },
+
+  dueLineAmount: {
+    color: WHITE,
+    fontSize: 13,
+    fontFamily: FONT.bold,
+    textAlign: "right",
   },
 
   dueBadge: {
@@ -1452,34 +1484,22 @@ const styles = StyleSheet.create({
   },
 
   dueBadgeText: {
-    fontSize: 10,
-    fontFamily: FONT.bold,
-  },
-
-  dueLineAmount: {
-    color: WHITE,
-    fontSize: 13,
+    fontSize: 11,
     fontFamily: FONT.bold,
   },
 
   lineDivider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.08)",
-    marginVertical: SPACING.xs,
-  },
-
-  emptyCard: {
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: 20,
+    marginVertical: 10,
   },
 
   ctaCard: {
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
     borderRadius: 20,
+    padding: SPACING.md,
   },
 
   ctaTitle: {
@@ -1489,32 +1509,36 @@ const styles = StyleSheet.create({
   },
 
   ctaText: {
+    marginTop: 6,
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 4,
     fontFamily: FONT.regular,
   },
 
   helperText: {
-    color: TEXT_ON_DARK_SOFT,
+    color: TEXT_ON_DARK,
     fontSize: 12,
-    marginTop: 6,
+    lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
   detailsCard: {
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: CARD_BORDER,
     borderRadius: 20,
+    padding: SPACING.md,
   },
 
   kvRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
   },
 
   kvLabel: {
@@ -1525,15 +1549,32 @@ const styles = StyleSheet.create({
   },
 
   kvValue: {
-    flex: 1,
+    flexShrink: 1,
     textAlign: "right",
     color: WHITE,
     fontSize: 12,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
+  },
+
+  infoStrip: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+
+  infoStripText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
   },
 
   bottomActions: {
-    marginTop: SPACING.lg,
+    marginTop: SPACING.sm,
     marginBottom: SPACING.sm,
   },
 });

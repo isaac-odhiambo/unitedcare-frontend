@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -100,6 +99,7 @@ export default function SavingsSaveScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -122,16 +122,25 @@ export default function SavingsSaveScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+
       const run = async () => {
         try {
           setLoading(true);
-          await load();
+          if (active) await load();
         } finally {
-          setLoading(false);
+          if (active) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
       run();
+
+      return () => {
+        active = false;
+      };
     }, [load])
   );
 
@@ -144,8 +153,6 @@ export default function SavingsSaveScreen() {
     }
   }, [load]);
 
-  // IMPORTANT:
-  // Backend STK savings expects reference based on USER id, not savings account id.
   const savingsReference = useMemo(() => {
     if (!user?.id) return "";
     return buildSavingsReference(user.id);
@@ -182,18 +189,7 @@ export default function SavingsSaveScreen() {
     });
   }, [account, user, savingsReference]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
-          <Text style={styles.loadingText}>Preparing savings...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (hasBootstrapped && !user) {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.container}>
@@ -208,7 +204,7 @@ export default function SavingsSaveScreen() {
     );
   }
 
-  if (!account) {
+  if (hasBootstrapped && !account) {
     return (
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.container}>
@@ -246,7 +242,9 @@ export default function SavingsSaveScreen() {
 
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroEyebrow}>SAVE MONEY</Text>
-              <Text style={styles.heroTitle}>{account.name || "My Savings"}</Text>
+              <Text style={styles.heroTitle}>
+                {account?.name || "My Savings"}
+              </Text>
               <Text style={styles.heroSubtitle}>
                 Continue to deposit into your savings wallet.
               </Text>
@@ -255,13 +253,16 @@ export default function SavingsSaveScreen() {
 
           <View style={styles.heroBalanceBox}>
             <Text style={styles.heroBalanceLabel}>Available Balance</Text>
-            <Text style={styles.heroBalanceValue}>{availableBalance}</Text>
+            <Text style={styles.heroBalanceValue}>
+              {hasBootstrapped ? availableBalance : " "}
+            </Text>
           </View>
 
           <View style={styles.heroButtonWrap}>
             <Button
               title="Continue to Deposit"
               onPress={handleContinue}
+              disabled={!hasBootstrapped || !account?.id || !user?.id || loading}
               leftIcon={
                 <Ionicons
                   name="arrow-down-circle-outline"
@@ -273,7 +274,7 @@ export default function SavingsSaveScreen() {
           </View>
         </View>
 
-        {error ? (
+        {hasBootstrapped && error ? (
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>{error}</Text>
           </Card>
@@ -283,64 +284,71 @@ export default function SavingsSaveScreen() {
           <Card style={styles.walletCard}>
             <View style={styles.walletHead}>
               <View style={styles.walletHeadText}>
-                <Text style={styles.walletName}>{account.name || "My Savings"}</Text>
+                <Text style={styles.walletName}>
+                  {account?.name || "My Savings"}
+                </Text>
                 <Text style={styles.walletType}>
-                  {formatAccountType(account.account_type)}
+                  {formatAccountType(account?.account_type)}
                 </Text>
               </View>
 
               <View style={styles.typePill}>
                 <Text style={styles.typePillText}>
-                  {String(account.account_type || "SAVINGS")}
+                  {String(account?.account_type || "SAVINGS")}
                 </Text>
               </View>
             </View>
 
-            {!account.is_active ? (
-              <View style={styles.noticeBoxDanger}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={16}
-                  color={COLORS.danger}
-                />
-                <Text style={[styles.noticeBoxText, { color: COLORS.danger }]}>
-                  This savings account is inactive.
-                </Text>
-              </View>
-            ) : locked ? (
-              <View style={styles.noticeBoxWarning}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={16}
-                  color={COLORS.warning}
-                />
-                <Text style={[styles.noticeBoxText, { color: COLORS.warning }]}>
-                  Locked until {account.locked_until}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.noticeBoxSuccess}>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={16}
-                  color={COLORS.success}
-                />
-                <Text style={[styles.noticeBoxText, { color: COLORS.success }]}>
-                  Savings wallet is ready for deposit.
-                </Text>
-              </View>
-            )}
+            {hasBootstrapped && account ? (
+              !account.is_active ? (
+                <View style={styles.noticeBoxDanger}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={16}
+                    color={COLORS.danger}
+                  />
+                  <Text style={[styles.noticeBoxText, { color: COLORS.danger }]}>
+                    This savings account is inactive.
+                  </Text>
+                </View>
+              ) : locked ? (
+                <View style={styles.noticeBoxWarning}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={16}
+                    color={COLORS.warning}
+                  />
+                  <Text style={[styles.noticeBoxText, { color: COLORS.warning }]}>
+                    Locked until {account.locked_until}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.noticeBoxSuccess}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={16}
+                    color={COLORS.success}
+                  />
+                  <Text style={[styles.noticeBoxText, { color: COLORS.success }]}>
+                    Savings wallet is ready for deposit.
+                  </Text>
+                </View>
+              )
+            ) : null}
 
             <View style={styles.summaryList}>
-              <SummaryRow label="Balance" value={totalBalance} />
+              <SummaryRow
+                label="Balance"
+                value={hasBootstrapped ? totalBalance : " "}
+              />
               <SummaryRow
                 label="Available"
-                value={availableBalance}
+                value={hasBootstrapped ? availableBalance : " "}
                 tone="success"
               />
               <SummaryRow
                 label="Reserved"
-                value={reservedBalance}
+                value={hasBootstrapped ? reservedBalance : " "}
                 tone="warning"
               />
             </View>
@@ -356,22 +364,30 @@ export default function SavingsSaveScreen() {
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Reference</Text>
-              <Text style={styles.detailValue}>{savingsReference || "Not ready"}</Text>
+              <Text style={styles.detailValue}>
+                {hasBootstrapped ? savingsReference || "Not ready" : " "}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>User ID route</Text>
-              <Text style={styles.detailValue}>{String(user?.id || "-")}</Text>
+              <Text style={styles.detailValue}>
+                {hasBootstrapped ? String(user?.id || "-") : " "}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Savings Account ID</Text>
-              <Text style={styles.detailValue}>{String(account?.id || "-")}</Text>
+              <Text style={styles.detailValue}>
+                {hasBootstrapped ? String(account?.id || "-") : " "}
+              </Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Phone</Text>
-              <Text style={styles.detailValue}>{user?.phone || "Not available"}</Text>
+              <Text style={styles.detailValue}>
+                {hasBootstrapped ? user?.phone || "Not available" : " "}
+              </Text>
             </View>
           </Card>
         </Section>
@@ -387,6 +403,7 @@ export default function SavingsSaveScreen() {
               <Button
                 title="Continue to Deposit"
                 onPress={handleContinue}
+                disabled={!hasBootstrapped || !account?.id || !user?.id || loading}
                 leftIcon={
                   <Ionicons
                     name="arrow-forward-outline"

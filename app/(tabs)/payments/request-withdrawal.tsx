@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -24,7 +23,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { ROUTES } from "@/constants/routes";
 import { FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getApiErrorMessage, money, requestWithdrawal } from "@/services/payments";
-import { canWithdraw, getMe, isKycComplete } from "@/services/profile";
+import { getMe } from "@/services/profile";
 import { getSessionUser, saveSessionUser } from "@/services/session";
 
 const SOURCES = ["SAVINGS", "MERRY", "GROUP"] as const;
@@ -254,8 +253,7 @@ export default function RequestWithdrawalScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const kycComplete = isKycComplete(user);
-  const allowed = canWithdraw(user);
+  const allowed = true;
 
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
   const phoneOk = useMemo(() => isValidPhone(normalizedPhone), [normalizedPhone]);
@@ -305,11 +303,6 @@ export default function RequestWithdrawalScreen() {
   }, [load]);
 
   const handleSubmit = useCallback(async () => {
-    if (!allowed) {
-      router.push(ROUTES.tabs.profileKyc as any);
-      return;
-    }
-
     if (!phoneOk) {
       Alert.alert("Community wallet", "Enter a valid Kenyan phone number.");
       return;
@@ -348,19 +341,9 @@ export default function RequestWithdrawalScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [allowed, amount, amountOk, normalizedPhone, phoneOk, source]);
+  }, [amount, amountOk, normalizedPhone, phoneOk, source]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.center}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.page}>
@@ -459,17 +442,6 @@ export default function RequestWithdrawalScreen() {
             </View>
           </View>
         </View>
-
-        {!kycComplete ? (
-          <NoticeBanner
-            tone="warning"
-            icon="shield-checkmark-outline"
-            title="Complete your profile"
-            text="Please finish your KYC details before sending this request."
-            buttonLabel="Open KYC"
-            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-          />
-        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -584,22 +556,12 @@ export default function RequestWithdrawalScreen() {
           </View>
 
           <Button
-            title={
-              !allowed
-                ? "Complete KYC"
-                : submitting
-                ? "Sending request..."
-                : "Send Request"
-            }
-            onPress={
-              !allowed
-                ? () => router.push(ROUTES.tabs.profileKyc as any)
-                : handleSubmit
-            }
-            disabled={!allowed ? false : !canSubmit}
+            title={submitting ? "Sending request..." : "Send Request"}
+            onPress={handleSubmit}
+            disabled={!canSubmit}
             leftIcon={
               <Ionicons
-                name={!allowed ? "shield-outline" : "send-outline"}
+                name="send-outline"
                 size={18}
                 color={WHITE}
               />
@@ -633,13 +595,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: PAGE_BG,
   },
 
   backgroundBlobTop: {

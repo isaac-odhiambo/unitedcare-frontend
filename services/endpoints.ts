@@ -16,7 +16,6 @@ export const ENDPOINTS = {
     me: "/api/accounts/me/",
     forgotPassword: "/api/accounts/forgot-password/",
     resetPassword: "/api/accounts/reset-password/",
-    kycSubmit: "/api/accounts/kyc/",
   },
 
   /* =========================================================
@@ -113,7 +112,8 @@ export const ENDPOINTS = {
     approve: (loanId: number | string) =>
       `/api/loans/loan/${loanId}/approve/`,
 
-    pay: (loanId: number | string) => `/api/loans/loan/${loanId}/pay/`,
+    pay: (loanId: number | string) =>
+      `/api/loans/loan/${loanId}/pay/`,
 
     addGuarantor: "/api/loans/loan/add-guarantor/",
 
@@ -145,7 +145,8 @@ export const ENDPOINTS = {
     ensureDues: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/ensure/`,
 
-    duesMy: (merryId: number | string) => `/api/merry/${merryId}/dues/my/`,
+    duesMy: (merryId: number | string) =>
+      `/api/merry/${merryId}/dues/my/`,
 
     joinRequest: (merryId: number | string) =>
       `/api/merry/${merryId}/join/request/`,
@@ -153,11 +154,14 @@ export const ENDPOINTS = {
     adminJoinRequests: (merryId: number | string) =>
       `/api/merry/${merryId}/join/requests/`,
 
-    members: (merryId: number | string) => `/api/merry/${merryId}/members/`,
+    members: (merryId: number | string) =>
+      `/api/merry/${merryId}/members/`,
 
-    seats: (merryId: number | string) => `/api/merry/${merryId}/seats/`,
+    seats: (merryId: number | string) =>
+      `/api/merry/${merryId}/seats/`,
 
-    slots: (merryId: number | string) => `/api/merry/${merryId}/slots/`,
+    slots: (merryId: number | string) =>
+      `/api/merry/${merryId}/slots/`,
 
     paymentBreakdown: (merryId: number | string) =>
       `/api/merry/${merryId}/payments/breakdown/`,
@@ -172,6 +176,7 @@ export const ENDPOINTS = {
 
     myWallet: "/api/merry/wallet/my/",
     myWalletTransactions: "/api/merry/wallet/my/transactions/",
+
     adminUserWallet: (userId: number | string) =>
       `/api/merry/admin/users/${userId}/wallet/`,
 

@@ -5,7 +5,6 @@ import { router, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Platform,
@@ -45,7 +44,6 @@ import {
   canRequestLoan,
   getMe,
   isAdminUser,
-  isKycComplete,
   MeResponse,
 } from "@/services/profile";
 import { listMySavingsAccounts, SavingsAccount } from "@/services/savings";
@@ -552,6 +550,7 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
 
   const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([]);
   const [heroSavings, setHeroSavings] = useState("—");
@@ -563,8 +562,7 @@ export default function DashboardScreen() {
   const [groupSavingsSummaries, setGroupSavingsSummaries] = useState<any[]>([]);
 
   const isAdmin = isAdminUser(user as any);
-  const kycComplete = isKycComplete(user as any);
-  const loanAllowed = canRequestLoan(user as any);
+    const loanAllowed = canRequestLoan(user as any);
 
   const openFirstMerryFlow = useCallback(() => {
     const items = merrySummary?.items ?? [];
@@ -758,6 +756,7 @@ export default function DashboardScreen() {
       );
     } finally {
       setLoading(false);
+      setHasBootstrapped(true);
     }
   }, []);
 
@@ -912,18 +911,7 @@ export default function DashboardScreen() {
   const noticeItems = useMemo<NoticeItem[]>(() => {
     const items: NoticeItem[] = [];
 
-    if (!kycComplete) {
-      items.push({
-        id: "kyc-needed",
-        title: "Complete your profile",
-        subtitle: "Finish verification to unlock full access.",
-        icon: "shield-checkmark-outline",
-        tone: "info",
-        actionLabel: "Open",
-        onPress: () => router.push(ROUTES.tabs.profile as any),
-      });
-    }
-
+    
     if (hasActiveMerry && merryDueNow > 0) {
       items.push({
         id: "merry-due",
@@ -998,7 +986,7 @@ export default function DashboardScreen() {
     guaranteeRequests.length,
     hasActiveGroups,
     hasActiveMerry,
-    kycComplete,
+    
     loans,
     merryDueNow,
     merrySummary,
@@ -1019,9 +1007,9 @@ export default function DashboardScreen() {
 
     cards.push({
       key: "savings",
-      title: "Savings Club",
+      title: "Contribution Club",
       membersLabel: savingsAccounts.length > 0 ? "1 active wallet" : "Start saving",
-      valueLabel: "Total savings",
+      valueLabel: "Total Contribution",
       amountLabel: heroSavings,
       icon: "wallet-outline",
       tone: "savings",
@@ -1098,12 +1086,93 @@ export default function DashboardScreen() {
     openLoanPaymentFlow,
   ]);
 
-  if (loading) {
+  if (!hasBootstrapped) {
     return (
       <SafeAreaView style={styles.page} edges={["top"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
+        <ScrollView
+          style={styles.page}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic"
+        >
+          <View style={styles.backgroundBlobTop} />
+          <View style={styles.backgroundBlobMiddle} />
+          <View style={styles.backgroundBlobBottom} />
+          <View style={styles.backgroundGlowOne} />
+          <View style={styles.backgroundGlowTwo} />
+
+          <View style={styles.topBar}>
+            <View style={styles.brandRow}>
+              <Image
+                source={require("@/assets/images/icon.png")}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.brandWordmark}>
+                  UNITED <Text style={styles.brandWordmarkGreen}>CARE</Text>
+                </Text>
+                <Text style={styles.brandSub}>Community self-help home</Text>
+              </View>
+            </View>
+
+            <View style={styles.topBarActions}>
+              <View style={[styles.iconBtn, styles.bootIconBtn]} />
+              <View style={[styles.iconBtn, styles.bootIconBtn]} />
+            </View>
+          </View>
+
+          <View style={styles.bootHeroCard}>
+            <Text style={styles.bootEyebrow}>Preparing your dashboard</Text>
+            <Text style={styles.bootTitle}>Welcome back</Text>
+            <Text style={styles.bootSubtitle}>
+              Loading your spaces, savings, merry, groups and support summary.
+            </Text>
+
+            <View style={styles.bootAmountPill}>
+              <Text style={styles.bootAmountText}>Please wait a moment</Text>
+            </View>
+          </View>
+
+          <View style={styles.bootGrid}>
+            {[0, 1, 2, 3].map((item) => (
+              <View key={item} style={styles.bootCard}>
+                <View style={styles.bootCardTop}>
+                  <View style={styles.bootCircle} />
+                  <View style={{ flex: 1 }}>
+                    <View style={[styles.bootLine, styles.bootLineShort]} />
+                    <View style={[styles.bootLine, styles.bootLineMedium]} />
+                  </View>
+                </View>
+                <View style={styles.bootCardFooter}>
+                  <View style={[styles.bootLine, styles.bootLineTiny]} />
+                  <View style={[styles.bootLine, styles.bootLineShort]} />
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.bootNoticeCard}>
+            <View style={styles.bootNoticeRow}>
+              <View style={styles.bootNoticeIcon} />
+              <View style={{ flex: 1 }}>
+                <View style={[styles.bootLine, styles.bootLineMedium]} />
+                <View style={[styles.bootLine, styles.bootLineLong]} />
+              </View>
+            </View>
+
+            <View style={styles.bootNoticeRow}>
+              <View style={styles.bootNoticeIcon} />
+              <View style={{ flex: 1 }}>
+                <View style={[styles.bootLine, styles.bootLineShort]} />
+                <View style={[styles.bootLine, styles.bootLineMedium]} />
+              </View>
+            </View>
+          </View>
+
+          <View style={{ height: 20 }} />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1242,10 +1311,10 @@ export default function DashboardScreen() {
         <View style={[styles.overviewGrid, isWideScreen && styles.overviewGridWide]}>
           <View style={[styles.overviewItem, isWideScreen && styles.overviewItemWide]}>
             <OverviewCard
-              title="Savings"
+              title="Rescue Plan"
               subtitle={
                 savingsAccounts.length > 0
-                  ? "Your total savings"
+                  ? "Your total contributions"
                   : "Start your savings journey"
               }
               value={heroSavings}
@@ -1471,12 +1540,143 @@ const styles = StyleSheet.create({
     position: "relative",
   },
 
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#062C49",
+
+  bootIconBtn: {
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
+
+  bootHeroCard: {
+    marginTop: 14,
+    borderRadius: 28,
+    padding: 22,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
+  },
+
+  bootEyebrow: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+
+  bootTitle: {
+    marginTop: 8,
+    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: "800",
+  },
+
+  bootSubtitle: {
+    marginTop: 8,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 14,
+    lineHeight: 21,
+  },
+
+  bootAmountPill: {
+    marginTop: 16,
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
+  bootAmountText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  bootGrid: {
+    marginTop: 18,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+
+  bootCard: {
+    width: "48%",
+    minHeight: 132,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.11)",
+    justifyContent: "space-between",
+  },
+
+  bootCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  bootCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+
+  bootCardFooter: {
+    gap: 8,
+    marginTop: 18,
+  },
+
+  bootLine: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginTop: 8,
+  },
+
+  bootLineTiny: {
+    width: "34%",
+  },
+
+  bootLineShort: {
+    width: "52%",
+  },
+
+  bootLineMedium: {
+    width: "72%",
+  },
+
+  bootLineLong: {
+    width: "88%",
+  },
+
+  bootNoticeCard: {
+    marginTop: 18,
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.11)",
+    gap: 14,
+  },
+
+  bootNoticeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  bootNoticeIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+
 
   emptyWrap: {
     flex: 1,

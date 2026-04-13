@@ -19,12 +19,15 @@ import {
   View,
 } from "react-native";
 
+const PAGE_BG = "#062C49";
+
 export default function EditProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
+  const [idNumber, setIdNumber] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -32,6 +35,7 @@ export default function EditProfileScreen() {
       const me = await getMe();
       setUsername(me?.username || "");
       setEmail(me?.email || "");
+      setIdNumber((me as any)?.id_number || "");
     } catch (e: any) {
       Alert.alert("Error", getErrorMessage(e));
       router.back();
@@ -54,15 +58,23 @@ export default function EditProfileScreen() {
 
     try {
       setSaving(true);
-      const res = await updateMe({
+
+      const payload: any = {
         username: username.trim(),
         email: email.trim() || null,
-      });
+      };
+
+      if (idNumber.trim()) {
+        payload.id_number = idNumber.trim();
+      }
+
+      const res = await updateMe(payload);
 
       await mergeSessionUser({
         username: res.username,
         email: res.email ?? null,
-      });
+        id_number: (res as any)?.id_number ?? (idNumber.trim() || null),
+      } as any);
 
       Alert.alert("Saved", "Profile updated successfully.");
       router.back();
@@ -72,15 +84,6 @@ export default function EditProfileScreen() {
       setSaving(false);
     }
   };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#8CF0C7" />
-        <Text style={styles.loadingText}>Loading profile…</Text>
-      </View>
-    );
-  }
 
   return (
     <KeyboardAvoidingView
@@ -126,47 +129,67 @@ export default function EditProfileScreen() {
 
           <Text style={styles.label}>Username</Text>
           <TextInput
-            value={username}
+            value={loading ? "" : username}
             onChangeText={setUsername}
-            placeholder="Your username"
+            placeholder={loading ? "" : "Your username"}
             placeholderTextColor="rgba(255,255,255,0.45)"
-            style={styles.input}
-            editable={!saving}
+            style={[styles.input, loading && styles.inputPlaceholder]}
+            editable={!saving && !loading}
           />
 
           <Text style={styles.label}>Email (optional)</Text>
           <TextInput
-            value={email}
+            value={loading ? "" : email}
             onChangeText={setEmail}
-            placeholder="Email address"
+            placeholder={loading ? "" : "Email address"}
             placeholderTextColor="rgba(255,255,255,0.45)"
-            style={styles.input}
+            style={[styles.input, loading && styles.inputPlaceholder]}
             keyboardType="email-address"
             autoCapitalize="none"
-            editable={!saving}
+            editable={!saving && !loading}
           />
 
-          <TouchableOpacity
-            style={[styles.btn, saving && { opacity: 0.7 }]}
-            onPress={handleSave}
-            disabled={saving}
-            activeOpacity={0.9}
-          >
-            {saving ? (
-              <ActivityIndicator color="#0C6A80" />
-            ) : (
-              <Text style={styles.btnText}>Save changes</Text>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.label}>ID Number (optional)</Text>
+          <TextInput
+            value={loading ? "" : idNumber}
+            onChangeText={setIdNumber}
+            placeholder={loading ? "" : "National ID number"}
+            placeholderTextColor="rgba(255,255,255,0.45)"
+            style={[styles.input, loading && styles.inputPlaceholder]}
+            keyboardType="number-pad"
+            editable={!saving && !loading}
+          />
 
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => router.back()}
-            disabled={saving}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.secondaryBtnText}>Cancel</Text>
-          </TouchableOpacity>
+          {loading ? (
+            <View style={styles.inlineLoadingWrap}>
+              <ActivityIndicator color="#FFFFFF" />
+              <Text style={styles.inlineLoadingText}>Loading profile...</Text>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={[styles.btn, saving && { opacity: 0.7 }]}
+                onPress={handleSave}
+                disabled={saving}
+                activeOpacity={0.9}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#0C6A80" />
+                ) : (
+                  <Text style={styles.btnText}>Save changes</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => router.back()}
+                disabled={saving}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.secondaryBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         <View style={{ height: 24 }} />
@@ -178,31 +201,17 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
   content: {
     padding: SPACING.md,
     paddingBottom: 24,
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0C6A80",
-    padding: SPACING.lg,
-  },
-
-  loadingText: {
-    marginTop: 8,
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FONT.regular,
   },
 
   backgroundBlobTop: {
@@ -384,6 +393,23 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     color: "#FFFFFF",
     marginBottom: 8,
+  },
+
+  inputPlaceholder: {
+    color: "transparent",
+  },
+
+  inlineLoadingWrap: {
+    marginTop: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 18,
+  },
+
+  inlineLoadingText: {
+    marginTop: 8,
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: FONT.regular,
   },
 
   btn: {

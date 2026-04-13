@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -29,10 +28,8 @@ import {
   WithdrawalRequest,
 } from "@/services/payments";
 import {
-  canWithdraw,
   getMe,
   isAdminUser,
-  isKycComplete,
   MeResponse,
 } from "@/services/profile";
 import {
@@ -333,8 +330,6 @@ export default function PaymentsIndexScreen() {
   const [error, setError] = useState("");
 
   const isAdmin = isAdminUser(user);
-  const kycComplete = isKycComplete(user);
-  const withdrawAllowed = canWithdraw(user);
 
   const successNotice = useMemo(() => {
     if (params.deposited === "1") {
@@ -345,10 +340,6 @@ export default function PaymentsIndexScreen() {
     }
     return "";
   }, [params.amount, params.deposited, params.notice, params.requested]);
-
-  const goToKyc = useCallback(() => {
-    router.push(ROUTES.tabs.profileKyc as any);
-  }, []);
 
   const clearPaymentParams = useCallback(() => {
     if (
@@ -482,18 +473,7 @@ export default function PaymentsIndexScreen() {
     };
   }, [ledger, withdrawals]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-          <Text style={styles.loadingText}>Loading your community activity...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -557,7 +537,6 @@ export default function PaymentsIndexScreen() {
 
           <View style={styles.statsRow}>
             <MiniStat label="Added" value={overview.totalIn} />
-            <MiniStat label="Shared out" value={overview.totalOut} />
             <MiniStat
               label="Waiting"
               value={String(overview.pendingCount + overview.processingCount)}
@@ -585,17 +564,6 @@ export default function PaymentsIndexScreen() {
           </View>
         ) : null}
 
-        {!kycComplete ? (
-          <NoticeBanner
-            tone="info"
-            icon="shield-checkmark-outline"
-            title="Complete your profile"
-            text="Finish your details to unlock the full community experience."
-            actionLabel="Open KYC"
-            onPress={goToKyc}
-          />
-        ) : null}
-
         <SmallSectionHeader title="Community actions" />
         <View style={styles.actionsWrap}>
           <ActionCard
@@ -607,18 +575,12 @@ export default function PaymentsIndexScreen() {
           />
 
           <ActionCard
-            title={withdrawAllowed ? "Send request" : "Complete KYC"}
-            subtitle={
-              withdrawAllowed
-                ? "Share a new community request"
-                : "Finish your profile first"
-            }
-            icon={withdrawAllowed ? "paper-plane-outline" : "shield-outline"}
-            tone={withdrawAllowed ? "support" : "merry"}
+            title="Send request"
+            subtitle="Share a new community request"
+            icon="paper-plane-outline"
+            tone="support"
             onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
-                : goToKyc()
+              router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
             }
           />
 
@@ -636,9 +598,7 @@ export default function PaymentsIndexScreen() {
             icon="people-outline"
             tone="merry"
             onPress={() =>
-              withdrawAllowed
-                ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
-                : goToKyc()
+              router.push(ROUTES.tabs.paymentsWithdrawals as any)
             }
           />
         </View>
@@ -648,7 +608,7 @@ export default function PaymentsIndexScreen() {
           actionLabel="View all"
           onPress={() => router.push(ROUTES.tabs.paymentsLedger as any)}
         />
-        {ledger?.length ? (
+        {!loading && ledger?.length ? (
           <View style={styles.previewCard}>
             {ledger.slice(0, 2).map((row) => {
               const isCredit = String(row.entry_type).toUpperCase() === "CREDIT";
@@ -693,12 +653,10 @@ export default function PaymentsIndexScreen() {
           title="Recent requests"
           actionLabel="View all"
           onPress={() =>
-            withdrawAllowed
-              ? router.push(ROUTES.tabs.paymentsWithdrawals as any)
-              : goToKyc()
+            router.push(ROUTES.tabs.paymentsWithdrawals as any)
           }
         />
-        {withdrawals?.length ? (
+        {!loading && withdrawals?.length ? (
           <View style={styles.previewCard}>
             {withdrawals.slice(0, 2).map((w) => (
               <View key={w.id} style={styles.previewRow}>
@@ -729,11 +687,9 @@ export default function PaymentsIndexScreen() {
             <EmptyState
               title="No requests yet"
               subtitle="Your community requests will appear here."
-              actionLabel={withdrawAllowed ? "Send request" : "Complete KYC"}
+              actionLabel="Send request"
               onAction={() =>
-                withdrawAllowed
-                  ? router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
-                  : goToKyc()
+                router.push(ROUTES.tabs.paymentsRequestWithdrawal as any)
               }
             />
           </View>
@@ -753,20 +709,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
-  },
-
-  loadingText: {
-    marginTop: SPACING.sm,
-    color: TEXT_SOFT,
-    fontFamily: FONT.regular,
-    fontSize: 12,
   },
 
   emptyWrap: {

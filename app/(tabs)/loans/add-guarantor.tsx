@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -200,6 +199,7 @@ export default function AddGuarantorScreen() {
 
   const [candidates, setCandidates] = useState<GuarantorCandidate[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -242,7 +242,10 @@ export default function AddGuarantorScreen() {
         setCandidates([]);
         setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
       } finally {
-        if (mounted) setLoadingCandidates(false);
+        if (mounted) {
+          setLoadingCandidates(false);
+          setHasBootstrapped(true);
+        }
       }
     };
 
@@ -323,12 +326,10 @@ export default function AddGuarantorScreen() {
     }
   }, [canSubmit, guarantorId, parsedLoanId, requestNote]);
 
-  if (loadingCandidates) {
+  if (!hasBootstrapped) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.mint} />
-        </View>
+        <View style={styles.safe} />
       </SafeAreaView>
     );
   }

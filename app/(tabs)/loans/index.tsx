@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -30,7 +29,6 @@ import {
 import {
   canRequestLoan,
   getMe,
-  isKycComplete,
   MeResponse,
 } from "@/services/profile";
 import {
@@ -108,7 +106,13 @@ function getPrimaryLoan(loans: Loan[]) {
   return (
     byStatus(["PENDING"]) ||
     byStatus(["UNDER_REVIEW"]) ||
-    byStatus(["APPROVED", "ACTIVE", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"]) ||
+    byStatus([
+      "APPROVED",
+      "ACTIVE",
+      "DISBURSED",
+      "UNDER_REPAYMENT",
+      "DEFAULTED",
+    ]) ||
     null
   );
 }
@@ -241,7 +245,9 @@ function SummaryCard({
       ]}
     >
       <View style={styles.summaryTopRow}>
-        <View style={[styles.summaryIconWrap, { backgroundColor: palette.iconBg }]}>
+        <View
+          style={[styles.summaryIconWrap, { backgroundColor: palette.iconBg }]}
+        >
           <Ionicons name={icon} size={18} color={palette.icon} />
         </View>
         <Text style={styles.summaryValue}>{value}</Text>
@@ -290,7 +296,9 @@ function ActionItem({
 
         <View style={{ flex: 1 }}>
           <Text style={styles.actionTitle}>{title}</Text>
-          {subtitle ? <Text style={styles.actionSubtitle}>{subtitle}</Text> : null}
+          {subtitle ? (
+            <Text style={styles.actionSubtitle}>{subtitle}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -309,10 +317,14 @@ function ActionItem({
 export default function LoansIndexScreen() {
   const [user, setUser] = useState<LoanUser | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>([]);
-  const [eligibility, setEligibility] = useState<LoanEligibilityPreview | null>(null);
+  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>(
+    []
+  );
+  const [eligibility, setEligibility] =
+    useState<LoanEligibilityPreview | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
@@ -397,6 +409,7 @@ export default function LoansIndexScreen() {
           await load();
         } finally {
           setLoading(false);
+          setHasBootstrapped(true);
         }
       };
 
@@ -446,7 +459,6 @@ export default function LoansIndexScreen() {
     });
   }, []);
 
-  const kycComplete = isKycComplete(user);
   const loanAllowed = canRequestLoan(user);
   const primaryLoan = useMemo(() => getPrimaryLoan(loans), [loans]);
   const primaryStatus = String(primaryLoan?.status || "").toUpperCase();
@@ -455,7 +467,10 @@ export default function LoansIndexScreen() {
     return guaranteeRequests.filter((item) => !item.accepted).length;
   }, [guaranteeRequests]);
 
-  const canRequestSupport = Boolean(kycComplete && loanAllowed && eligibility?.eligible);
+  const canRequestSupport = Boolean(
+    loanAllowed &&
+      eligibility?.eligible
+  );
 
   const heroState = useMemo(() => {
     if (primaryLoan) {
@@ -482,19 +497,10 @@ export default function LoansIndexScreen() {
       return {
         title: "My support",
         amount: fmtKES(primaryLoan.outstanding_balance || 0),
-        subtitle: "Your support is active. This is your current remaining balance.",
+        subtitle:
+          "Your support is active. This is your current remaining balance.",
         primaryLabel: "Pay now",
         secondaryLabel: "View details",
-      };
-    }
-
-    if (!kycComplete) {
-      return {
-        title: "Complete profile",
-        amount: "Profile required",
-        subtitle: "Finish profile verification first before requesting support.",
-        primaryLabel: "Complete profile",
-        secondaryLabel: "Past activity",
       };
     }
 
@@ -511,11 +517,19 @@ export default function LoansIndexScreen() {
     return {
       title: "Member support",
       amount: "No active support",
-      subtitle: eligibility?.reason || "Review your latest support information and continue below.",
+      subtitle:
+        eligibility?.reason ||
+        "Review your latest support information and continue below.",
       primaryLabel: "Open history",
       secondaryLabel: guaranteeCount > 0 ? "Member requests" : undefined,
     };
-  }, [primaryLoan, primaryStatus, kycComplete, canRequestSupport, eligibility, guaranteeCount]);
+  }, [
+    primaryLoan,
+    primaryStatus,
+    canRequestSupport,
+    eligibility,
+    guaranteeCount,
+  ]);
 
   const handleHeroPrimary = useCallback(() => {
     if (primaryLoan) {
@@ -532,11 +546,6 @@ export default function LoansIndexScreen() {
       return;
     }
 
-    if (!kycComplete) {
-      router.push(ROUTES.tabs.profileKyc as any);
-      return;
-    }
-
     if (canRequestSupport) {
       router.push(ROUTES.tabs.loansRequest as any);
       return;
@@ -546,7 +555,6 @@ export default function LoansIndexScreen() {
   }, [
     primaryLoan,
     primaryStatus,
-    kycComplete,
     canRequestSupport,
     openLoanDeposit,
     openLoanDetail,
@@ -620,26 +628,17 @@ export default function LoansIndexScreen() {
         value: canRequestSupport
           ? fmtKES(eligibility?.max_allowed || 0)
           : "Not ready",
-        subtitle:
-          !kycComplete
-            ? "Complete profile first."
-            : canRequestSupport
-              ? "Ready to request."
-              : eligibility?.reason || "Check eligibility.",
-        icon: !kycComplete ? "person-circle-outline" : "checkmark-circle-outline",
-        tone: !kycComplete ? "info" : "success",
-        actionLabel:
-          !kycComplete
-            ? "Profile"
-            : canRequestSupport
-              ? "Request"
-              : undefined,
-        onPress:
-          !kycComplete
-            ? () => router.push(ROUTES.tabs.profileKyc as any)
-            : canRequestSupport
-              ? () => router.push(ROUTES.tabs.loansRequest as any)
-              : undefined,
+        subtitle: canRequestSupport
+          ? "Ready to request."
+          : eligibility?.reason || "Check eligibility.",
+        icon: "checkmark-circle-outline",
+        tone: "success",
+        actionLabel: canRequestSupport
+          ? "Request"
+          : undefined,
+        onPress: canRequestSupport
+          ? () => router.push(ROUTES.tabs.loansRequest as any)
+          : undefined,
       });
     }
 
@@ -657,19 +656,18 @@ export default function LoansIndexScreen() {
   }, [
     primaryLoan,
     primaryStatus,
-    kycComplete,
     canRequestSupport,
     eligibility,
     guaranteeCount,
     openLoanDetail,
   ]);
 
-  if (loading) {
+  if (!hasBootstrapped) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.mint} />
-        </View>
+        <ScrollView style={styles.page}>
+          <View style={styles.content} />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -722,7 +720,11 @@ export default function LoansIndexScreen() {
         />
 
         {error ? (
-          <TouchableOpacity activeOpacity={0.92} onPress={onRefresh} style={styles.errorCard}>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={onRefresh}
+            style={styles.errorCard}
+          >
             <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
             <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
@@ -753,15 +755,13 @@ export default function LoansIndexScreen() {
               subtitle={
                 canRequestSupport
                   ? "Start a new support request"
-                  : !kycComplete
-                    ? "Complete your profile first"
-                    : eligibility?.reason || "Check your eligibility first"
+                  : eligibility?.reason || "Check your eligibility first"
               }
               icon="create-outline"
               onPress={() =>
                 canRequestSupport
                   ? router.push(ROUTES.tabs.loansRequest as any)
-                  : router.push(ROUTES.tabs.profileKyc as any)
+                  : router.push(ROUTES.tabs.loansHistory as any)
               }
             />
           ) : (
@@ -813,10 +813,7 @@ const styles = StyleSheet.create({
 
   loadingWrap: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
     backgroundColor: UI.page,
-    padding: SPACING.lg,
   },
 
   backgroundBlobTop: {

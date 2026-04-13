@@ -7,11 +7,13 @@ export default function ProfileStackLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        contentStyle: { backgroundColor: "#0C6A80" },
+        animation: "none",
       }}
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="edit" />
-      <Stack.Screen name="kyc" />
+      
     </Stack>
   );
 }

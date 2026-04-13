@@ -8,7 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -450,9 +450,7 @@ export default function GuaranteesScreen() {
         ) : null}
 
         <SectionCard title={`Pending (${pending.length})`}>
-          {loading ? (
-            <Text style={styles.muted}>Loading…</Text>
-          ) : pending.length === 0 ? (
+          {!loading && pending.length === 0 ? (
             <EmptyState
               title="No pending requests"
               subtitle="New requests will appear here."
@@ -667,12 +665,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FONT.bold,
     marginBottom: SPACING.sm,
-  },
-
-  muted: {
-    marginTop: 6,
-    fontFamily: FONT.regular,
-    color: "rgba(255,255,255,0.78)",
   },
 
   errorCard: {

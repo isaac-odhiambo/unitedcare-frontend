@@ -1,12 +1,13 @@
+// app/(tabs)/merry/join-request.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import {
@@ -29,22 +30,27 @@ import {
 } from "@/services/merry";
 
 const UI = {
-  bg: "#EEF3F7",
-  surface: "#F7FAFC",
-  surfaceAlt: "#EAF1F5",
-  card: "#F8FBFD",
-  border: "#D6E0E8",
-  text: "#29404E",
-  textSoft: "#5F7382",
-  textMuted: "#7B8C98",
-  accent: "#4F6F82",
-  accentSoft: "#DFEAF1",
-  successBg: "#E8F5EC",
-  successText: "#35624A",
-  warningBg: "#FFF3E5",
-  warningText: "#9B6431",
-  dangerBg: "#FDECEC",
-  dangerText: "#A14C4C",
+  bg: "#062C49",
+  page: "#062C49",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.78)",
+  textMuted: "rgba(255,255,255,0.68)",
+  border: "rgba(255,255,255,0.10)",
+  softWhite: "rgba(255,255,255,0.10)",
+  softWhiteAlt: "rgba(255,255,255,0.12)",
+  brand: "#0C6A80",
+  brandStrong: "#197D71",
+  brandSoft: "rgba(12,106,128,0.20)",
+  merryCard: "rgba(98, 192, 98, 0.23)",
+  merryBorder: "rgba(194, 255, 188, 0.16)",
+  merryIconBg: "rgba(236, 255, 235, 0.76)",
+  merryIcon: "#379B4A",
+  successBg: "rgba(34,197,94,0.16)",
+  successText: "#DCFCE7",
+  warningBg: "rgba(245,158,11,0.18)",
+  warningText: "#FEF3C7",
+  dangerBg: "rgba(239,68,68,0.18)",
+  dangerText: "#FECACA",
 };
 
 function toPositiveInt(value: string) {
@@ -344,20 +350,10 @@ export default function MerryJoinRequestScreen() {
     }
   }, [merry, canSubmit, blockedMessage, note, parsedRequestedSeats]);
 
-  if (loading) {
+  if (!loading && (!merryId || Number.isNaN(merryId))) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.accent} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!merryId || Number.isNaN(merryId)) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+        <View style={styles.emptyWrap}>
           <EmptyState
             title="Invalid merry"
             subtitle="The selected merry could not be opened."
@@ -369,10 +365,10 @@ export default function MerryJoinRequestScreen() {
     );
   }
 
-  if (!merry) {
+  if (!loading && !merry) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <View style={styles.container}>
+        <View style={styles.emptyWrap}>
           <EmptyState
             title="Unable to load join request"
             subtitle={error || "This merry could not be loaded."}
@@ -393,34 +389,44 @@ export default function MerryJoinRequestScreen() {
           { paddingBottom: Math.max(insets.bottom + 24, 32) },
         ]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFFFFF" />
         }
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
+
         <View style={styles.topBar}>
-          <Button
-            title="Back"
-            variant="ghost"
+          <TouchableOpacity
+            activeOpacity={0.92}
             onPress={() => router.back()}
-            leftIcon={
-              <Ionicons name="arrow-back-outline" size={16} color={UI.text} />
-            }
-          />
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back-outline" size={18} color={UI.text} />
+          </TouchableOpacity>
         </View>
 
         <Card style={styles.headerCard} variant="default">
+          <View style={styles.spaceGlowTop} />
+          <View style={styles.spaceGlowBottom} />
+
           <View style={styles.headerTop}>
             <View style={styles.headerIconWrap}>
-              <Ionicons name="people-outline" size={20} color={UI.accent} />
+              <Ionicons name="people-outline" size={20} color={UI.merryIcon} />
             </View>
 
             <View style={{ flex: 1 }}>
               <Text style={styles.headerEyebrow}>JOIN REQUEST</Text>
-              <Text style={styles.headerTitle}>{merry.name}</Text>
+              <Text style={styles.headerTitle}>
+                {merry?.name || "Join Merry"}
+              </Text>
               <Text style={styles.headerMeta}>
-                {getFrequencyLabel(merry)}
-                {merry.contribution_amount != null ? " • Contribution set" : ""}
+                {merry ? getFrequencyLabel(merry) : ""}
+                {merry?.contribution_amount != null ? " • Contribution set" : ""}
               </Text>
             </View>
 
@@ -431,14 +437,16 @@ export default function MerryJoinRequestScreen() {
             </View>
           </View>
 
-          <Text style={styles.headerText}>{helperText}</Text>
+          <Text style={styles.headerText}>
+            {merry ? helperText : "Loading join request details..."}
+          </Text>
 
           <View style={styles.metaRow}>
             <View style={styles.metaPill}>
-              <Ionicons name="albums-outline" size={14} color={UI.accent} />
+              <Ionicons name="albums-outline" size={14} color="#FFFFFF" />
               <Text style={styles.metaPillText}>
-                {merry.seats_count} total seat
-                {Number(merry.seats_count) === 1 ? "" : "s"}
+                {merry?.seats_count ?? 0} total seat
+                {Number(merry?.seats_count ?? 0) === 1 ? "" : "s"}
               </Text>
             </View>
 
@@ -446,7 +454,7 @@ export default function MerryJoinRequestScreen() {
               <Ionicons
                 name="checkmark-circle-outline"
                 size={14}
-                color={UI.accent}
+                color="#FFFFFF"
               />
               <Text style={styles.metaPillText}>
                 {availableSeats == null
@@ -647,27 +655,113 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xl,
+    position: "relative",
   },
 
-  loadingWrap: {
+  emptyWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: UI.bg,
+    padding: 24,
+  },
+
+  backgroundBlobTop: {
+    position: "absolute",
+    top: -60,
+    right: -30,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  },
+
+  backgroundBlobMiddle: {
+    position: "absolute",
+    top: 260,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: "rgba(52, 174, 213, 0.08)",
+  },
+
+  backgroundBlobBottom: {
+    position: "absolute",
+    bottom: 80,
+    right: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(112, 208, 115, 0.09)",
+  },
+
+  backgroundGlowOne: {
+    position: "absolute",
+    top: 100,
+    left: 40,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+
+  backgroundGlowTwo: {
+    position: "absolute",
+    top: 180,
+    right: 60,
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 
   topBar: {
     marginBottom: SPACING.sm,
     alignItems: "flex-start",
+    paddingTop: SPACING.xs,
+  },
+
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   headerCard: {
-    backgroundColor: UI.surfaceAlt,
+    backgroundColor: UI.merryCard,
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: UI.merryBorder,
     borderRadius: 24,
     marginBottom: SPACING.md,
+    overflow: "hidden",
+  },
+
+  spaceGlowTop: {
+    position: "absolute",
+    top: -18,
+    right: -10,
+    width: 96,
+    height: 96,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  spaceGlowBottom: {
+    position: "absolute",
+    bottom: -24,
+    left: -8,
+    width: 120,
+    height: 70,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
   headerTop: {
@@ -680,14 +774,14 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 16,
-    backgroundColor: UI.accentSoft,
+    backgroundColor: UI.merryIconBg,
     alignItems: "center",
     justifyContent: "center",
   },
 
   headerEyebrow: {
     ...TYPE.caption,
-    color: UI.textMuted,
+    color: "#D8FFF0",
     fontWeight: "800",
     letterSpacing: 0.8,
   },
@@ -726,9 +820,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: RADIUS.round,
-    backgroundColor: UI.surface,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: UI.border,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   metaPillText: {
@@ -744,7 +838,7 @@ const styles = StyleSheet.create({
   },
 
   badgeAccent: {
-    backgroundColor: UI.accentSoft,
+    backgroundColor: UI.brandSoft,
   },
 
   badgeSuccess: {
@@ -765,7 +859,7 @@ const styles = StyleSheet.create({
   },
 
   badgeAccentText: {
-    color: UI.accent,
+    color: "#D9F3F9",
   },
 
   badgeSuccessText: {
@@ -781,7 +875,7 @@ const styles = StyleSheet.create({
   },
 
   formCard: {
-    backgroundColor: UI.card,
+    backgroundColor: UI.softWhite,
     borderWidth: 1,
     borderColor: UI.border,
     borderRadius: 24,
@@ -801,7 +895,7 @@ const styles = StyleSheet.create({
   },
 
   stepperCard: {
-    backgroundColor: UI.surfaceAlt,
+    backgroundColor: UI.softWhiteAlt,
     borderWidth: 1,
     borderColor: UI.border,
     borderRadius: 20,
@@ -833,7 +927,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: UI.surface,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: UI.border,
   },
@@ -852,7 +946,7 @@ const styles = StyleSheet.create({
   },
 
   summaryBox: {
-    backgroundColor: UI.surfaceAlt,
+    backgroundColor: UI.softWhiteAlt,
     borderWidth: 1,
     borderColor: UI.border,
     borderRadius: 20,
@@ -893,7 +987,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: "#EBCACA",
+    borderColor: "rgba(239,68,68,0.22)",
     backgroundColor: UI.dangerBg,
     borderRadius: RADIUS.xl,
   },
@@ -918,23 +1012,23 @@ const styles = StyleSheet.create({
   },
 
   statusNeutral: {
-    backgroundColor: UI.surface,
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderColor: UI.border,
   },
 
   statusSuccess: {
     backgroundColor: UI.successBg,
-    borderColor: "#CFE5D6",
+    borderColor: "rgba(34,197,94,0.22)",
   },
 
   statusWarning: {
     backgroundColor: UI.warningBg,
-    borderColor: "#F0DEC9",
+    borderColor: "rgba(245,158,11,0.22)",
   },
 
   statusDanger: {
     backgroundColor: UI.dangerBg,
-    borderColor: "#EBCACA",
+    borderColor: "rgba(239,68,68,0.22)",
   },
 
   statusText: {

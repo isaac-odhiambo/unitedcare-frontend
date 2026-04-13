@@ -1,10 +1,15 @@
 // app/_layout.tsx
+
 import { NotificationProvider } from "@/context/NotificationContext";
 import { setUnauthorizedHandler } from "@/services/api";
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+
+const UI = {
+  page: "#062C49", // your main app background
+};
 
 export default function RootLayout() {
   useEffect(() => {
@@ -16,19 +21,43 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <NotificationProvider>
-        <StatusBar style="dark" />
+
+        {/* Match your app dark theme */}
+        <StatusBar style="light" />
+
         <Stack
           screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "#FFFFFF" },
+            headerShown: false, // 🔥 FORCE NO HEADER ANYWHERE
             animation: "fade",
+            contentStyle: {
+              backgroundColor: UI.page, // 🔥 match dashboard theme
+            },
           }}
         >
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(tabs)" />
+          {/* AUTH FLOW */}
+          <Stack.Screen
+            name="(auth)"
+            options={{
+              headerShown: false,
+              animation: "fade",
+            }}
+          />
+
+          {/* MAIN APP */}
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false,
+            }}
+          />
+
+          {/* MODALS */}
           <Stack.Screen
             name="modal"
-            options={{ presentation: "modal" }}
+            options={{
+              presentation: "transparentModal",
+              headerShown: false,
+            }}
           />
         </Stack>
       </NotificationProvider>

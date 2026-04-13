@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -10,7 +9,7 @@ import {
   Switch,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import {
   SafeAreaView,
@@ -43,7 +42,6 @@ const BRAND = "#0C6A80";
 const WHITE = "#FFFFFF";
 const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
-const TEXT_ON_DARK_MUTED = "rgba(255,255,255,0.62)";
 const SOFT_WHITE = "rgba(255,255,255,0.10)";
 const CARD_BG = "rgba(255,255,255,0.08)";
 const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
@@ -225,6 +223,7 @@ export default function MerryDetailScreen() {
 
   const [includeNext, setIncludeNext] = useState(initialIncludeNext);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [toggling, setToggling] = useState(false);
 
@@ -328,6 +327,7 @@ export default function MerryDetailScreen() {
       setIncludeNext(initialIncludeNext);
     } finally {
       setLoading(false);
+      setHasBootstrapped(true);
     }
   }, [initialIncludeNext, load]);
 
@@ -449,12 +449,12 @@ export default function MerryDetailScreen() {
     });
   }, [merryId]);
 
-  if (loading) {
+  if (!hasBootstrapped) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
+        <ScrollView style={styles.page}>
+          <View style={styles.content} />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
     color: TEXT_ON_DARK,
     fontSize: 13,
     lineHeight: 20,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
     marginTop: 8,
   },
 
@@ -1249,7 +1249,7 @@ const styles = StyleSheet.create({
   heroAmountLabel: {
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
   },
 
   heroAmountAction: {
@@ -1333,7 +1333,7 @@ const styles = StyleSheet.create({
     color: WHITE,
     fontSize: 12,
     lineHeight: 18,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
   },
 
   summaryGrid: {
@@ -1364,7 +1364,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
   },
 
   summaryValue: {
@@ -1406,7 +1406,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     color: TEXT_ON_DARK,
     fontSize: 12,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
   },
 
   optionInfoBox: {
@@ -1524,7 +1524,7 @@ const styles = StyleSheet.create({
     color: TEXT_ON_DARK,
     fontSize: 12,
     lineHeight: 18,
-    fontFamily: FONT.medium || FONT.regular,
+    fontFamily: FONT.regular,
   },
 
   detailsCard: {

@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -403,17 +402,7 @@ export default function MerryContributionsScreen() {
     });
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" size="large" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!user && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top"]}>
         <View style={styles.emptyScreenWrap}>
@@ -1213,41 +1202,40 @@ const styles = StyleSheet.create({
   paymentActionsRow: {
     marginTop: SPACING.md,
     flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "flex-end",
   },
 
   secondaryAction: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    width: "100%",
-    paddingVertical: 12,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
 
   secondaryActionText: {
-    fontFamily: FONT.bold,
-    fontSize: 13,
     color: WHITE,
+    fontFamily: FONT.medium,
+    fontSize: 12,
   },
 
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
     borderWidth: 1,
   },
 
   statusDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 999,
   },
 

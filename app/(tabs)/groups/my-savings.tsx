@@ -4,13 +4,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -18,7 +18,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { COLORS, FONT, SPACING } from "@/constants/theme";
 import {
   getApiErrorMessage,
   getMyGroupSavingsSummary,
@@ -28,6 +28,15 @@ import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type SavingsUser = Partial<MeResponse> & Partial<SessionUser>;
+
+const PAGE_BG = "#062C49";
+const CARD_BG = "rgba(255,255,255,0.08)";
+const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
+const CARD_BORDER = "rgba(255,255,255,0.10)";
+const WHITE = "#FFFFFF";
+const SOFT_TEXT = "rgba(255,255,255,0.75)";
+const SOFT_TEXT_2 = "rgba(255,255,255,0.84)";
+const HERO_GREEN = "#74D16C";
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -224,8 +233,8 @@ export default function MyGroupSavingsScreen() {
       const mergedUser: SavingsUser | null = meUser
         ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
         : sessionUser
-        ? { ...sessionUser }
-        : null;
+          ? { ...sessionUser }
+          : null;
 
       setUser(mergedUser);
 
@@ -274,149 +283,155 @@ export default function MyGroupSavingsScreen() {
     }
   }, [load]);
 
-  if (loading) {
+  if (!loading && !user) {
     return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#062C49" />
-      </View>
-    );
-  }
-
-  if (!user) {
-    return (
-      <View style={styles.page}>
-        <EmptyState
-          title="Not signed in"
-          subtitle="Please login to view your community savings."
-          actionLabel="Go to Login"
-          onAction={() => router.replace(ROUTES.auth.login as any)}
-        />
-      </View>
+      <SafeAreaView style={styles.page} edges={["top"]}>
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Not signed in"
+            subtitle="Please login to view your community savings."
+            actionLabel="Go to Login"
+            onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.page}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor="#8CF0C7"
-          colors={["#8CF0C7", "#0CC0B7"]}
-        />
-      }
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.backgroundBlobTop} />
-      <View style={styles.backgroundBlobMiddle} />
-      <View style={styles.backgroundBlobBottom} />
-      <View style={styles.backgroundGlowOne} />
-      <View style={styles.backgroundGlowTwo} />
+    <SafeAreaView style={styles.page} edges={["top"]}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
 
-      <View style={styles.heroCard}>
-        <View style={styles.heroGlowOne} />
-        <View style={styles.heroGlowTwo} />
-        <View style={styles.heroGlowThree} />
+        <View style={styles.heroCard}>
+          <View style={styles.heroGlowOne} />
+          <View style={styles.heroGlowTwo} />
+          <View style={styles.heroGlowThree} />
 
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.heroTag}>COMMUNITY SAVINGS</Text>
-            <Text style={styles.heroTitle}>My community savings</Text>
-            <Text style={styles.heroSubtitle}>
-              View your contribution share across the community spaces you belong to.
-            </Text>
+          <View style={styles.heroTop}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={styles.heroTag}>COMMUNITY SAVINGS</Text>
+              <Text style={styles.heroTitle}>My community savings</Text>
+              <Text style={styles.heroSubtitle}>
+                View your contribution share across the community spaces you belong to.
+              </Text>
+            </View>
+
+            <View style={styles.heroIconWrap}>
+              <Ionicons name="wallet-outline" size={22} color={WHITE} />
+            </View>
           </View>
 
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="wallet-outline" size={22} color={COLORS.white} />
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>Spaces</Text>
+              <Text style={styles.heroStatValue}>
+                {loading ? "—" : rows.length}
+              </Text>
+            </View>
+
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>My total</Text>
+              <Text style={styles.heroStatValue}>
+                {loading ? "—" : formatKes(totals.totalContributed)}
+              </Text>
+            </View>
+
+            <View style={styles.heroStatPill}>
+              <Text style={styles.heroStatLabel}>Available</Text>
+              <Text style={styles.heroStatValue}>
+                {loading ? "—" : formatKes(totals.available)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.heroActionsRow}>
+            <Button
+              title="My spaces"
+              variant="secondary"
+              onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
+              style={{ flex: 1 }}
+            />
+            <View style={{ width: SPACING.sm }} />
+            <Button
+              title="Explore spaces"
+              onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
+              style={{ flex: 1 }}
+            />
           </View>
         </View>
 
-        <View style={styles.heroStatsRow}>
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Spaces</Text>
-            <Text style={styles.heroStatValue}>{rows.length}</Text>
-          </View>
+        {!loading && error ? (
+          <Card style={styles.errorCard}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={WHITE}
+            />
+            <Text style={styles.errorText}>{error}</Text>
+          </Card>
+        ) : null}
 
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>My total</Text>
-            <Text style={styles.heroStatValue}>
-              {formatKes(totals.totalContributed)}
-            </Text>
-          </View>
-
-          <View style={styles.heroStatPill}>
-            <Text style={styles.heroStatLabel}>Available</Text>
-            <Text style={styles.heroStatValue}>
-              {formatKes(totals.available)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.heroActionsRow}>
-          <Button
-            title="My spaces"
-            variant="secondary"
-            onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-            style={{ flex: 1 }}
-          />
-          <View style={{ width: SPACING.sm }} />
-          <Button
-            title="Explore spaces"
-            onPress={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-            style={{ flex: 1 }}
-          />
-        </View>
-      </View>
-
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color="#FFFFFF"
-          />
-          <Text style={styles.errorText}>{error}</Text>
-        </Card>
-      ) : null}
-
-      <Section title="Savings by space">
-        {rows.length === 0 ? (
-          <EmptyState
-            icon="wallet-outline"
-            title="No community savings yet"
-            subtitle="Once you join community spaces and contribute, your savings will appear here."
-            actionLabel="Explore spaces"
-            onAction={() => router.push(ROUTES.tabs.groupsAvailable as any)}
-          />
-        ) : (
-          rows.map((row) => <SavingsCard key={row.group.id} row={row} />)
-        )}
-      </Section>
-
-      <View style={{ height: 24 }} />
-    </ScrollView>
+        <Section title="Savings by space">
+          {loading ? (
+            <View style={styles.silentLoadingWrap}>
+              <Card style={styles.silentCard}>
+                <Text style={styles.silentTitle}>Loading your savings</Text>
+                <Text style={styles.silentText}>
+                  Your community savings will appear here shortly.
+                </Text>
+              </Card>
+            </View>
+          ) : rows.length === 0 ? (
+            <EmptyState
+              icon="wallet-outline"
+              title="No community savings yet"
+              subtitle="Once you join community spaces and contribute, your savings will appear here."
+              actionLabel="Explore spaces"
+              onAction={() => router.push(ROUTES.tabs.groupsAvailable as any)}
+            />
+          ) : (
+            rows.map((row) => <SavingsCard key={row.group.id} row={row} />)
+          )}
+        </Section>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: "#0C6A80",
+    backgroundColor: PAGE_BG,
   },
 
   content: {
-    padding: SPACING.lg,
-    paddingBottom: 24,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: 16,
   },
 
-  loadingWrap: {
+  emptyWrap: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0C6A80",
+    padding: SPACING.lg,
+    backgroundColor: PAGE_BG,
   },
 
   backgroundBlobTop: {
@@ -426,7 +441,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundBlobMiddle: {
@@ -436,7 +451,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
 
   backgroundBlobBottom: {
@@ -446,7 +461,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
   backgroundGlowOne: {
@@ -456,7 +471,7 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   backgroundGlowTwo: {
@@ -466,19 +481,18 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: "rgba(140,240,199,0.08)",
+    backgroundColor: "rgba(140,240,199,0.06)",
   },
 
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: CARD_BG,
+    borderRadius: 28,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    ...SHADOW.card,
+    borderColor: CARD_BORDER,
   },
 
   heroGlowOne: {
@@ -488,7 +502,7 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
 
   heroGlowTwo: {
@@ -498,7 +512,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(236,251,255,0.10)",
+    backgroundColor: "rgba(236,251,255,0.08)",
   },
 
   heroGlowThree: {
@@ -508,7 +522,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   heroTop: {
@@ -530,25 +544,27 @@ const styles = StyleSheet.create({
   },
 
   heroIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   heroTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: FONT.bold,
-    color: COLORS.white,
+    color: WHITE,
   },
 
   heroSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    lineHeight: 18,
-    color: "rgba(255,255,255,0.85)",
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    color: SOFT_TEXT_2,
     fontFamily: FONT.regular,
   },
 
@@ -560,22 +576,24 @@ const styles = StyleSheet.create({
 
   heroStatPill: {
     flex: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
+    backgroundColor: CARD_BG_STRONG,
+    borderRadius: 16,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   heroStatLabel: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
+    color: SOFT_TEXT,
     fontFamily: FONT.regular,
   },
 
   heroStatValue: {
     marginTop: 4,
     fontSize: 16,
-    color: COLORS.white,
+    color: WHITE,
     fontFamily: FONT.bold,
   },
 
@@ -594,14 +612,40 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.lg,
+    borderRadius: 20,
   },
 
   errorText: {
     flex: 1,
     fontSize: 12,
     lineHeight: 18,
-    color: "#FFFFFF",
+    color: WHITE,
+    fontFamily: FONT.regular,
+  },
+
+  silentLoadingWrap: {
+    marginBottom: SPACING.lg,
+  },
+
+  silentCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 24,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  silentTitle: {
+    color: WHITE,
+    fontSize: 15,
+    fontFamily: FONT.bold,
+    marginBottom: 6,
+  },
+
+  silentText: {
+    color: SOFT_TEXT_2,
+    fontSize: 13,
+    lineHeight: 20,
     fontFamily: FONT.regular,
   },
 
@@ -610,11 +654,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: SPACING.md,
     padding: SPACING.md,
-    backgroundColor: "rgba(49, 180, 217, 0.22)",
-    borderRadius: RADIUS.xl || RADIUS.lg,
+    backgroundColor: CARD_BG,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "rgba(189, 244, 255, 0.15)",
-    ...SHADOW.card,
+    borderColor: CARD_BORDER,
   },
 
   cardGlowPrimary: {
@@ -624,7 +667,7 @@ const styles = StyleSheet.create({
     width: 105,
     height: 105,
     borderRadius: 52.5,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   cardGlowAccent: {
@@ -634,7 +677,7 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: "rgba(236,251,255,0.08)",
+    backgroundColor: "rgba(236,251,255,0.06)",
   },
 
   cardTopRow: {
@@ -660,14 +703,14 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: FONT.bold,
     fontSize: 14,
-    color: "#FFFFFF",
+    color: WHITE,
   },
 
   cardSub: {
     marginTop: 4,
     fontFamily: FONT.regular,
     fontSize: 12,
-    color: "rgba(255,255,255,0.78)",
+    color: SOFT_TEXT,
   },
 
   statusPill: {
@@ -683,9 +726,11 @@ const styles = StyleSheet.create({
 
   infoBox: {
     marginTop: SPACING.md,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.lg,
+    backgroundColor: CARD_BG_STRONG,
+    borderRadius: 16,
     padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   infoRow: {
@@ -712,7 +757,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontFamily: FONT.bold,
     fontSize: 12,
-    color: "#FFFFFF",
+    color: WHITE,
   },
 
   cardFooter: {

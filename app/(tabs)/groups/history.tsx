@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -104,6 +103,7 @@ export default function GroupHistoryScreen() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -153,7 +153,10 @@ export default function GroupHistoryScreen() {
           setLoading(true);
           await load();
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
@@ -223,12 +226,8 @@ export default function GroupHistoryScreen() {
     return Array.from(bucket.values()).sort((a, b) => b.total - a.total);
   }, [rows]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#062C49" />
-      </View>
-    );
+  if (!hasBootstrapped) {
+    return <View style={styles.page} />;
   }
 
   return (

@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -40,7 +39,6 @@ type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
 const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
-const BRAND_DARK = "#09586A";
 const WHITE = "#FFFFFF";
 const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
@@ -238,7 +236,6 @@ function MyMerryCard({
 }) {
   const hasOverdue = hasAmount(item.overdue);
   const hasCurrent = hasAmount(item.current_due);
-  const hasRequired = hasAmount(item.required_now);
 
   const badgeLabel = hasOverdue
     ? "Needs attention"
@@ -303,7 +300,7 @@ function MyMerryCard({
         </Text>
       ) : null}
 
-      {!hasRequired && hasAmount(item.next_due) ? (
+      {!hasAmount(item.required_now) && hasAmount(item.next_due) ? (
         <Text style={styles.helperText}>
           Next contribution
           {item.next_due_date ? ` on ${item.next_due_date}` : ""} •{" "}
@@ -359,37 +356,11 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
         : "Open Merry";
 
   const onPrimaryPress = () => {
-    if (item.is_member) {
+    if (item.is_member || requestStatus === "PENDING" || !canJoinDirect) {
       router.push({
         pathname: "/(tabs)/merry/[id]" as any,
         params: {
           id: String(item.id),
-          returnTo: ROUTES.tabs.merry,
-          backLabel: "Back to Merry",
-          landingTitle: "Merry",
-        },
-      });
-      return;
-    }
-
-    if (requestStatus === "PENDING") {
-      router.push({
-        pathname: "/(tabs)/merry/[id]" as any,
-        params: {
-          id: String(item.id),
-          returnTo: ROUTES.tabs.merry,
-          backLabel: "Back to Merry",
-          landingTitle: "Merry",
-        },
-      });
-      return;
-    }
-
-    if (canJoinDirect) {
-      router.push({
-        pathname: "/(tabs)/merry/join-request" as any,
-        params: {
-          merryId: String(item.id),
           returnTo: ROUTES.tabs.merry,
           backLabel: "Back to Merry",
           landingTitle: "Merry",
@@ -399,14 +370,14 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
     }
 
     router.push({
-        pathname: "/(tabs)/merry/[id]" as any,
-        params: {
-          id: String(item.id),
-          returnTo: ROUTES.tabs.merry,
-          backLabel: "Back to Merry",
-          landingTitle: "Merry",
-        },
-      });
+      pathname: "/(tabs)/merry/join-request" as any,
+      params: {
+        merryId: String(item.id),
+        returnTo: ROUTES.tabs.merry,
+        backLabel: "Back to Merry",
+        landingTitle: "Merry",
+      },
+    });
   };
 
   return (
@@ -496,7 +467,11 @@ function QuickLink({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.quickLinkCard}>
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      style={styles.quickLinkCard}
+    >
       <View style={styles.quickLinkLeft}>
         <View style={styles.quickLinkIcon}>
           <Ionicons name={icon} size={18} color={BRAND} />
@@ -558,23 +533,19 @@ export default function MerryIndexScreen() {
           : null
       );
 
-      if (summaryRes.status === "fulfilled") {
-        setSummary(summaryRes.value);
-      } else {
-        setSummary(null);
-      }
+      setSummary(
+        summaryRes.status === "fulfilled" ? summaryRes.value : null
+      );
 
-      if (myMerriesRes.status === "fulfilled") {
-        setMyMerries(myMerriesRes.value ?? { created: [], memberships: [] });
-      } else {
-        setMyMerries({ created: [], memberships: [] });
-      }
+      setMyMerries(
+        myMerriesRes.status === "fulfilled"
+          ? (myMerriesRes.value ?? { created: [], memberships: [] })
+          : { created: [], memberships: [] }
+      );
 
-      if (availableRes.status === "fulfilled") {
-        setAvailableMerries(availableRes.value ?? []);
-      } else {
-        setAvailableMerries([]);
-      }
+      setAvailableMerries(
+        availableRes.status === "fulfilled" ? (availableRes.value ?? []) : []
+      );
 
       const errors: string[] = [];
 
@@ -626,7 +597,7 @@ export default function MerryIndexScreen() {
   }, [load]);
 
   const myGroupsPreview = useMemo<MerryDueSummaryItem[]>(
-    () => (Array.isArray(summary?.items) ? summary.items.slice(0, 4) : []),
+    () => (Array.isArray(summary?.items) ? summary!.items.slice(0, 4) : []),
     [summary]
   );
 
@@ -658,7 +629,7 @@ export default function MerryIndexScreen() {
   );
 
   const activeMerryCount = useMemo(
-    () => (Array.isArray(summary?.items) ? summary.items.length : 0),
+    () => (Array.isArray(summary?.items) ? summary!.items.length : 0),
     [summary]
   );
 
@@ -763,17 +734,7 @@ export default function MerryIndexScreen() {
     });
   }, [merryReference, summary]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top"]}>
         <View style={styles.emptyWrap}>
@@ -901,7 +862,7 @@ export default function MerryIndexScreen() {
           See your active merry spaces and continue contributing when ready.
         </Text>
 
-        {myGroupsPreview.length === 0 ? (
+        {!loading && myGroupsPreview.length === 0 ? (
           <View style={styles.emptyCardWrap}>
             <Card style={styles.emptyCard} variant="default">
               <EmptyState
@@ -929,7 +890,7 @@ export default function MerryIndexScreen() {
           Explore community merry circles and join the one that fits you.
         </Text>
 
-        {availablePreview.length === 0 ? (
+        {!loading && availablePreview.length === 0 ? (
           <View style={styles.emptyCardWrap}>
             <Card style={styles.emptyCard} variant="default">
               <EmptyState
@@ -1010,13 +971,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
   },
 
   emptyWrap: {
@@ -1278,7 +1232,7 @@ const styles = StyleSheet.create({
   },
 
   summaryActionRow: {
-    marginTop: 8,
+    marginTop: "auto",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -1294,141 +1248,11 @@ const styles = StyleSheet.create({
   heroCard: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: SPACING.lg,
     backgroundColor: MERRY_CARD,
-    borderRadius: 24,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: MERRY_BORDER,
-    ...SHADOW.card,
-  },
-
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.sm,
-  },
-
-  heroIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: MERRY_ICON_BG,
-  },
-
-  heroTitle: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: FONT.bold,
-    color: WHITE,
-  },
-
-  heroSubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: FONT.regular,
-    color: TEXT_ON_DARK,
-    marginTop: 4,
-  },
-
-  heroAmountBox: {
-    marginTop: SPACING.md,
-    padding: 16,
-    minHeight: 92,
-    borderRadius: RADIUS.lg,
-    backgroundColor: SOFT_WHITE,
-  },
-
-  heroAmountTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.sm,
-  },
-
-  heroAmountLabel: {
-    fontSize: 13,
-    lineHeight: 17,
-    fontFamily: FONT.regular,
-    color: TEXT_ON_DARK,
-  },
-
-  heroAmountAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-
-  heroAmountActionText: {
-    color: WHITE,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.medium,
-  },
-
-  heroAmountValue: {
-    fontSize: 26,
-    lineHeight: 32,
-    marginTop: 4,
-    fontFamily: FONT.bold,
-    color: WHITE,
-  },
-
-  heroPillsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm as any,
-    marginTop: SPACING.md,
-  },
-
-  heroPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: SOFT_WHITE,
-  },
-
-  heroPillText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontFamily: FONT.medium,
-    color: WHITE,
-  },
-
-  sectionTitle: {
-    color: WHITE,
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: FONT.bold,
-    marginBottom: 6,
-  },
-
-  sectionSubtitle: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: FONT.regular,
-    marginBottom: SPACING.sm,
-  },
-
-  cardList: {
-    gap: SPACING.sm,
     marginBottom: SPACING.lg,
-  },
-
-  merryCard: {
-    position: "relative",
-    overflow: "hidden",
-    padding: 14,
-    minHeight: 150,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: MERRY_BORDER,
-    backgroundColor: MERRY_CARD,
     ...SHADOW.card,
   },
 
@@ -1452,25 +1276,151 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.md,
+  },
+
+  heroIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: MERRY_ICON_BG,
+  },
+
+  heroTitle: {
+    color: WHITE,
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+  },
+
+  heroSubtitle: {
+    color: TEXT_ON_DARK_SOFT,
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+  },
+
+  heroAmountBox: {
+    marginTop: SPACING.md,
+    backgroundColor: SOFT_WHITE,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: RADIUS.xl,
+    padding: SPACING.md,
+  },
+
+  heroAmountTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  heroAmountLabel: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  heroAmountAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  heroAmountActionText: {
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.medium,
+  },
+
+  heroAmountValue: {
+    marginTop: 8,
+    color: WHITE,
+    fontSize: 24,
+    lineHeight: 30,
+    fontFamily: FONT.bold,
+  },
+
+  heroPillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+
+  heroPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: RADIUS.round,
+    backgroundColor: SOFT_WHITE,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+
+  heroPillText: {
+    color: WHITE,
+    fontSize: 12,
+    lineHeight: 15,
+    fontFamily: FONT.medium,
+  },
+
+  sectionTitle: {
+    color: WHITE,
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    marginBottom: 4,
+  },
+
+  sectionSubtitle: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginBottom: SPACING.md,
+  },
+
+  cardList: {
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+
+  merryCard: {
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: SOFT_WHITE,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    ...SHADOW.card,
+  },
+
   cardTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: SPACING.sm,
   },
 
   cardTitleWrap: {
-    flex: 1,
-    minWidth: 0,
     flexDirection: "row",
-    gap: SPACING.sm,
     alignItems: "center",
-    paddingRight: SPACING.sm,
+    gap: SPACING.sm,
+    flex: 1,
   },
 
   cardIconWrap: {
-    width: 38,
-    height: 38,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -1479,37 +1429,23 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     color: WHITE,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
     fontFamily: FONT.bold,
   },
 
   cardSubtitle: {
-    color: TEXT_ON_DARK,
-    fontSize: 13,
-    lineHeight: 19,
     marginTop: 4,
-    fontFamily: FONT.medium,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: FONT.regular,
   },
 
   badgeBase: {
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    alignSelf: "flex-start",
-    maxWidth: "42%",
-  },
-
-  badgeAccent: {
-    backgroundColor: ACCENT_BG,
-  },
-
-  badgeSuccess: {
-    backgroundColor: SUCCESS_BG,
-  },
-
-  badgeWarning: {
-    backgroundColor: WARNING_BG,
+    paddingVertical: 6,
+    borderRadius: RADIUS.round,
   },
 
   badgeText: {
@@ -1518,27 +1454,41 @@ const styles = StyleSheet.create({
     fontFamily: FONT.medium,
   },
 
-  badgeTextAccent: {
-    color: ACCENT_TEXT,
+  badgeWarning: {
+    backgroundColor: WARNING_BG,
   },
 
-  badgeTextSuccess: {
-    color: SUCCESS_TEXT,
+  badgeSuccess: {
+    backgroundColor: SUCCESS_BG,
+  },
+
+  badgeAccent: {
+    backgroundColor: ACCENT_BG,
   },
 
   badgeTextWarning: {
     color: WARNING_TEXT,
   },
 
+  badgeTextSuccess: {
+    color: SUCCESS_TEXT,
+  },
+
+  badgeTextAccent: {
+    color: ACCENT_TEXT,
+  },
+
   amountPanel: {
     marginTop: SPACING.md,
     padding: SPACING.md,
-    borderRadius: 14,
-    backgroundColor: SOFT_WHITE,
+    borderRadius: RADIUS.xl,
+    backgroundColor: SOFT_WHITE_2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   amountPanelLabel: {
-    color: TEXT_ON_DARK,
+    color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
     lineHeight: 16,
     fontFamily: FONT.regular,
@@ -1547,78 +1497,78 @@ const styles = StyleSheet.create({
   amountPanelValue: {
     marginTop: 6,
     color: WHITE,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 28,
     fontFamily: FONT.bold,
   },
 
   helperText: {
-    color: TEXT_ON_DARK,
-    fontSize: 13,
-    lineHeight: 19,
     marginTop: SPACING.sm,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
   cardActions: {
     flexDirection: "row",
+    alignItems: "center",
     marginTop: SPACING.md,
-    alignItems: "stretch",
   },
 
   inlineAction: {
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
-    paddingBottom: 4,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    marginTop: SPACING.md,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 6,
   },
 
   inlineActionText: {
     color: WHITE,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.medium,
   },
 
   amountBadge: {
-    maxWidth: "42%",
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: SURFACE_LIGHT,
-    alignSelf: "flex-start",
+    paddingVertical: 7,
+    borderRadius: RADIUS.round,
+    backgroundColor: SOFT_WHITE_2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   amountBadgeText: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontFamily: FONT.bold,
-    color: BRAND_DARK,
+    color: WHITE,
+    fontSize: 12,
+    lineHeight: 15,
+    fontFamily: FONT.medium,
   },
 
   metaRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: SPACING.sm as any,
+    gap: SPACING.sm,
     marginTop: SPACING.md,
   },
 
   metaPillNeutral: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: SURFACE_LIGHT,
+    borderRadius: RADIUS.round,
+    backgroundColor: SOFT_WHITE,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   metaPillAccent: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: SOFT_WHITE,
+    borderRadius: RADIUS.round,
+    backgroundColor: ACCENT_BG,
+    borderWidth: 1,
+    borderColor: "rgba(12,106,128,0.20)",
   },
 
   metaPillText: {

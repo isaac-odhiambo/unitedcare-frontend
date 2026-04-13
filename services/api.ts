@@ -60,7 +60,7 @@ export const api = axios.create({
     Accept: "application/json",
     // NOTE:
     // Do NOT force "Content-Type": "application/json" here.
-    // Some requests (like KYC upload) use FormData/multipart.
+    // Some requests use FormData/multipart.
     // We set JSON content type conditionally in the request interceptor below.
   },
 });
@@ -283,8 +283,7 @@ api.interceptors.request.use(
     }
 
     // IMPORTANT:
-    // KYC upload uses FormData. If Content-Type is forced to JSON,
-    // Django will receive plain text instead of files.
+    // FormData requests should not force JSON content type.
     if (isFormData) {
       delete (config.headers as any)["Content-Type"];
     } else if (!(config.headers as any)["Content-Type"]) {

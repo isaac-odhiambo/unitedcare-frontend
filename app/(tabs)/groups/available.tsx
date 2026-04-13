@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -183,7 +182,9 @@ function GroupCard({
 
       <View style={styles.badgesRow}>
         {joined ? <StatusPill label="JOINED" tone="member" /> : null}
-        {!joined && pending ? <StatusPill label="REQUESTED" tone="pending" /> : null}
+        {!joined && pending ? (
+          <StatusPill label="REQUESTED" tone="pending" />
+        ) : null}
         {!joined && !pending && joinPolicy === "OPEN" ? (
           <StatusPill label="AVAILABLE" tone="open" />
         ) : null}
@@ -211,7 +212,9 @@ function GroupCard({
             disabled={buttonDisabled}
             style={[
               styles.joinButton,
-              buttonDisabled ? styles.joinButtonDisabled : styles.joinButtonActive,
+              buttonDisabled
+                ? styles.joinButtonDisabled
+                : styles.joinButtonActive,
             ]}
           >
             <Text style={styles.joinButtonText}>
@@ -230,8 +233,11 @@ export default function AvailableGroupsScreen() {
   const [joinedGroupIds, setJoinedGroupIds] = useState<number[]>([]);
   const [pendingJoinGroupIds, setPendingJoinGroupIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [submittingGroupId, setSubmittingGroupId] = useState<number | null>(null);
+  const [submittingGroupId, setSubmittingGroupId] = useState<number | null>(
+    null
+  );
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -279,7 +285,8 @@ export default function AvailableGroupsScreen() {
       setJoinedGroupIds(
         toUniqueNumberArray(
           memberships.map((m: any) =>
-            m.group_id ?? (typeof m.group === "number" ? m.group : m.group?.id)
+            m.group_id ??
+            (typeof m.group === "number" ? m.group : m.group?.id)
           )
         )
       );
@@ -293,10 +300,12 @@ export default function AvailableGroupsScreen() {
         toUniqueNumberArray(
           joinRequests
             .filter(
-              (r: any) => String(r.status || "").toUpperCase().trim() === "PENDING"
+              (r: any) =>
+                String(r.status || "").toUpperCase().trim() === "PENDING"
             )
             .map((r: any) =>
-              r.group_id ?? (typeof r.group === "number" ? r.group : r.group?.id)
+              r.group_id ??
+              (typeof r.group === "number" ? r.group : r.group?.id)
             )
         )
       );
@@ -323,7 +332,10 @@ export default function AvailableGroupsScreen() {
           setLoading(true);
           await load();
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
@@ -401,12 +413,8 @@ export default function AvailableGroupsScreen() {
     [load]
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#8CF0C7" />
-      </View>
-    );
+  if (!hasBootstrapped) {
+    return <View style={styles.page} />;
   }
 
   if (!user) {
@@ -452,8 +460,8 @@ export default function AvailableGroupsScreen() {
             <Text style={styles.heroTag}>COMMUNITY SPACES</Text>
             <Text style={styles.heroTitle}>Open community spaces</Text>
             <Text style={styles.heroSubtitle}>
-              Explore spaces where members support each other, contribute together,
-              and grow as a community.
+              Explore spaces where members support each other, contribute
+              together, and grow as a community.
             </Text>
           </View>
 

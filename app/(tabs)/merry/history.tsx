@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -38,7 +37,7 @@ import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
-const PAGE_BG = "#0C6A80";
+const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
 const BRAND_DARK = "#09586A";
 const WHITE = "#FFFFFF";
@@ -48,7 +47,6 @@ const SOFT_WHITE = "rgba(255,255,255,0.10)";
 const SOFT_WHITE_2 = "rgba(255,255,255,0.14)";
 const SURFACE_CARD = "rgba(255,255,255,0.10)";
 const SURFACE_BORDER = "rgba(255,255,255,0.12)";
-const INPUT_BG = "rgba(255,255,255,0.06)";
 const SUCCESS_BG = "rgba(34,197,94,0.16)";
 const SUCCESS_TEXT = "#DCFCE7";
 const WARNING_BG = "rgba(245,158,11,0.18)";
@@ -57,8 +55,6 @@ const DANGER_BG = "rgba(239,68,68,0.18)";
 const DANGER_TEXT = "#FECACA";
 const ACCENT_BG = "rgba(12,106,128,0.20)";
 const ACCENT_TEXT = "#D9F3F9";
-const NEUTRAL_BG = "rgba(148,163,184,0.14)";
-const NEUTRAL_TEXT = "#E2E8F0";
 const MERRY_ICON_BG = "rgba(236, 255, 235, 0.76)";
 const MERRY_ICON = "#379B4A";
 
@@ -428,17 +424,7 @@ export default function MerryDetailScreen() {
     });
   }, [merryId]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!merryId || Number.isNaN(merryId)) {
+  if (!loading && (!merryId || Number.isNaN(merryId))) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -453,7 +439,7 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -468,7 +454,7 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!detail) {
+  if (!loading && !detail) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -553,8 +539,8 @@ export default function MerryDetailScreen() {
               ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
                   seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
                 }`
-              : `${detail.payouts_per_period || 1} slot${
-                  Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
+              : `${detail?.payouts_per_period || 1} slot${
+                  Number(detail?.payouts_per_period || 1) === 1 ? "" : "s"
                 } per period • ${availableSeatText}`}
           </Text>
 
@@ -571,7 +557,11 @@ export default function MerryDetailScreen() {
             />
             <SummaryTile
               label={isMember ? "Ready now" : "Per seat"}
-              value={isMember ? fmtKES(payableAfterWallet) : fmtKES(detail?.contribution_amount)}
+              value={
+                isMember
+                  ? fmtKES(payableAfterWallet)
+                  : fmtKES(detail?.contribution_amount)
+              }
               icon="wallet-outline"
             />
           </View>
@@ -705,7 +695,7 @@ export default function MerryDetailScreen() {
               <View style={styles.amountPanel}>
                 <Text style={styles.amountPanelLabel}>Contribution per seat</Text>
                 <Text style={styles.amountPanelValue}>
-                  {fmtKES(detail.contribution_amount)}
+                  {fmtKES(detail?.contribution_amount)}
                 </Text>
 
                 <View style={styles.panelDivider} />
@@ -718,8 +708,8 @@ export default function MerryDetailScreen() {
                 <View style={styles.kvRow}>
                   <Text style={styles.kvLabel}>Cycle duration</Text>
                   <Text style={styles.kvValue}>
-                    {detail.cycle_duration_weeks} week
-                    {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
+                    {detail?.cycle_duration_weeks} week
+                    {Number(detail?.cycle_duration_weeks) === 1 ? "" : "s"}
                   </Text>
                 </View>
               </View>
@@ -864,7 +854,7 @@ export default function MerryDetailScreen() {
                 />
               ) : (
                 <Button
-                  title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
+                  title={detail?.is_open === false ? "Merry Closed" : "Unavailable"}
                   disabled
                   onPress={() => {}}
                 />
@@ -876,7 +866,7 @@ export default function MerryDetailScreen() {
                 Seats available: {availableSeatText}
               </Text>
               <Text style={styles.helperText}>
-                Contribution: {fmtKES(detail.contribution_amount)}
+                Contribution: {fmtKES(detail?.contribution_amount)}
               </Text>
 
               {joinStatus === "PENDING" ? (
@@ -981,7 +971,7 @@ export default function MerryDetailScreen() {
             )}
 
             {!isMember &&
-            Array.isArray(detail.available_seat_numbers) &&
+            Array.isArray(detail?.available_seat_numbers) &&
             detail.available_seat_numbers.length > 0 ? (
               <View style={{ marginTop: SPACING.md }}>
                 <InfoStrip
@@ -1024,13 +1014,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
   },
 
   emptyWrap: {
@@ -1156,13 +1139,13 @@ const styles = StyleSheet.create({
   heroShell: {
     position: "relative",
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(12,106,128,0.48)",
     borderRadius: 28,
     paddingHorizontal: 18,
     paddingVertical: 18,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(176, 243, 234, 0.10)",
   },
 
   heroOrbOne: {
@@ -1182,67 +1165,70 @@ const styles = StyleSheet.create({
     width: 145,
     height: 145,
     borderRadius: 999,
-    backgroundColor: "rgba(42, 191, 120, 0.18)",
+    backgroundColor: "rgba(42, 206, 180, 0.16)",
   },
 
   heroOrbThree: {
     position: "absolute",
-    right: 70,
-    bottom: -60,
-    width: 150,
+    right: 60,
+    bottom: -55,
+    width: 210,
     height: 150,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(102, 212, 109, 0.15)",
   },
 
   heroTag: {
-    color: "#D8FFF0",
-    fontSize: 11,
-    letterSpacing: 1.1,
-    marginBottom: 8,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
     fontFamily: FONT.bold,
+    letterSpacing: 1.2,
   },
 
   pageTitle: {
     color: WHITE,
-    fontSize: 24,
-    lineHeight: 31,
+    fontSize: 25,
+    lineHeight: 34,
     fontFamily: FONT.bold,
+    marginTop: 12,
   },
 
   pageSubtitle: {
-    color: TEXT_ON_DARK,
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 8,
+    color: "rgba(255,255,255,0.90)",
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 10,
+    maxWidth: "95%",
     fontFamily: FONT.regular,
-    maxWidth: "96%",
   },
 
   summaryRow: {
     flexDirection: "row",
-    gap: SPACING.sm as any,
+    gap: SPACING.sm,
     marginTop: SPACING.lg,
+    flexWrap: "wrap",
   },
 
   summaryTile: {
     flex: 1,
-    minHeight: 112,
-    backgroundColor: SOFT_WHITE_2,
+    minWidth: 100,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderRadius: 18,
-    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
   },
 
   summaryIconWrap: {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: WHITE,
     marginBottom: 10,
+    alignSelf: "flex-start",
   },
 
   summaryLabel: {
@@ -1253,35 +1239,52 @@ const styles = StyleSheet.create({
 
   summaryValue: {
     color: WHITE,
-    fontSize: 14,
-    marginTop: 8,
+    fontSize: 16,
+    marginTop: 6,
     fontFamily: FONT.bold,
+  },
+
+  errorCard: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: DANGER_BG,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.22)",
+    borderRadius: RADIUS.xl,
+  },
+
+  errorText: {
+    flex: 1,
+    color: DANGER_TEXT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
   glassCard: {
     backgroundColor: SURFACE_CARD,
-    borderRadius: 24,
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: SURFACE_BORDER,
+    borderRadius: 22,
+    marginBottom: SPACING.lg,
     ...SHADOW.card,
   },
 
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
-    marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
 
   sectionIconWrap: {
-    width: 42,
-    height: 42,
+    width: 38,
+    height: 38,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.88)",
   },
 
   sectionCardTitle: {
@@ -1291,24 +1294,24 @@ const styles = StyleSheet.create({
   },
 
   sectionCardSubtitle: {
-    marginTop: 4,
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
     lineHeight: 18,
+    marginTop: 4,
     fontFamily: FONT.regular,
   },
 
   amountPanel: {
-    marginTop: SPACING.sm,
-    backgroundColor: INPUT_BG,
+    marginTop: SPACING.md,
+    backgroundColor: SOFT_WHITE_2,
+    borderWidth: 1,
+    borderColor: SURFACE_BORDER,
     borderRadius: 20,
     padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
   },
 
   amountPanelPressable: {
-    borderColor: "rgba(255,255,255,0.16)",
+    borderColor: "rgba(255,255,255,0.20)",
   },
 
   amountPanelTop: {
@@ -1321,7 +1324,7 @@ const styles = StyleSheet.create({
   amountPanelLabel: {
     color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.regular,
   },
 
   amountPanelAction: {
@@ -1333,13 +1336,13 @@ const styles = StyleSheet.create({
   amountPanelActionText: {
     color: WHITE,
     fontSize: 12,
-    fontFamily: FONT.bold,
+    fontFamily: FONT.medium,
   },
 
   amountPanelValue: {
     color: WHITE,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 24,
+    lineHeight: 30,
     marginTop: 8,
     fontFamily: FONT.bold,
   },
@@ -1350,27 +1353,65 @@ const styles = StyleSheet.create({
     marginVertical: SPACING.md,
   },
 
+  kvRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginBottom: 10,
+  },
+
+  kvLabel: {
+    flex: 1,
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  kvValue: {
+    color: WHITE,
+    fontSize: 12,
+    fontFamily: FONT.bold,
+    textAlign: "right",
+  },
+
+  strongText: {
+    color: WHITE,
+    fontFamily: FONT.bold,
+  },
+
   actionRow: {
     flexDirection: "row",
+    alignItems: "center",
     marginTop: SPACING.md,
   },
 
-  errorCard: {
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: "rgba(239,68,68,0.22)",
-    backgroundColor: DANGER_BG,
-    borderRadius: 20,
+  sectionTitle: {
+    color: WHITE,
+    fontSize: 17,
+    fontFamily: FONT.bold,
+    marginBottom: 4,
   },
 
-  errorText: {
-    flex: 1,
-    color: DANGER_TEXT,
+  sectionSubtitle: {
+    color: TEXT_ON_DARK_SOFT,
     fontSize: 12,
+    lineHeight: 18,
+    marginBottom: SPACING.md,
+    fontFamily: FONT.regular,
+  },
+
+  hintText: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    marginTop: SPACING.sm,
+    fontFamily: FONT.regular,
+  },
+
+  helperText: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: FONT.regular,
   },
 
@@ -1391,17 +1432,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
-  hintText: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    marginTop: 2,
-    fontFamily: FONT.medium,
-  },
-
   dueLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     paddingVertical: SPACING.sm,
   },
 
@@ -1413,90 +1444,41 @@ const styles = StyleSheet.create({
   },
 
   dueLineTitle: {
-    flex: 1,
     color: WHITE,
     fontSize: 13,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.bold,
+    flex: 1,
   },
 
   dueLineSub: {
     color: TEXT_ON_DARK_SOFT,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
     fontFamily: FONT.regular,
-  },
-
-  dueBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.round,
-  },
-
-  dueBadgeText: {
-    fontSize: 10,
-    fontFamily: FONT.bold,
   },
 
   dueLineAmount: {
     color: WHITE,
     fontSize: 13,
     fontFamily: FONT.bold,
+    marginTop: 8,
+  },
+
+  dueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: RADIUS.round,
+  },
+
+  dueBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT.medium,
   },
 
   lineDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginVertical: SPACING.xs,
-  },
-
-  kvRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  kvLabel: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-    flex: 1,
-  },
-
-  kvValue: {
-    flex: 1,
-    textAlign: "right",
-    color: WHITE,
-    fontSize: 12,
-    fontFamily: FONT.bold,
-  },
-
-  strongText: {
-    color: WHITE,
-    fontFamily: FONT.bold,
-  },
-
-  sectionTitle: {
-    color: WHITE,
-    fontSize: 18,
-    fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  sectionSubtitle: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    marginBottom: SPACING.md,
-  },
-
-  helperText: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    marginTop: 6,
-    fontFamily: FONT.regular,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    marginVertical: SPACING.sm,
   },
 
   bottomActions: {

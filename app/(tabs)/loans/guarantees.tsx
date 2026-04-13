@@ -172,6 +172,7 @@ function GuaranteeCard({
 export default function GuaranteesScreen() {
   const [items, setItems] = useState<LoanGuarantor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -191,8 +192,25 @@ export default function GuaranteesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      load();
+      let mounted = true;
+
+      const run = async () => {
+        if (!mounted) return;
+        setLoading(true);
+        try {
+          await load();
+        } finally {
+          if (mounted) {
+            setHasBootstrapped(true);
+          }
+        }
+      };
+
+      run();
+
+      return () => {
+        mounted = false;
+      };
     }, [load])
   );
 
@@ -245,6 +263,14 @@ export default function GuaranteesScreen() {
     },
     [load]
   );
+
+  if (!hasBootstrapped) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.safe} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>

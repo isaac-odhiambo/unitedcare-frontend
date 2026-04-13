@@ -548,17 +548,7 @@ export default function GroupsIndexScreen() {
 
   const memberName = useMemo(() => getMemberIdentity(user), [user]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.page}>
@@ -600,7 +590,7 @@ export default function GroupsIndexScreen() {
           <View style={styles.heroOrbThree} />
 
           <Text style={styles.heroTag}>COMMUNITY GROUPS</Text>
-          <Text style={styles.heroTitle}>Hello, {memberName}</Text>
+          <Text style={styles.heroTitle}>Hello, {memberName || "Member"}</Text>
           <Text style={styles.heroCaption}>
             Open your active groups first, contribute easily, and explore more
             community spaces below.
@@ -612,6 +602,12 @@ export default function GroupsIndexScreen() {
             <StatPill label="Requests" value={stats.pendingRequests} />
           </View>
         </View>
+
+        {loading ? (
+          <View style={styles.inlineLoader}>
+            <ActivityIndicator size="small" color="#8CF0C7" />
+          </View>
+        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -1256,5 +1252,11 @@ const styles = StyleSheet.create({
 
   emptyHolder: {
     marginBottom: SPACING.lg,
+  },
+
+  inlineLoader: {
+    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -1,6 +1,6 @@
 // app/(auth)/register.tsx
 
-import { COLORS, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { FONT, RADIUS, SHADOW } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import { registerUser } from "@/services/auth";
 import { router } from "expo-router";
@@ -97,23 +97,42 @@ function parseBackendError(e: any): FieldErrors {
 
 function getPasswordStrength(password: string) {
   if (!password) {
-    return { label: "", color: COLORS.gray };
+    return { label: "", color: "rgba(255,255,255,0.60)" };
   }
 
   if (password.length < 8) {
-    return { label: "Too short", color: COLORS.danger };
+    return { label: "Too short", color: "#FF8C96" };
   }
 
   if (/^\d+$/.test(password)) {
-    return { label: "Too simple", color: COLORS.danger };
+    return { label: "Too simple", color: "#FF8C96" };
   }
 
   if (password.length >= 10) {
-    return { label: "Strong", color: COLORS.success };
+    return { label: "Strong", color: "#8CF0C7" };
   }
 
-  return { label: "Good", color: COLORS.primary };
+  return { label: "Good", color: "#8CF0C7" };
 }
+
+const UI = {
+  page: "#062C49",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.88)",
+  textMuted: "rgba(255,255,255,0.64)",
+  care: "#8CF0C7",
+  careDeep: "#197D71",
+  card: "rgba(255,255,255,0.10)",
+  cardBorder: "rgba(255,255,255,0.12)",
+  whiteInput: "#FFFFFF",
+  whiteInputBorder: "rgba(255,255,255,0.95)",
+  inputText: "#10324A",
+  inputPlaceholder: "rgba(16,50,74,0.50)",
+  eyeBg: "rgba(12,106,128,0.08)",
+  dangerBg: "rgba(220,53,69,0.14)",
+  dangerBorder: "rgba(220,53,69,0.28)",
+  dangerText: "#FF8C96",
+};
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState("");
@@ -209,7 +228,7 @@ export default function RegisterScreen() {
     <KeyboardAvoidingView
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 18 : 0}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -220,23 +239,32 @@ export default function RegisterScreen() {
         <View style={styles.backgroundBlobBottom} />
         <View style={styles.waveOne} />
         <View style={styles.waveTwo} />
+        <View style={styles.glowOne} />
+        <View style={styles.glowTwo} />
 
         <View style={styles.container}>
-          <View style={styles.brandWrap}>
-            <Image
-              source={require("../../assets/images/icon.png")}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={styles.brandText}>UNITED CARE</Text>
-            <Text style={styles.brandSubText}>Community self-help home</Text>
-          </View>
+          <View style={styles.heroArea}>
+            <View style={styles.brandRow}>
+              <Image
+                source={require("../../assets/images/transparenticon.png")}
+                style={styles.logo}
+                resizeMode="contain"
+              />
 
-          <View style={styles.welcomeWrap}>
-            <Text style={styles.title}>Create account</Text>
-            <Text style={styles.subtitle}>
-              Join your community space and continue with confidence.
-            </Text>
+              <View style={styles.brandTextWrap}>
+                <Text style={styles.brandLine}>
+                  <Text style={styles.brandUnited}>UNITED </Text>
+                  <Text style={styles.brandCare}>CARE</Text>
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.welcomeWrap}>
+              <Text style={styles.title}>Create account</Text>
+              <Text style={styles.subtitle}>
+                Join your community space and continue with confidence.
+              </Text>
+            </View>
           </View>
 
           <View style={styles.formCard}>
@@ -248,7 +276,7 @@ export default function RegisterScreen() {
             <TextInput
               style={[styles.input, errors.username ? styles.inputError : null]}
               placeholder="Your full name"
-              placeholderTextColor={COLORS.gray}
+              placeholderTextColor={UI.inputPlaceholder}
               value={username}
               onChangeText={(text) => {
                 setUsername(text);
@@ -261,6 +289,7 @@ export default function RegisterScreen() {
               autoCapitalize="words"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={UI.care}
             />
             <Text style={styles.helperText}>
               Use letters only. Spaces, hyphens, and apostrophes are allowed.
@@ -273,7 +302,7 @@ export default function RegisterScreen() {
             <TextInput
               style={[styles.input, errors.phone ? styles.inputError : null]}
               placeholder="07XXXXXXXX"
-              placeholderTextColor={COLORS.gray}
+              placeholderTextColor={UI.inputPlaceholder}
               value={phone}
               onChangeText={(text) => {
                 setPhone(text);
@@ -287,10 +316,9 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={UI.care}
             />
-            <Text style={styles.helperText}>
-              Use 07XXXXXXXX or 01XXXXXXXX.
-            </Text>
+            <Text style={styles.helperText}>Use 07XXXXXXXX or 01XXXXXXXX.</Text>
             {errors.phone ? (
               <Text style={styles.fieldError}>{errors.phone}</Text>
             ) : null}
@@ -299,7 +327,7 @@ export default function RegisterScreen() {
             <TextInput
               style={[styles.input, errors.email ? styles.inputError : null]}
               placeholder="you@example.com"
-              placeholderTextColor={COLORS.gray}
+              placeholderTextColor={UI.inputPlaceholder}
               value={email}
               onChangeText={(text) => {
                 setEmail(text);
@@ -313,6 +341,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={UI.care}
             />
             {errors.email ? (
               <Text style={styles.fieldError}>{errors.email}</Text>
@@ -322,7 +351,7 @@ export default function RegisterScreen() {
             <TextInput
               style={[styles.input, errors.id_number ? styles.inputError : null]}
               placeholder="Numbers only"
-              placeholderTextColor={COLORS.gray}
+              placeholderTextColor={UI.inputPlaceholder}
               value={idNumber}
               onChangeText={(text) => {
                 setIdNumber(text);
@@ -336,6 +365,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={UI.care}
             />
             <Text style={styles.helperText}>
               Numbers only, maximum 9 digits.
@@ -354,7 +384,7 @@ export default function RegisterScreen() {
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Create a password"
-                placeholderTextColor={COLORS.gray}
+                placeholderTextColor={UI.inputPlaceholder}
                 value={password}
                 onChangeText={(text) => {
                   setPassword(text);
@@ -368,12 +398,14 @@ export default function RegisterScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!loading}
+                selectionColor={UI.care}
               />
 
               <TouchableOpacity
                 onPress={() => setShowPassword((prev) => !prev)}
                 style={styles.showBtn}
                 disabled={loading}
+                activeOpacity={0.85}
               >
                 <Text style={styles.showBtnText}>
                   {showPassword ? "Hide" : "Show"}
@@ -405,7 +437,7 @@ export default function RegisterScreen() {
                 errors.confirmPassword ? styles.inputError : null,
               ]}
               placeholder="Repeat your password"
-              placeholderTextColor={COLORS.gray}
+              placeholderTextColor={UI.inputPlaceholder}
               value={confirmPassword}
               onChangeText={(text) => {
                 setConfirmPassword(text);
@@ -419,6 +451,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading}
+              selectionColor={UI.care}
             />
             {errors.confirmPassword ? (
               <Text style={styles.fieldError}>{errors.confirmPassword}</Text>
@@ -432,7 +465,7 @@ export default function RegisterScreen() {
             >
               {loading ? (
                 <View style={styles.loadingRow}>
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={UI.careDeep} />
                   <Text style={styles.buttonText}>Creating account...</Text>
                 </View>
               ) : (
@@ -449,7 +482,7 @@ export default function RegisterScreen() {
               onPress={() => router.replace("/(auth)/login")}
               disabled={loading}
             >
-              <Text style={styles.link}>Already have an account? Sign in</Text>
+              <Text style={styles.link}>Already have an account? Log in</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -461,7 +494,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#062C3D",
+    backgroundColor: UI.page,
   },
 
   scrollContent: {
@@ -470,9 +503,12 @@ const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    padding: SPACING.md,
-    paddingTop: SPACING.xl,
-    paddingBottom: SPACING.xl,
+    width: "100%",
+    maxWidth: 500,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
     justifyContent: "center",
     position: "relative",
   },
@@ -502,7 +538,7 @@ const styles = StyleSheet.create({
     left: -30,
     right: -30,
     bottom: 110,
-    height: 110,
+    height: 100,
     borderTopLeftRadius: 150,
     borderTopRightRadius: 150,
     backgroundColor: "rgba(125, 220, 185, 0.08)",
@@ -514,159 +550,219 @@ const styles = StyleSheet.create({
     left: -20,
     right: -20,
     bottom: 55,
-    height: 95,
+    height: 84,
     borderTopLeftRadius: 150,
     borderTopRightRadius: 150,
     backgroundColor: "rgba(87, 205, 185, 0.10)",
     transform: [{ rotate: "4deg" }],
   },
 
-  brandWrap: {
+  glowOne: {
+    position: "absolute",
+    top: 120,
+    right: 18,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(12,192,183,0.08)",
+  },
+
+  glowTwo: {
+    position: "absolute",
+    bottom: 180,
+    left: 14,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(140,240,199,0.06)",
+  },
+
+  heroArea: {
+    marginBottom: 12,
+    alignItems: "center",
+  },
+
+  brandRow: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: SPACING.lg,
+    marginBottom: 12,
+    gap: 4,
   },
 
   logo: {
-    width: 78,
-    height: 78,
-    marginBottom: 10,
+    width: 92,
+    height: 92,
   },
 
-  brandText: {
-    color: COLORS.white,
-    fontWeight: "800",
-    fontSize: 22,
-    letterSpacing: 0.8,
-    textAlign: "center",
+  brandTextWrap: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+    marginLeft: -2,
   },
 
-  brandSubText: {
-    marginTop: 4,
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 12,
-    textAlign: "center",
+  brandLine: {
+    includeFontPadding: false,
+    textAlignVertical: "center",
+  },
+
+  brandUnited: {
+    color: UI.text,
+    fontFamily: FONT.bold,
+    fontSize: 21,
+    letterSpacing: 0.5,
+    lineHeight: 24,
+    textAlign: "left",
+  },
+
+  brandCare: {
+    color: UI.care,
+    fontFamily: FONT.bold,
+    fontSize: 28,
+    letterSpacing: 0.5,
+    lineHeight: 32,
+    textAlign: "left",
   },
 
   welcomeWrap: {
+    width: "100%",
+    backgroundColor: "rgba(12,106,128,0.24)",
+    borderRadius: 22,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     alignItems: "center",
-    marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    ...SHADOW.card,
   },
 
   title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: COLORS.white,
+    fontSize: 22,
+    color: UI.text,
     textAlign: "center",
+    fontFamily: FONT.bold,
   },
 
   subtitle: {
-    marginTop: SPACING.xs,
-    color: "rgba(255,255,255,0.86)",
-    fontSize: 13,
-    lineHeight: 19,
+    marginTop: 4,
+    color: UI.textSoft,
+    fontSize: 12,
+    lineHeight: 18,
     textAlign: "center",
+    fontFamily: FONT.medium,
   },
 
   formCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl || RADIUS.lg,
-    padding: SPACING.md,
+    backgroundColor: UI.card,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: UI.cardBorder,
     ...SHADOW.card,
   },
 
   label: {
-    color: COLORS.dark,
-    fontWeight: "700",
+    color: UI.text,
+    fontFamily: FONT.bold,
     marginBottom: 6,
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 13,
   },
 
   generalError: {
-    backgroundColor: "rgba(220,53,69,0.08)",
-    borderColor: "rgba(220,53,69,0.18)",
+    backgroundColor: UI.dangerBg,
+    borderColor: UI.dangerBorder,
     borderWidth: 1,
-    padding: SPACING.sm,
+    padding: 10,
     borderRadius: RADIUS.md,
-    marginBottom: SPACING.sm,
-    color: COLORS.danger,
-    fontWeight: "700",
+    marginBottom: 10,
+    color: UI.dangerText,
+    fontFamily: FONT.bold,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
   },
 
   input: {
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
-    marginBottom: 4,
-    color: COLORS.dark,
-    backgroundColor: COLORS.white,
+    borderColor: UI.whiteInputBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    marginBottom: 3,
+    color: UI.inputText,
+    backgroundColor: UI.whiteInput,
+    fontSize: 14,
+    fontFamily: FONT.bold,
   },
 
   passwordWrap: {
     borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    borderRadius: RADIUS.md,
+    borderColor: UI.whiteInputBorder,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.white,
-    paddingLeft: SPACING.md,
-    marginBottom: 4,
+    backgroundColor: UI.whiteInput,
+    paddingLeft: 14,
+    marginBottom: 3,
+    overflow: "hidden",
   },
 
   passwordInput: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    color: COLORS.dark,
+    paddingVertical: 11,
+    color: UI.inputText,
     fontSize: 14,
+    fontFamily: FONT.bold,
   },
 
   showBtn: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    backgroundColor: UI.eyeBg,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(12,106,128,0.10)",
   },
 
   showBtnText: {
-    color: "#0C6A80",
-    fontWeight: "700",
+    color: UI.careDeep,
+    fontFamily: FONT.bold,
     fontSize: 12,
   },
 
   helperText: {
-    color: COLORS.gray,
-    fontSize: 11,
-    marginBottom: 8,
-    lineHeight: 16,
+    color: UI.textMuted,
+    fontSize: 10,
+    marginBottom: 5,
+    lineHeight: 14,
+    fontFamily: FONT.regular,
   },
 
   passwordStrength: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 8,
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 5,
   },
 
   inputError: {
-    borderColor: COLORS.danger,
+    borderColor: UI.dangerText,
   },
 
   fieldError: {
-    color: COLORS.danger,
-    marginBottom: SPACING.sm,
-    fontWeight: "600",
-    fontSize: 12,
-    lineHeight: 18,
+    color: UI.dangerText,
+    marginBottom: 7,
+    fontFamily: FONT.medium,
+    fontSize: 11,
+    lineHeight: 16,
   },
 
   button: {
-    backgroundColor: "#0C6A80",
-    padding: SPACING.md,
-    borderRadius: RADIUS.md,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     alignItems: "center",
-    marginTop: SPACING.sm,
+    marginTop: 6,
   },
 
   buttonDisabled: {
@@ -680,24 +776,26 @@ const styles = StyleSheet.create({
   },
 
   buttonText: {
-    color: COLORS.white,
-    fontWeight: "700",
+    color: UI.careDeep,
+    fontFamily: FONT.bold,
     fontSize: 14,
   },
 
   footerHint: {
-    marginTop: SPACING.sm,
+    marginTop: 7,
     textAlign: "center",
-    color: COLORS.gray,
-    fontSize: 11,
-    lineHeight: 17,
+    color: UI.textMuted,
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: FONT.regular,
   },
 
   link: {
-    marginTop: SPACING.md,
+    marginTop: 10,
     textAlign: "center",
-    color: "#0C6A80",
-    fontWeight: "600",
-    fontSize: 13,
+    color: UI.text,
+    fontFamily: FONT.bold,
+    fontSize: 17,
+    lineHeight: 22,
   },
 });

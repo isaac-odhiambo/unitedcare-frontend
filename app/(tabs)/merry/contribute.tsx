@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -296,17 +295,7 @@ export default function MerryContributeScreen() {
     });
   }, [accountReference, canContinue, expectedAmount, merry]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!merry) {
+  if (!merry && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -321,7 +310,7 @@ export default function MerryContributeScreen() {
     );
   }
 
-  if (!merryAllowed) {
+  if (!merryAllowed && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -336,7 +325,7 @@ export default function MerryContributeScreen() {
     );
   }
 
-  if (isAdmin) {
+  if (isAdmin && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -351,7 +340,7 @@ export default function MerryContributeScreen() {
     );
   }
 
-  if (!isMemberOfThisMerry) {
+  if (!isMemberOfThisMerry && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -424,95 +413,103 @@ export default function MerryContributeScreen() {
           </View>
         </View>
 
-        <View style={styles.heroShell}>
-          <View style={styles.heroOrbOne} />
-          <View style={styles.heroOrbTwo} />
-          <View style={styles.heroOrbThree} />
+        {merry ? (
+          <>
+            <View style={styles.heroShell}>
+              <View style={styles.heroOrbOne} />
+              <View style={styles.heroOrbTwo} />
+              <View style={styles.heroOrbThree} />
 
-          <Text style={styles.heroTag}>COMMUNITY MERRY</Text>
-          <Text style={styles.title}>Merry Contribution</Text>
-          <Text style={styles.subtitle}>{merry.name}</Text>
+              <Text style={styles.heroTag}>COMMUNITY MERRY</Text>
+              <Text style={styles.title}>Merry Contribution</Text>
+              <Text style={styles.subtitle}>{merry.name}</Text>
 
-          <View style={styles.summaryRowTop}>
-            <SummaryTile
-              label="Seats"
-              value={String(mySeats.length)}
-              icon="people-outline"
-            />
-            <SummaryTile
-              label="Expected"
-              value={formatKes(expectedAmount)}
-              icon="wallet-outline"
-            />
-            <SummaryTile
-              label="Reference"
-              value={accountReference.toUpperCase()}
-              icon="document-text-outline"
-            />
-          </View>
-        </View>
+              <View style={styles.summaryRowTop}>
+                <SummaryTile
+                  label="Seats"
+                  value={String(mySeats.length)}
+                  icon="people-outline"
+                />
+                <SummaryTile
+                  label="Expected"
+                  value={formatKes(expectedAmount)}
+                  icon="wallet-outline"
+                />
+                <SummaryTile
+                  label="Reference"
+                  value={accountReference.toUpperCase()}
+                  icon="document-text-outline"
+                />
+              </View>
+            </View>
 
-        {error ? (
-          <Card style={styles.errorCard}>
-            <Ionicons name="alert-circle-outline" size={18} color={ERROR_TEXT} />
-            <Text style={styles.errorText}>{error}</Text>
-          </Card>
+            {error ? (
+              <Card style={styles.errorCard}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color={ERROR_TEXT}
+                />
+                <Text style={styles.errorText}>{error}</Text>
+              </Card>
+            ) : null}
+
+            <Card style={styles.formCard}>
+              <View style={styles.spaceGlowTop} />
+              <View style={styles.spaceGlowBottom} />
+
+              <Text style={styles.sectionTitle}>Contribution summary</Text>
+              <Text style={styles.sectionSubtitle}>
+                Review the merry details below, then continue to the payment page to
+                enter or change amount and complete payment.
+              </Text>
+
+              <View style={styles.infoBox}>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Merry name</Text>
+                  <Text style={styles.infoValue}>{merry.name}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>My seats</Text>
+                  <Text style={styles.infoValue}>{mySeats.length}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Per seat</Text>
+                  <Text style={styles.infoValue}>
+                    {formatKes(merry.contribution_amount)}
+                  </Text>
+                </View>
+
+                <View style={[styles.infoRow, styles.infoRowLast]}>
+                  <Text style={styles.infoLabel}>Suggested amount</Text>
+                  <Text style={styles.infoValueStrong}>
+                    {formatKes(expectedAmount)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.methodHint}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={TEXT_ON_DARK_SOFT}
+                />
+                <Text style={styles.methodHintText}>
+                  On the next screen you can edit the amount, choose payment method,
+                  and complete the transaction.
+                </Text>
+              </View>
+
+              <Button
+                title={opening ? "Opening payment..." : "Continue to Payment"}
+                onPress={handleContinue}
+                disabled={!canContinue || opening}
+              />
+            </Card>
+          </>
         ) : null}
-
-        <Card style={styles.formCard}>
-          <View style={styles.spaceGlowTop} />
-          <View style={styles.spaceGlowBottom} />
-
-          <Text style={styles.sectionTitle}>Contribution summary</Text>
-          <Text style={styles.sectionSubtitle}>
-            Review the merry details below, then continue to the payment page to
-            enter or change amount and complete payment.
-          </Text>
-
-          <View style={styles.infoBox}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Merry name</Text>
-              <Text style={styles.infoValue}>{merry.name}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>My seats</Text>
-              <Text style={styles.infoValue}>{mySeats.length}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Per seat</Text>
-              <Text style={styles.infoValue}>
-                {formatKes(merry.contribution_amount)}
-              </Text>
-            </View>
-
-            <View style={[styles.infoRow, styles.infoRowLast]}>
-              <Text style={styles.infoLabel}>Suggested amount</Text>
-              <Text style={styles.infoValueStrong}>
-                {formatKes(expectedAmount)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.methodHint}>
-            <Ionicons
-              name="information-circle-outline"
-              size={16}
-              color={TEXT_ON_DARK_SOFT}
-            />
-            <Text style={styles.methodHintText}>
-              On the next screen you can edit the amount, choose payment method,
-              and complete the transaction.
-            </Text>
-          </View>
-
-          <Button
-            title={opening ? "Opening payment..." : "Continue to Payment"}
-            onPress={handleContinue}
-            disabled={!canContinue || opening}
-          />
-        </Card>
       </ScrollView>
     </SafeAreaView>
   );

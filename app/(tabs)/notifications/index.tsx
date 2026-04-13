@@ -1,4 +1,5 @@
 // app/(tabs)/notifications/index.tsx
+
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -12,11 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
-import { COLORS, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import useNotifications from "@/hooks/useNotifications";
 import {
   AppNotification,
@@ -46,15 +48,15 @@ function formatWhen(value?: string | null) {
 function getTypeColor(type: NotificationType) {
   switch (String(type || "").toUpperCase()) {
     case "SUCCESS":
-      return COLORS.secondary;
+      return "#34D399";
     case "WARNING":
-      return "#D97706";
+      return "#F59E0B";
     case "ERROR":
-      return COLORS.error || "#DC2626";
+      return "#F87171";
     case "ACTION":
-      return COLORS.info || "#2563EB";
+      return "#60A5FA";
     default:
-      return COLORS.primary;
+      return "#8CF0C7";
   }
 }
 
@@ -89,7 +91,6 @@ function resolveRoute(actionUrl?: string | null) {
     case "/savings":
       return "/(tabs)/savings";
 
-    case "/profile/kyc":
     case "/profile/edit":
     case "/profile":
       return "/(tabs)/profile";
@@ -123,10 +124,27 @@ export default function NotificationsScreen() {
 
   const [busyId, setBusyId] = useState<number | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      load(true);
+      let active = true;
+
+      const run = async () => {
+        try {
+          await load(true);
+        } finally {
+          if (active) {
+            setHasBootstrapped(true);
+          }
+        }
+      };
+
+      run();
+
+      return () => {
+        active = false;
+      };
     }, [load])
   );
 
@@ -202,65 +220,74 @@ export default function NotificationsScreen() {
     }
   }, [markAllRead]);
 
-  if (loading) {
-    return (
-      <View style={styles.loaderWrap}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loaderText}>Loading notifications.</Text>
-      </View>
-    );
+  if (!hasBootstrapped && loading) {
+    return <SafeAreaView style={styles.page} edges={["top"]} />;
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.page} edges={["top"]}>
+      <View style={styles.backgroundGlowTop} />
+      <View style={styles.backgroundGlowBottom} />
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#8CF0C7"
+          />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Notifications</Text>
-            <Text style={styles.subtitle}>
-              {unreadCount > 0
-                ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
-                : "You are all caught up"}
-            </Text>
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroIconWrap}>
+              <Ionicons name="notifications-outline" size={24} color="#0C6A80" />
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={handleMarkAllRead}
+              disabled={markingAll || items.length === 0}
+              style={[
+                styles.readAllButton,
+                (markingAll || items.length === 0) && styles.disabledButton,
+              ]}
+            >
+              {markingAll ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons
+                    name="checkmark-done-outline"
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.readAllButtonText}>Read all</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleMarkAllRead}
-            disabled={markingAll || items.length === 0}
-            style={[
-              styles.readAllButton,
-              (markingAll || items.length === 0) && styles.disabledButton,
-            ]}
-          >
-            {markingAll ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons
-                  name="checkmark-done-outline"
-                  size={16}
-                  color="#fff"
-                />
-                <Text style={styles.readAllButtonText}>Read all</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <Text style={styles.title}>Notifications</Text>
+          <Text style={styles.subtitle}>
+            {unreadCount > 0
+              ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+              : "You are all caught up"}
+          </Text>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
         <Section title="Recent updates">
           {items.length === 0 ? (
-            <EmptyState
-              title="No notifications yet"
-              subtitle="Admin messages, support updates, payment alerts, and action-needed updates will appear here."
-            />
+            <View style={styles.emptyCard}>
+              <EmptyState
+                title="No notifications yet"
+                subtitle="Support updates, payment alerts, community messages, and action-needed updates will appear here."
+              />
+            </View>
           ) : (
             items.map((item) => {
               const typeColor = getTypeColor(item.notification_type);
@@ -269,17 +296,20 @@ export default function NotificationsScreen() {
               return (
                 <Card
                   key={item.id}
-                  style={[styles.card, !item.is_read ? styles.cardUnread : null]}
+                  style={[
+                    styles.card,
+                    !item.is_read ? styles.cardUnread : styles.cardRead,
+                  ]}
                 >
                   <TouchableOpacity
-                    activeOpacity={0.9}
+                    activeOpacity={0.92}
                     onPress={() => handleOpen(item)}
                   >
                     <View style={styles.cardTop}>
                       <View
                         style={[
                           styles.iconWrap,
-                          { backgroundColor: `${typeColor}18` },
+                          { backgroundColor: `${typeColor}22` },
                         ]}
                       >
                         <Ionicons
@@ -316,7 +346,7 @@ export default function NotificationsScreen() {
                           <View
                             style={[
                               styles.typePill,
-                              { borderColor: `${typeColor}55` },
+                              { borderColor: `${typeColor}66` },
                             ]}
                           >
                             <Text
@@ -328,16 +358,20 @@ export default function NotificationsScreen() {
 
                           <View style={styles.actionsRow}>
                             {busyId === item.id ? (
-                              <ActivityIndicator
-                                size="small"
-                                color={COLORS.primary}
-                              />
+                              <View style={styles.inlineBusyWrap}>
+                                <ActivityIndicator size="small" color="#8CF0C7" />
+                              </View>
                             ) : (
                               <>
                                 <TouchableOpacity
                                   onPress={() => handleOpen(item)}
                                   style={styles.openBtn}
                                 >
+                                  <Ionicons
+                                    name="arrow-forward-outline"
+                                    size={14}
+                                    color="#FFFFFF"
+                                  />
                                   <Text style={styles.openBtnText}>Open</Text>
                                 </TouchableOpacity>
 
@@ -345,6 +379,11 @@ export default function NotificationsScreen() {
                                   onPress={() => handleDelete(item)}
                                   style={styles.deleteBtn}
                                 >
+                                  <Ionicons
+                                    name="trash-outline"
+                                    size={14}
+                                    color="#FCA5A5"
+                                  />
                                   <Text style={styles.deleteBtnText}>
                                     Delete
                                   </Text>
@@ -362,92 +401,137 @@ export default function NotificationsScreen() {
           )}
         </Section>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  page: {
     flex: 1,
-    backgroundColor: COLORS.background || "#F8FAFC",
+    backgroundColor: "#0A2230",
   },
 
-  loaderWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.background || "#F8FAFC",
+  backgroundGlowTop: {
+    position: "absolute",
+    top: -120,
+    right: -80,
+    width: 240,
+    height: 240,
+    borderRadius: 240,
+    backgroundColor: "rgba(12,106,128,0.22)",
   },
 
-  loaderText: {
-    marginTop: 10,
-    fontSize: 14,
-    color: COLORS.gray || COLORS.textMuted || "#64748B",
+  backgroundGlowBottom: {
+    position: "absolute",
+    bottom: -120,
+    left: -80,
+    width: 220,
+    height: 220,
+    borderRadius: 220,
+    backgroundColor: "rgba(52,198,191,0.12)",
   },
 
   content: {
     padding: SPACING.lg,
-    paddingBottom: SPACING.xxl || 32,
+    paddingBottom: 36,
   },
 
-  header: {
+  heroCard: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: SPACING.lg,
+    ...((SHADOW as any)?.soft || (SHADOW as any) || {}),
+  },
+
+  heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SPACING.lg,
-    gap: SPACING.md,
+    gap: 12,
+    marginBottom: 16,
+  },
+
+  heroIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(220,255,250,0.88)",
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "800",
-    color: COLORS.text || "#0F172A",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
   },
 
   subtitle: {
-    marginTop: 4,
-    color: COLORS.gray || COLORS.textMuted || "#64748B",
-    fontSize: 13,
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "rgba(255,255,255,0.78)",
+    fontWeight: "600",
   },
 
   errorText: {
-    marginTop: 6,
+    marginTop: 10,
     fontSize: 12,
-    color: COLORS.error || "#DC2626",
+    color: "#FCA5A5",
+    fontWeight: "700",
   },
 
   readAllButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: COLORS.primary,
+    backgroundColor: "#0C6A80",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
   },
 
   readAllButtonText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontWeight: "800",
     fontSize: 13,
   },
 
   disabledButton: {
-    opacity: 0.6,
+    opacity: 0.5,
+  },
+
+  emptyCard: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 22,
+    overflow: "hidden",
   },
 
   card: {
     marginBottom: SPACING.md,
-    borderRadius: RADIUS?.xl || 18,
+    borderRadius: RADIUS?.xl || 20,
     padding: 0,
     overflow: "hidden",
+    borderWidth: 1,
     ...((SHADOW as any)?.soft || (SHADOW as any) || {}),
   },
 
   cardUnread: {
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    backgroundColor: "#F8FBFF",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(140,240,199,0.20)",
+  },
+
+  cardRead: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   cardTop: {
@@ -458,9 +542,9 @@ const styles = StyleSheet.create({
   },
 
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -478,30 +562,33 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "800",
-    color: COLORS.text || "#0F172A",
+    color: "#FFFFFF",
   },
 
   newBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: "#DBEAFE",
+    backgroundColor: "rgba(140,240,199,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(140,240,199,0.25)",
   },
 
   newBadgeText: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#1D4ED8",
+    color: "#8CF0C7",
   },
 
   cardMessage: {
     marginTop: 8,
     fontSize: 13,
-    lineHeight: 19,
-    color: COLORS.textMuted || "#64748B",
+    lineHeight: 20,
+    color: "rgba(255,255,255,0.78)",
+    fontWeight: "500",
   },
 
   metaRow: {
@@ -514,16 +601,17 @@ const styles = StyleSheet.create({
 
   metaText: {
     fontSize: 12,
-    color: COLORS.gray || COLORS.textMuted || "#64748B",
+    color: "rgba(255,255,255,0.62)",
+    fontWeight: "600",
   },
 
   metaDot: {
     fontSize: 12,
-    color: COLORS.gray || COLORS.textMuted || "#64748B",
+    color: "rgba(255,255,255,0.45)",
   },
 
   bottomRow: {
-    marginTop: 12,
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -536,7 +624,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: COLORS.white || "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
 
   typePillText: {
@@ -551,29 +639,44 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  inlineBusyWrap: {
+    minWidth: 70,
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   openBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: COLORS.primarySoft || "rgba(14, 94, 111, 0.10)",
+    backgroundColor: "#0C6A80",
   },
 
   openBtnText: {
-    color: COLORS.primary,
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontWeight: "800",
     fontSize: 12,
   },
 
   deleteBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: "rgba(220, 38, 38, 0.10)",
+    backgroundColor: "rgba(248,113,113,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.18)",
   },
 
   deleteBtnText: {
-    color: COLORS.error || "#DC2626",
-    fontWeight: "700",
+    color: "#FCA5A5",
+    fontWeight: "800",
     fontSize: 12,
   },
 });

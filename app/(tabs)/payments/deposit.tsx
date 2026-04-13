@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -40,6 +41,7 @@ import {
   isPaybillEnabled,
   isPendingTxStatus,
   isSuccessfulTxStatus,
+  money,
   MpesaConfig,
   MpesaPurpose,
   mpesaStkPush,
@@ -77,6 +79,8 @@ const SURFACE_SOFT = "rgba(248,250,252,0.92)";
 const INNER_BORDER = "rgba(15, 23, 42, 0.06)";
 const TEXT_MAIN = "#0F172A";
 const TEXT_SOFT = "#64748B";
+const SUCCESS_SOFT = "rgba(16, 185, 129, 0.08)";
+const SUCCESS_BORDER = "rgba(16, 185, 129, 0.18)";
 
 function normalizeDisplayPhone(value: string) {
   const v = String(value || "").trim().replace(/\s+/g, "");
@@ -200,6 +204,23 @@ function getFailureMessage(tx?: Partial<MpesaTransaction> | null) {
   return tx?.result_desc || "Payment failed.";
 }
 
+function getCommunityServiceFee(purpose: MpesaPurpose, baseAmount: number) {
+  if (!Number.isFinite(baseAmount) || baseAmount <= 0) return 0;
+
+  switch (purpose) {
+    case "SAVINGS_DEPOSIT":
+      return 10;
+    case "MERRY_CONTRIBUTION":
+      return 10;
+    case "GROUP_CONTRIBUTION":
+      return 10;
+    case "LOAN_REPAYMENT":
+      return 10;
+    default:
+      return 10;
+  }
+}
+
 export default function DepositScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<DepositParams>();
@@ -256,23 +277,39 @@ export default function DepositScreen() {
     return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "";
   }, [amount]);
 
- const accountReference = useMemo(() => {
-  const explicitRef = String(params.reference || "").trim();
-  if (explicitRef) return explicitRef;
+  const baseAmountNumber = useMemo(() => {
+    const n = Number(amount);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [amount]);
 
-  // ✅ PAYBILL → use group code + user id (UN2)
-  if (method === "PAYBILL" && purpose === "GROUP_CONTRIBUTION") {
-    const groupCode = (params as any)?.groupCode || (params as any)?.payment_code;
-    const userId = getUserId(user);
+  const serviceCharge = useMemo(() => {
+    return getCommunityServiceFee(purpose, baseAmountNumber);
+  }, [purpose, baseAmountNumber]);
 
-    if (groupCode && userId) {
-      return `${String(groupCode).toUpperCase()}${userId}`;
+  const totalPayableNumber = useMemo(() => {
+    if (!baseAmountNumber) return 0;
+    return baseAmountNumber + serviceCharge;
+  }, [baseAmountNumber, serviceCharge]);
+
+  const totalPayable = useMemo(() => {
+    return totalPayableNumber > 0 ? totalPayableNumber.toFixed(2) : "";
+  }, [totalPayableNumber]);
+
+  const accountReference = useMemo(() => {
+    const explicitRef = String(params.reference || "").trim();
+    if (explicitRef) return explicitRef;
+
+    if (method === "PAYBILL" && purpose === "GROUP_CONTRIBUTION") {
+      const groupCode = (params as any)?.groupCode || (params as any)?.payment_code;
+      const userId = getUserId(user);
+
+      if (groupCode && userId) {
+        return `${String(groupCode).toUpperCase()}${userId}`;
+      }
     }
-  }
 
-  // ✅ fallback (STK and others)
-  return buildFallbackReference(purpose, user, params.groupId);
-}, [params.reference, params.groupId, purpose, user, method]);
+    return buildFallbackReference(purpose, user, params.groupId);
+  }, [params.reference, params.groupId, purpose, user, method]);
 
   const narration = useMemo(() => {
     const explicitNarration = String(params.narration || "").trim();
@@ -336,6 +373,8 @@ export default function DepositScreen() {
           payment_success: kind === "success" ? "1" : "0",
           payment_failed: kind === "failed" ? "1" : "0",
           amount: cleanAmount,
+          total_amount: totalPayable,
+          fee_amount: String(serviceCharge),
           phone: displayPhone,
           purpose,
           reference: accountReference,
@@ -359,7 +398,9 @@ export default function DepositScreen() {
       params.groupId,
       params.returnTo,
       purpose,
+      serviceCharge,
       showToast,
+      totalPayable,
     ]
   );
 
@@ -368,7 +409,7 @@ export default function DepositScreen() {
       if (!mountedRef.current) return;
 
       if (isSuccessfulTxStatus(tx.status)) {
-        setStatusText("Payment received ✅");
+        setStatusText("Payment received.");
         redirectToReturn(tx, "success", "Payment successful.");
         return;
       }
@@ -379,11 +420,11 @@ export default function DepositScreen() {
       }
 
       if (isPendingTxStatus(tx.status)) {
-        setStatusText("Still waiting for confirmation...");
+        setStatusText("Still waiting for confirmation.");
         return;
       }
 
-      setStatusText("Still waiting for confirmation...");
+      setStatusText("Still waiting for confirmation.");
     },
     [redirectToReturn]
   );
@@ -511,7 +552,7 @@ export default function DepositScreen() {
       if (!mountedRef.current) return;
 
       setError("");
-      setStatusText("Sending...");
+      setStatusText("Sending.");
       setSubmitting(true);
       setChecking(true);
       redirectedRef.current = false;
@@ -530,7 +571,7 @@ export default function DepositScreen() {
         throw new Error("Transaction id was not returned by the backend.");
       }
 
-      setStatusText("Waiting for confirmation...");
+      setStatusText("Waiting for confirmation.");
 
       const txAfterCallback = await pollMyMpesaTransactionById(res.tx.id, {
         intervalMs: 3000,
@@ -582,7 +623,7 @@ export default function DepositScreen() {
       setError("");
       setChecking(true);
       setSubmitting(false);
-      setStatusText("Checking...");
+      setStatusText("Checking.");
       redirectedRef.current = false;
 
       const existing = await findLatestMatchingMyMpesaTransaction({
@@ -590,7 +631,7 @@ export default function DepositScreen() {
         reference: accountReference,
         payment_method: "PAYBILL",
         channel: "C2B",
-        amount: cleanAmount,
+        amount: totalPayable,
         phone: displayPhone,
       });
 
@@ -608,7 +649,7 @@ export default function DepositScreen() {
       }
 
       if (isPendingTxStatus(existing.status)) {
-        setStatusText("Still pending...");
+        setStatusText("Still pending.");
         showToast({
           type: "INFO",
           title: "Payment still pending",
@@ -639,11 +680,11 @@ export default function DepositScreen() {
   }, [
     accountReference,
     canManualCheck,
-    cleanAmount,
     displayPhone,
     handleTerminalResult,
     purpose,
     showToast,
+    totalPayable,
   ]);
 
   const handleManualPaid = useCallback(async () => {
@@ -658,13 +699,13 @@ export default function DepositScreen() {
       setError("");
       setChecking(true);
       setSubmitting(false);
-      setStatusText("Waiting for confirmation...");
+      setStatusText("Waiting for confirmation.");
       redirectedRef.current = false;
 
       const tx = await pollForMatchingManualPaybill({
         purpose,
         reference: accountReference,
-        totalAmountPaid: cleanAmount,
+        totalAmountPaid: totalPayable,
         phone: displayPhone,
         intervalMs: 5000,
         timeoutMs: 300000,
@@ -704,11 +745,11 @@ export default function DepositScreen() {
   }, [
     accountReference,
     canManualCheck,
-    cleanAmount,
     displayPhone,
     handleTerminalResult,
     purpose,
     showToast,
+    totalPayable,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -725,18 +766,7 @@ export default function DepositScreen() {
     router.replace(returnTo as any);
   }, [params.returnTo]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-          <Text style={styles.loadingText}>Preparing payment...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.page}>
@@ -753,193 +783,251 @@ export default function DepositScreen() {
 
   return (
     <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.page}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: Math.max(insets.bottom + 24, 32) },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#8CF0C7"
-            colors={["#8CF0C7", "#0CC0B7"]}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobMiddle} />
-        <View style={styles.backgroundBlobBottom} />
-        <View style={styles.backgroundGlowOne} />
-        <View style={styles.backgroundGlowTwo} />
-
-        <View style={styles.header}>
-          <Text style={styles.title}>{displayTitle}</Text>
-          <Text style={styles.subtitle}>
-            Choose how you want to complete your contribution.
-          </Text>
-        </View>
-
-        {error ? (
-          <Card style={styles.errorCard}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={18}
-              color={COLORS.danger}
+        <ScrollView
+          style={styles.page}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom + 48, 72) },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#8CF0C7"
+              colors={["#8CF0C7", "#0CC0B7"]}
             />
-            <Text style={styles.errorText}>{error}</Text>
-          </Card>
-        ) : null}
+          }
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        >
+          <View style={styles.backgroundBlobTop} />
+          <View style={styles.backgroundBlobMiddle} />
+          <View style={styles.backgroundBlobBottom} />
+          <View style={styles.backgroundGlowOne} />
+          <View style={styles.backgroundGlowTwo} />
 
-        {statusText ? (
-          <Card style={styles.noticeCard}>
-            <View style={styles.noticeGlow} />
-            <Text style={styles.noticeText}>{statusText}</Text>
-          </Card>
-        ) : null}
-
-        <View style={styles.switchRow}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => setMethodSafely("STK")}
-            style={[
-              styles.switchBtn,
-              method === "STK" ? styles.switchBtnActive : null,
-            ]}
-          >
-            <Ionicons
-              name="flash-outline"
-              size={16}
-              color={method === "STK" ? COLORS.white : COLORS.mpesa}
-            />
-            <Text
-              style={[
-                styles.switchBtnText,
-                method === "STK" ? styles.switchBtnTextActive : null,
-              ]}
-            >
-              STK
+          <View style={styles.header}>
+            <Text style={styles.title}>{displayTitle}</Text>
+            <Text style={styles.subtitle}>
+              Complete your contribution in the way that works best for you.
             </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              if (!paybillEnabled) {
-                Alert.alert("Paybill unavailable", "Manual paybill is not enabled.");
-                return;
-              }
-              setMethodSafely("PAYBILL");
-            }}
-            style={[
-              styles.switchBtn,
-              method === "PAYBILL" ? styles.switchBtnActive : null,
-            ]}
-          >
-            <Ionicons
-              name="business-outline"
-              size={16}
-              color={method === "PAYBILL" ? COLORS.white : COLORS.mpesa}
-            />
-            <Text
-              style={[
-                styles.switchBtnText,
-                method === "PAYBILL" ? styles.switchBtnTextActive : null,
-              ]}
-            >
-              Paybill
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <Card style={styles.formCard}>
-          <View style={styles.cardGlow} />
-
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            value={phone}
-            onChangeText={(v) => {
-              setPhone(v);
-              if (statusText) setStatusText("");
-            }}
-            placeholder="07XXXXXXXX"
-            placeholderTextColor={COLORS.placeholder}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          <Text style={styles.label}>Amount</Text>
-          <TextInput
-            value={amount}
-            onChangeText={(v) => {
-              setAmount(sanitizeAmount(v));
-              if (statusText) setStatusText("");
-            }}
-            placeholder="1000"
-            placeholderTextColor={COLORS.placeholder}
-            keyboardType="numeric"
-            style={styles.input}
-          />
-
-          <View style={styles.referenceBox}>
-            <Text style={styles.referenceLabel}>Reference</Text>
-            <Text style={styles.referenceValue}>{accountReference || "—"}</Text>
           </View>
 
-          {method === "STK" ? (
-            <Button
-              title={submitting || checking ? "Please wait..." : "Pay now"}
-              onPress={handleSubmit}
-              disabled={!canSubmit}
-              leftIcon={
-                submitting || checking ? undefined : (
-                  <Ionicons
-                    name="arrow-forward-outline"
-                    size={18}
-                    color={COLORS.white}
-                  />
-                )
-              }
+          {loading ? (
+            <View style={styles.inlineLoader}>
+              <Ionicons name="sync-outline" size={18} color="#8CF0C7" />
+            </View>
+          ) : null}
+
+          {error ? (
+            <Card style={styles.errorCard}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={COLORS.danger}
+              />
+              <Text style={styles.errorText}>{error}</Text>
+            </Card>
+          ) : null}
+
+          {statusText ? (
+            <Card style={styles.noticeCard}>
+              <View style={styles.noticeGlow} />
+              <Text style={styles.noticeText}>{statusText}</Text>
+            </Card>
+          ) : null}
+
+          <View style={styles.switchRow}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setMethodSafely("STK")}
+              style={[
+                styles.switchBtn,
+                method === "STK" ? styles.switchBtnActive : null,
+              ]}
+            >
+              <Ionicons
+                name="flash-outline"
+                size={15}
+                color={method === "STK" ? COLORS.white : COLORS.mpesa}
+              />
+              <Text
+                style={[
+                  styles.switchBtnText,
+                  method === "STK" ? styles.switchBtnTextActive : null,
+                ]}
+              >
+                STK
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                if (!paybillEnabled) {
+                  Alert.alert("Paybill unavailable", "Manual paybill is not enabled.");
+                  return;
+                }
+                setMethodSafely("PAYBILL");
+              }}
+              style={[
+                styles.switchBtn,
+                method === "PAYBILL" ? styles.switchBtnActive : null,
+              ]}
+            >
+              <Ionicons
+                name="business-outline"
+                size={15}
+                color={method === "PAYBILL" ? COLORS.white : COLORS.mpesa}
+              />
+              <Text
+                style={[
+                  styles.switchBtnText,
+                  method === "PAYBILL" ? styles.switchBtnTextActive : null,
+                ]}
+              >
+                Paybill
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Card style={styles.formCard}>
+            <View style={styles.cardGlow} />
+
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput
+              value={phone}
+              onChangeText={(v) => {
+                setPhone(v);
+                if (statusText) setStatusText("");
+              }}
+              placeholder="07XXXXXXXX"
+              placeholderTextColor={COLORS.placeholder}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              style={styles.input}
             />
-          ) : (
-            <View style={styles.paybillBox}>
-              <View style={styles.paybillRow}>
-                <Text style={styles.paybillLabel}>Business No</Text>
-                <Text style={styles.paybillValue}>
-                  {paybillEnabled ? paybillNumber : "Not set"}
+
+            <Text style={styles.label}>Amount</Text>
+            <TextInput
+              value={amount}
+              onChangeText={(v) => {
+                setAmount(sanitizeAmount(v));
+                if (statusText) setStatusText("");
+              }}
+              placeholder="1000"
+              placeholderTextColor={COLORS.placeholder}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+
+            {amountOk ? (
+              <View style={styles.summaryBox}>
+                <View style={styles.summaryHeader}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={15}
+                    color={COLORS.mpesa}
+                  />
+                  <Text style={styles.summaryHeaderText}>Summary</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Contribution</Text>
+                  <Text style={styles.summaryValue}>{money(baseAmountNumber)}</Text>
+                </View>
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Community charge</Text>
+                  <Text style={styles.summaryValue}>{money(serviceCharge)}</Text>
+                </View>
+
+                <View style={styles.summaryDivider} />
+
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryTotalLabel}>Total</Text>
+                  <Text style={styles.summaryTotalValue}>
+                    {money(totalPayableNumber)}
+                  </Text>
+                </View>
+
+                <Text style={styles.summaryHint}>
+                  {method === "STK"
+                    ? "You will confirm on your phone."
+                    : "Use the full total above when paying by paybill."}
                 </Text>
               </View>
+            ) : null}
 
-              <View style={styles.paybillRow}>
-                <Text style={styles.paybillLabel}>Account No</Text>
-                <Text style={styles.paybillValue}>{accountReference || "—"}</Text>
-              </View>
-
-              <Button
-                title={checking ? "Please wait..." : "I Have Paid"}
-                onPress={handleManualPaid}
-                disabled={!canManualCheck}
-              />
-
-              <TouchableOpacity
-                disabled={checking}
-                onPress={checkExistingManualPayment}
-                style={styles.inlineAction}
-              >
-                <Text style={styles.inlineActionText}>Check Again</Text>
-              </TouchableOpacity>
+            <View style={styles.referenceBox}>
+              <Text style={styles.referenceLabel}>Reference</Text>
+              <Text style={styles.referenceValue}>{accountReference || "—"}</Text>
             </View>
-          )}
-        </Card>
 
-        <TouchableOpacity onPress={handleCancel} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>Back</Text>
-        </TouchableOpacity>
-      </ScrollView>
+            {method === "STK" ? (
+              <Button
+                title={submitting || checking ? "Please wait..." : "Pay now"}
+                onPress={handleSubmit}
+                disabled={!canSubmit}
+                leftIcon={
+                  submitting || checking ? undefined : (
+                    <Ionicons
+                      name="arrow-forward-outline"
+                      size={18}
+                      color={COLORS.white}
+                    />
+                  )
+                }
+              />
+            ) : (
+              <View style={styles.paybillBox}>
+                <View style={styles.paybillRow}>
+                  <Text style={styles.paybillLabel}>Business No</Text>
+                  <Text style={styles.paybillValue}>
+                    {paybillEnabled ? paybillNumber : "Not set"}
+                  </Text>
+                </View>
+
+                <View style={styles.paybillRow}>
+                  <Text style={styles.paybillLabel}>Account No</Text>
+                  <Text style={styles.paybillValue}>{accountReference || "—"}</Text>
+                </View>
+
+                <View style={styles.paybillTotalBox}>
+                  <Text style={styles.paybillTotalLabel}>Total to send</Text>
+                  <Text style={styles.paybillTotalValue}>
+                    {money(totalPayableNumber)}
+                  </Text>
+                </View>
+
+                <Button
+                  title={checking ? "Please wait..." : "I have paid"}
+                  onPress={handleManualPaid}
+                  disabled={!canManualCheck}
+                />
+
+                <TouchableOpacity
+                  disabled={checking}
+                  onPress={checkExistingManualPayment}
+                  style={styles.inlineAction}
+                >
+                  <Text style={styles.inlineActionText}>Check again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </Card>
+
+          <TouchableOpacity onPress={handleCancel} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>Back</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -953,20 +1041,13 @@ const styles = StyleSheet.create({
   content: {
     ...P.content,
     position: "relative",
+    paddingTop: SPACING.sm,
   },
 
-  loadingWrap: {
-    flex: 1,
+  inlineLoader: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: PAGE_BG,
-  },
-
-  loadingText: {
-    marginTop: SPACING.sm,
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: FONT.regular,
-    fontSize: 12,
+    marginBottom: SPACING.sm,
   },
 
   backgroundBlobTop: {
@@ -981,7 +1062,7 @@ const styles = StyleSheet.create({
 
   backgroundBlobMiddle: {
     position: "absolute",
-    top: 260,
+    top: 240,
     left: -80,
     width: 220,
     height: 220,
@@ -1020,25 +1101,26 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
 
   title: {
     fontFamily: FONT.bold,
-    fontSize: 24,
+    fontSize: 22,
     color: COLORS.white,
   },
 
   subtitle: {
-    marginTop: 6,
-    color: "rgba(255,255,255,0.78)",
+    marginTop: 4,
+    color: "rgba(255,255,255,0.76)",
     fontFamily: FONT.regular,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
+    maxWidth: "92%",
   },
 
   errorCard: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.sm,
@@ -1046,7 +1128,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(239,68,68,0.18)",
     borderRadius: RADIUS.xl,
-    padding: SPACING.md,
+    padding: SPACING.sm,
   },
 
   errorText: {
@@ -1058,8 +1140,9 @@ const styles = StyleSheet.create({
   noticeCard: {
     position: "relative",
     overflow: "hidden",
-    marginBottom: SPACING.md,
-    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.sm,
     borderWidth: 1,
     borderColor: INNER_BORDER,
     borderRadius: RADIUS.xl,
@@ -1091,7 +1174,7 @@ const styles = StyleSheet.create({
   switchRow: {
     flexDirection: "row",
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
 
   switchBtn: {
@@ -1099,7 +1182,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: INNER_BORDER,
     borderRadius: RADIUS.xl,
-    paddingVertical: 13,
+    paddingVertical: 11,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1119,7 +1202,7 @@ const styles = StyleSheet.create({
 
   switchBtnText: {
     fontFamily: FONT.medium,
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.mpesa,
   },
 
@@ -1135,7 +1218,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: INNER_BORDER,
     borderRadius: RADIUS.xl,
-    padding: SPACING.md,
+    padding: SPACING.sm,
     shadowColor: "#001B2F",
     shadowOpacity: 0.1,
     shadowRadius: 14,
@@ -1155,43 +1238,113 @@ const styles = StyleSheet.create({
 
   label: {
     ...TYPE.label,
-    marginBottom: 8,
+    marginBottom: 6,
     color: TEXT_MAIN,
   },
 
   input: {
     ...P.input,
-    height: 52,
-    marginBottom: SPACING.md,
+    height: 50,
+    marginBottom: SPACING.sm,
     backgroundColor: SURFACE_SOFT,
     borderColor: INNER_BORDER,
   },
 
-  referenceBox: {
-    marginBottom: SPACING.md,
-    backgroundColor: SURFACE_SOFT,
+  summaryBox: {
+    marginBottom: SPACING.sm,
+    backgroundColor: SUCCESS_SOFT,
     borderWidth: 1,
-    borderColor: INNER_BORDER,
+    borderColor: SUCCESS_BORDER,
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
 
-  referenceLabel: {
+  summaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+
+  summaryHeaderText: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+    color: TEXT_MAIN,
+  },
+
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.md,
+    paddingVertical: 3,
+  },
+
+  summaryLabel: {
     fontFamily: FONT.regular,
     fontSize: 12,
     color: TEXT_SOFT,
   },
 
-  referenceValue: {
-    marginTop: 6,
+  summaryValue: {
+    fontFamily: FONT.medium,
+    fontSize: 12,
+    color: TEXT_MAIN,
+  },
+
+  summaryDivider: {
+    height: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.08)",
+    marginVertical: 6,
+  },
+
+  summaryTotalLabel: {
+    fontFamily: FONT.bold,
+    fontSize: 13,
+    color: TEXT_MAIN,
+  },
+
+  summaryTotalValue: {
     fontFamily: FONT.bold,
     fontSize: 14,
+    color: COLORS.mpesa,
+  },
+
+  summaryHint: {
+    marginTop: 6,
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: TEXT_SOFT,
+  },
+
+  referenceBox: {
+    marginBottom: SPACING.sm,
+    backgroundColor: SURFACE_SOFT,
+    borderWidth: 1,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+
+  referenceLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: TEXT_SOFT,
+  },
+
+  referenceValue: {
+    marginTop: 4,
+    fontFamily: FONT.bold,
+    fontSize: 13,
     color: TEXT_MAIN,
   },
 
   paybillBox: {
-    marginTop: SPACING.xs,
-    gap: SPACING.sm,
+    marginTop: 2,
+    gap: 6,
   },
 
   paybillRow: {
@@ -1199,8 +1352,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: SPACING.md,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
   },
 
   paybillLabel: {
@@ -1214,21 +1367,45 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
   },
 
+  paybillTotalBox: {
+    marginTop: 2,
+    marginBottom: 4,
+    backgroundColor: SURFACE_SOFT,
+    borderWidth: 1,
+    borderColor: INNER_BORDER,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+
+  paybillTotalLabel: {
+    fontFamily: FONT.regular,
+    fontSize: 11,
+    color: TEXT_SOFT,
+    marginBottom: 4,
+  },
+
+  paybillTotalValue: {
+    fontFamily: FONT.bold,
+    fontSize: 15,
+    color: COLORS.mpesa,
+  },
+
   inlineAction: {
-    marginTop: SPACING.xs,
+    marginTop: 2,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
 
   inlineActionText: {
     color: COLORS.mpesa,
     fontFamily: FONT.medium,
-    fontSize: 14,
+    fontSize: 13,
   },
 
   backBtn: {
-    marginTop: SPACING.md,
+    marginTop: SPACING.sm,
     alignSelf: "center",
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1237,6 +1414,6 @@ const styles = StyleSheet.create({
   backBtnText: {
     color: COLORS.white,
     fontFamily: FONT.medium,
-    fontSize: 14,
+    fontSize: 13,
   },
 });

@@ -54,7 +54,7 @@ export const ROUTES = {
 
     profile: "/(tabs)/profile",
     profileEdit: "/(tabs)/profile/edit",
-    profileKyc: "/(tabs)/profile/kyc",
+    
   },
 
   dynamic: {

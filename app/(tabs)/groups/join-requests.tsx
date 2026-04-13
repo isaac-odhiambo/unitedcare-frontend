@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -238,6 +237,7 @@ export default function GroupJoinRequestsScreen() {
   const [user, setUser] = useState<JoinRequestsUser | null>(null);
   const [rows, setRows] = useState<GroupJoinRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [submittingId, setSubmittingId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -293,7 +293,10 @@ export default function GroupJoinRequestsScreen() {
           setLoading(true);
           await load();
         } finally {
-          if (mounted) setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setHasBootstrapped(true);
+          }
         }
       };
 
@@ -364,12 +367,8 @@ export default function GroupJoinRequestsScreen() {
     [load]
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#062C49" />
-      </View>
-    );
+  if (!hasBootstrapped) {
+    return <View style={styles.page} />;
   }
 
   if (!user) {

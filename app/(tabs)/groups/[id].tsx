@@ -2,14 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -192,6 +191,7 @@ export default function GroupDetailScreen() {
   const [mySummary, setMySummary] = useState<MyGroupSavingsRow | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [joining, setJoining] = useState(false);
 
@@ -257,7 +257,10 @@ export default function GroupDetailScreen() {
         if (!mounted) return;
         setLoading(true);
         await load();
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          setHasBootstrapped(true);
+        }
       };
 
       run();
@@ -381,16 +384,6 @@ export default function GroupDetailScreen() {
   const reservedShare = mySummary?.my_share?.reserved_share ?? "0";
   const availableShare = mySummary?.my_share?.available_share ?? "0";
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.center}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (!group || !Number.isFinite(groupId)) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
@@ -460,6 +453,12 @@ export default function GroupDetailScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {!hasBootstrapped || loading ? (
+          <View style={styles.inlineLoader}>
+            <Ionicons name="sync-outline" size={18} color="#8CF0C7" />
+          </View>
+        ) : null}
 
         <View style={styles.hero}>
           <View style={styles.heroGlowPrimary} />
@@ -707,6 +706,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: SPACING.lg,
     backgroundColor: PAGE_BG,
+  },
+
+  inlineLoader: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: SPACING.md,
   },
 
   backgroundBlobTop: {

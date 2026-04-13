@@ -7,25 +7,28 @@
     "icon": "./assets/images/icon.png",
     "scheme": "united-care",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#062C49",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.unitedcare.shg"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0E5E6F"
+        "backgroundColor": "#062C49"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
+      "package": "com.unitedcare.shg",
+      "blockedPermissions": [
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
-      ],
-      "package": "com.anonymous.unitedcare"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "backgroundColor": "#062C49"
     },
     "plugins": [
       "expo-router",
@@ -35,17 +38,10 @@
           "image": "./assets/images/splash.png",
           "imageWidth": 320,
           "resizeMode": "contain",
-          "backgroundColor": "#0E5E6F",
+          "backgroundColor": "#062C49",
           "dark": {
-            "backgroundColor": "#0E5E6F"
+            "backgroundColor": "#062C49"
           }
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow UNITED CARE to access your photos for KYC upload.",
-          "cameraPermission": "Allow UNITED CARE to use your camera to capture KYC documents."
         }
       ],
       "expo-secure-store"
@@ -53,6 +49,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "70e042cb-7bd1-4b14-b716-b90eaa5cde32"
+      }
     }
   }
 }

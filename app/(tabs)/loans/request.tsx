@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
@@ -560,11 +559,7 @@ export default function RequestLoanScreen() {
 
   if (loadingPage) {
     return (
-      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.mint} />
-        </View>
-      </SafeAreaView>
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]} />
     );
   }
 
@@ -785,11 +780,7 @@ export default function RequestLoanScreen() {
         ) : null}
 
         {needsGuarantors ? (
-          loadingGuarantors ? (
-            <View style={styles.inlineLoader}>
-              <ActivityIndicator color={UI.mint} />
-            </View>
-          ) : guarantorCandidates.length === 0 ? (
+          loadingGuarantors ? null : guarantorCandidates.length === 0 ? (
             <View style={styles.emptyWrap}>
               <EmptyState
                 icon="people-outline"
@@ -819,7 +810,7 @@ export default function RequestLoanScreen() {
           <Button
             title={submitting ? "Sending..." : "Submit request"}
             onPress={submit}
-            loading={submitting}
+            loading={false}
             disabled={!fullySecured || submitting || !formState.canSubmit}
           />
 

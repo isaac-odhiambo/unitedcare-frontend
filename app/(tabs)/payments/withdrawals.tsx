@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -26,10 +25,8 @@ import {
   WithdrawalRequest,
 } from "@/services/payments";
 import {
-  canWithdraw,
   getMe,
   isAdminUser,
-  isKycComplete,
   MeResponse,
 } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
@@ -277,8 +274,6 @@ export default function WithdrawalsScreen() {
   const [error, setError] = useState("");
 
   const isAdmin = isAdminUser(user);
-  const kycComplete = isKycComplete(user);
-  const withdrawAllowed = canWithdraw(user);
 
   const load = useCallback(async () => {
     try {
@@ -363,17 +358,7 @@ export default function WithdrawalsScreen() {
     ).length;
   }, [withdrawals]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.center}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.page}>
@@ -452,28 +437,6 @@ export default function WithdrawalsScreen() {
           </View>
         </View>
 
-        {!kycComplete ? (
-          <NoticeBanner
-            tone="warning"
-            icon="shield-checkmark-outline"
-            title="Complete your profile"
-            text="Please finish your KYC details so your requests can move smoothly."
-            buttonLabel="Open KYC"
-            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-          />
-        ) : null}
-
-        {!withdrawAllowed ? (
-          <NoticeBanner
-            tone="info"
-            icon="information-circle-outline"
-            title="Community wallet access is limited"
-            text="Complete your profile details to fully use this space."
-            buttonLabel="Open KYC"
-            onPress={() => router.push(ROUTES.tabs.profileKyc as any)}
-          />
-        ) : null}
-
         {error ? (
           <View style={styles.errorCard}>
             <View style={styles.errorIconWrap}>
@@ -495,7 +458,7 @@ export default function WithdrawalsScreen() {
           />
         </View>
 
-        {withdrawals.length === 0 ? (
+        {!loading && withdrawals.length === 0 ? (
           <Card style={styles.emptyCard}>
             <EmptyState
               title="No requests yet"
@@ -527,13 +490,6 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: PAGE_BG,
   },
 
   backgroundBlobTop: {

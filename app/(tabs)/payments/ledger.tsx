@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -290,7 +289,6 @@ function NoticeBanner({
 function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
   const color = entryColor(entry);
   const sign = entrySign(entry);
-  const feeRow = isFeeCategory(entry.category);
   const palette = getCategoryPalette(entry.category);
 
   const title =
@@ -338,19 +336,6 @@ function LedgerRow({ entry }: { entry: PaymentLedgerEntry }) {
           {sign} {formatKes(entry.amount)}
         </Text>
       </View>
-
-      {feeRow ? (
-        <View style={styles.feeNoteRow}>
-          <Ionicons
-            name="information-circle-outline"
-            size={14}
-            color="#F4C46A"
-          />
-          <Text style={styles.feeNoteText}>
-            This line shows a small service fee linked to this activity.
-          </Text>
-        </View>
-      ) : null}
     </Card>
   );
 }
@@ -422,44 +407,32 @@ export default function LedgerScreen() {
     }
   }, [load]);
 
+  const visibleLedger = useMemo(() => {
+    return ledger.filter((entry) => !isFeeCategory(entry.category));
+  }, [ledger]);
+
   const stats = useMemo(() => {
     let credits = 0;
     let debits = 0;
-    let fees = 0;
 
-    ledger.forEach((entry) => {
+    visibleLedger.forEach((entry) => {
       const amount = Number(entry.amount ?? 0);
       if (!Number.isFinite(amount)) return;
 
       const type = String(entry.entry_type || "").toUpperCase();
-      const category = String(entry.category || "").toUpperCase();
 
       if (type === "CREDIT") credits += amount;
       else if (type === "DEBIT") debits += amount;
-
-      if (category === "WITHDRAWAL_FEE" || category === "TRANSACTION_FEE") {
-        fees += amount;
-      }
     });
 
     return {
       credits,
       debits,
-      fees,
-      count: ledger.length,
+      count: visibleLedger.length,
     };
-  }, [ledger]);
+  }, [visibleLedger]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator color="#C7FFF2" />
-        <Text style={styles.loadingText}>Loading your community activity...</Text>
-      </View>
-    );
-  }
-
-  if (!user) {
+  if (!loading && !user) {
     return (
       <View style={styles.page}>
         <EmptyState
@@ -509,7 +482,7 @@ export default function LedgerScreen() {
             <Text style={styles.hEyebrow}>COMMUNITY SPACE</Text>
             <Text style={styles.hTitle}>Shared Activity</Text>
             <Text style={styles.hSub}>
-              Follow your contributions, requests, service fees, and other shared updates •{" "}
+              Follow your contributions, requests, and other shared updates •{" "}
               {isAdmin ? "Admin" : "Member"}
             </Text>
           </View>
@@ -565,44 +538,38 @@ export default function LedgerScreen() {
 
       <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <StatCard
-          label="Service fees"
-          value={formatKes(stats.fees)}
-          valueColor="#F4C46A"
-          tone="merry"
-        />
-        <StatCard
           label="Updates"
           value={String(stats.count)}
           tone="groups"
         />
-      </View>
-
-      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <QuickActionCard
           title="Add contribution"
           icon="arrow-down-circle-outline"
           onPress={() => router.push(ROUTES.tabs.paymentsDeposit)}
           tone="savings"
         />
+      </View>
 
+      <View style={[styles.summaryGrid, { marginTop: SPACING.sm }]}>
         <QuickActionCard
           title="Send request"
           icon="paper-plane-outline"
           onPress={() => router.push(ROUTES.tabs.paymentsRequestWithdrawal)}
           tone="support"
         />
+        <View style={{ flex: 1 }} />
       </View>
 
-      {!ledger.length && !error ? (
+      {!visibleLedger.length && !error ? (
         <NoticeBanner
           tone="info"
           icon="information-circle-outline"
-          text="Your contributions, requests, and service fees will appear here."
+          text="Your contributions, requests, and shared updates will appear here."
         />
       ) : null}
 
       <Section title="Recent updates">
-        {ledger.length === 0 ? (
+        {!loading && visibleLedger.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
             title="No activity yet"
@@ -611,7 +578,7 @@ export default function LedgerScreen() {
             onAction={() => router.push(ROUTES.tabs.paymentsDeposit)}
           />
         ) : (
-          ledger.map((entry) => <LedgerRow key={entry.id} entry={entry} />)
+          visibleLedger.map((entry) => <LedgerRow key={entry.id} entry={entry} />)
         )}
       </Section>
 
@@ -630,20 +597,6 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: 24,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
-  },
-
-  loadingText: {
-    marginTop: SPACING.sm,
-    color: "rgba(255,255,255,0.88)",
-    fontFamily: FONT.regular,
-    fontSize: 12,
   },
 
   backgroundBlobTop: {
@@ -949,22 +902,5 @@ const styles = StyleSheet.create({
   entryAmount: {
     fontFamily: FONT.bold,
     fontSize: 13,
-  },
-
-  feeNoteRow: {
-    marginTop: SPACING.sm,
-    paddingTop: SPACING.sm,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(244,196,106,0.18)",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  feeNoteText: {
-    flex: 1,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: "#F4C46A",
   },
 });

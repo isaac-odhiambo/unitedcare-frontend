@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -282,16 +281,6 @@ export default function MerryMembersScreen() {
     };
   }, [members]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (!merryId || !Number.isFinite(merryId)) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
@@ -307,7 +296,7 @@ export default function MerryMembersScreen() {
     );
   }
 
-  if (!user) {
+  if (!loading && !user) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -322,7 +311,7 @@ export default function MerryMembersScreen() {
     );
   }
 
-  if (!merry && error) {
+  if (!loading && !merry && error) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -402,7 +391,7 @@ export default function MerryMembersScreen() {
             <View style={{ flex: 1, paddingRight: SPACING.md }}>
               <Text style={styles.heroEyebrow}>MERRY MEMBERS</Text>
               <Text style={styles.heroTitle}>
-                {merry?.name || `Merry #${merryId}`}
+                {merry?.name || (loading ? "Merry Members" : `Merry #${merryId}`)}
               </Text>
               <Text style={styles.heroSubtitle}>
                 See the people in this merry space and how many seats are active
@@ -456,7 +445,7 @@ export default function MerryMembersScreen() {
         ) : null}
 
         <Section title="Member list">
-          {members.length === 0 ? (
+          {!loading && members.length === 0 ? (
             <Card style={styles.emptyCard} variant="default">
               <EmptyState
                 icon="people-outline"
@@ -499,13 +488,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xl,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
   },
 
   emptyWrap: {

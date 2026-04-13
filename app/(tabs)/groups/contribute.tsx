@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -24,6 +24,7 @@ export default function GroupContributeScreen() {
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
 
   const redirectedRef = useRef(false);
 
@@ -91,28 +92,21 @@ export default function GroupContributeScreen() {
   useFocusEffect(
     useCallback(() => {
       redirectedRef.current = false;
-      loadAndContinue();
+
+      const run = async () => {
+        try {
+          await loadAndContinue();
+        } finally {
+          setHasBootstrapped(true);
+        }
+      };
+
+      run();
     }, [loadAndContinue])
   );
 
-  if (loading) {
-    return (
-      <View style={styles.page}>
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobBottom} />
-
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <ActivityIndicator color="#0C6A80" />
-          </View>
-
-          <Text style={styles.title}>Preparing your contribution</Text>
-          <Text style={styles.subtitle}>
-            Opening your community contribution space...
-          </Text>
-        </View>
-      </View>
-    );
+  if (!hasBootstrapped) {
+    return <View style={styles.page} />;
   }
 
   if (failed) {
@@ -137,10 +131,6 @@ export default function GroupContributeScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.card}>
-        <View style={styles.iconWrap}>
-          <ActivityIndicator color="#0C6A80" />
-        </View>
-
         <Text style={styles.title}>Preparing your contribution</Text>
         <Text style={styles.subtitle}>
           Taking you to your community contribution screen...

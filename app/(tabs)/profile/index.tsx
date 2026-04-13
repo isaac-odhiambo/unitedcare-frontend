@@ -1,6 +1,7 @@
 // app/(tabs)/profile/index.tsx
+
 import { ROUTES } from "@/constants/routes";
-import { FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
+import { SPACING } from "@/constants/theme";
 import { clearAuthTokens, getErrorMessage } from "@/services/api";
 import {
   canJoinGroup,
@@ -10,7 +11,6 @@ import {
   getMe,
   isAdminUser,
   isApprovedUser,
-  isKycComplete,
   MeResponse,
 } from "@/services/profile";
 import {
@@ -23,7 +23,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -68,12 +67,12 @@ export default function ProfileHome() {
           username: meUser?.username,
           phone: meUser?.phone,
           email: meUser?.email ?? null,
+          id_number: (meUser as any)?.id_number ?? null,
           role: meUser?.role,
           status: meUser?.status,
           is_admin: !!(meUser?.is_admin || meUser?.role === "admin"),
-          kyc_completed: !!meUser?.kyc_completed,
-          kyc_status: meUser?.kyc_status ?? null,
         } as any);
+
         setUser((prev) => ({
           ...(prev ?? {}),
           ...(next ?? {}),
@@ -96,12 +95,14 @@ export default function ProfileHome() {
       }
     } catch (e: any) {
       const msg = (getErrorMessage(e) || "").toLowerCase();
+
       if (msg.includes("token") || e?.response?.status === 401) {
         await clearAuthTokens();
         await clearSessionUser();
         router.replace(ROUTES.auth.login);
         return;
       }
+
       setError(getErrorMessage(e));
     } finally {
       setLoading(false);
@@ -116,9 +117,9 @@ export default function ProfileHome() {
 
   const role = user?.role || "member";
   const status = user?.status || "pending";
+
   const isAdmin = useMemo(() => isAdminUser(user), [user]);
   const approved = useMemo(() => isApprovedUser(user), [user]);
-  const kycComplete = useMemo(() => isKycComplete(user), [user]);
 
   const loanAllowed = useMemo(() => canRequestLoan(user), [user]);
   const groupAllowed = useMemo(() => canJoinGroup(user), [user]);
@@ -140,25 +141,20 @@ export default function ProfileHome() {
     ]);
   };
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#8CF0C7" />
-        <Text style={styles.loadingText}>Loading profile…</Text>
-      </View>
-    );
-  }
+  const displayName = user?.username || " ";
+  const displayPhone = user?.phone || " ";
+  const displayEmail = user?.email ?? " ";
+  const displayIdNumber = (user as any)?.id_number ?? "—";
 
-  if (!user) {
+  if (!loading && !user) {
     return (
       <View style={styles.center}>
         <Text style={styles.emptyTitle}>No profile found</Text>
         <Text style={styles.emptySub}>Please login again to continue.</Text>
-        <View style={{ height: SPACING.md }} />
+
         <TouchableOpacity
           style={styles.primaryBtn}
           onPress={() => router.replace(ROUTES.auth.login)}
-          activeOpacity={0.9}
         >
           <Text style={styles.primaryBtnText}>Go to Login</Text>
         </TouchableOpacity>
@@ -166,166 +162,113 @@ export default function ProfileHome() {
     );
   }
 
-  const displayName = user?.username || "User";
-  const displayPhone = user?.phone || "—";
-  const displayEmail = user?.email ?? "—";
-
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={{ paddingBottom: 24 }}
+      contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.backgroundBlobTop} />
-      <View style={styles.backgroundBlobMiddle} />
-      <View style={styles.backgroundBlobBottom} />
-      <View style={styles.backgroundGlowOne} />
-      <View style={styles.backgroundGlowTwo} />
-
       <View style={styles.heroCard}>
-        <View style={styles.heroGlowOne} />
-        <View style={styles.heroGlowTwo} />
-        <View style={styles.heroGlowThree} />
-
         <View style={styles.header}>
           <View style={styles.avatar}>
             <Ionicons name="person-outline" size={22} color="#0A6E8A" />
           </View>
 
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{displayName}</Text>
+            <Text style={styles.title}>{loading ? " " : displayName}</Text>
             <Text style={styles.sub}>
-              {displayPhone} • {isAdmin ? "Admin" : "Member"} • {status}
+              {loading
+                ? " "
+                : `${displayPhone} • ${isAdmin ? "Admin" : "Member"} • ${status}`}
             </Text>
+
+            {!loading ? (
+              <View style={styles.idBadge}>
+                <Ionicons
+                  name="card-outline"
+                  size={14}
+                  color="#DFFBFF"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.idBadgeText}>
+                  ID: {String(displayIdNumber)}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.idBadgePlaceholder} />
+            )}
           </View>
         </View>
 
         <View style={styles.heroStatsRow}>
-          <StatPill label="Role" value={String(role)} />
-          <StatPill label="Status" value={String(status)} />
-          <StatPill label="KYC" value={kycComplete ? "Complete" : "Pending"} />
+          <StatPill label="Role" value={loading ? " " : String(role)} />
+          <StatPill label="Status" value={loading ? " " : String(status)} />
         </View>
       </View>
 
-      {error ? (
+      {!loading && user ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Access</Text>
+
+          <Row label="Can request support" value={loanAllowed ? "Yes" : "No"} />
+          <Row label="Can join group" value={groupAllowed ? "Yes" : "No"} />
+          <Row label="Can join merry-go-round" value={merryAllowed ? "Yes" : "No"} />
+          <Row label="Can withdraw" value={withdrawAllowed ? "Yes" : "No"} />
+        </View>
+      ) : (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Access</Text>
+          <Row label="Can request support" value=" " />
+          <Row label="Can join group" value=" " />
+          <Row label="Can join merry-go-round" value=" " />
+          <Row label="Can withdraw" value=" " />
+        </View>
+      )}
+
+      {!loading && error ? (
         <View style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
 
-      {!kycComplete ? (
-        <View style={styles.banner}>
-          <View style={styles.bannerTop}>
-            <View style={styles.bannerIconWrap}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color="#0C6A80"
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bannerTitle}>Complete profile</Text>
-              <Text style={styles.bannerText}>
-                You can already use savings and merry features, but support
-                requests, group joining and withdrawals require completed KYC.
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.bannerBtn}
-            onPress={() => router.push(ROUTES.tabs.profileKyc)}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.bannerBtnText}>Submit KYC</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={[styles.banner, styles.bannerSuccess]}>
-          <View style={styles.bannerTop}>
-            <View style={styles.bannerIconWrapSuccess}>
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={18}
-                color="#0C6A80"
-              />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.bannerTitle, styles.bannerSuccessTitle]}>
-                Profile complete
-              </Text>
-              <Text style={[styles.bannerText, styles.bannerSuccessText]}>
-                Support requests, group joining and withdrawals are available
-                according to your account status.
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
-
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Account</Text>
 
-        <Row label="Username" value={displayName} />
-        <Row label="Phone" value={displayPhone} />
-        <Row label="Email" value={String(displayEmail || "—")} />
-        <Row label="Role" value={String(role)} />
-        <Row label="Status" value={String(status)} />
-        <Row label="Approved" value={approved ? "Yes" : "No"} />
-        <Row label="KYC" value={kycComplete ? "Complete" : "Pending"} />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Feature access</Text>
-
-        <Row label="Can join merry" value={merryAllowed ? "Yes" : "No"} />
-        <Row label="Can request support" value={loanAllowed ? "Yes" : "No"} />
-        <Row label="Can join group" value={groupAllowed ? "Yes" : "No"} />
-        <Row label="Can withdraw" value={withdrawAllowed ? "Yes" : "No"} />
+        <Row label="Username" value={loading ? " " : displayName} />
+        <Row label="Phone" value={loading ? " " : displayPhone} />
+        <Row label="ID Number" value={loading ? " " : String(displayIdNumber)} />
+        <Row label="Email" value={loading ? " " : String(displayEmail)} />
+        <Row label="Role" value={loading ? " " : String(role)} />
+        <Row label="Status" value={loading ? " " : String(status)} />
+        <Row label="Approved" value={loading ? " " : approved ? "Yes" : "No"} />
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Actions</Text>
 
-        <ActionRow
-          icon="create-outline"
-          text="Edit profile"
-          onPress={() => router.push(ROUTES.tabs.profileEdit)}
-        />
+        {!loading && (
+          <>
+            <ActionRow
+              icon="create-outline"
+              text="Edit profile"
+              onPress={() => router.push(ROUTES.tabs.profileEdit)}
+            />
 
-        <ActionRow
-          icon="shield-checkmark-outline"
-          text={kycComplete ? "View KYC" : "Submit KYC"}
-          onPress={() => router.push(ROUTES.tabs.profileKyc)}
-        />
-
-        <ActionRow
-          icon="wallet-outline"
-          text="Open savings"
-          onPress={() => router.push(ROUTES.tabs.savings)}
-        />
-
-        <ActionRow
-          icon="repeat-outline"
-          text="Open merry-go-round"
-          onPress={() => router.push(ROUTES.tabs.merry)}
-        />
-
-        <ActionRow
-          icon="log-out-outline"
-          text="Logout"
-          danger
-          onPress={handleLogout}
-        />
+            <ActionRow
+              icon="log-out-outline"
+              text="Logout"
+              danger
+              onPress={handleLogout}
+            />
+          </>
+        )}
       </View>
     </ScrollView>
   );
 }
 
-function StatPill({ label, value }: { label: string; value: string }) {
+function StatPill({ label, value }: any) {
   return (
     <View style={styles.heroStatPill}>
       <Text style={styles.heroStatLabel}>{label}</Text>
@@ -334,52 +277,20 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Row({ label, value }: { label: string; value?: string }) {
+function Row({ label, value }: any) {
   return (
     <View style={styles.row}>
       <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value || "—"}</Text>
+      <Text style={styles.value}>{value}</Text>
     </View>
   );
 }
 
-function ActionRow({
-  icon,
-  text,
-  onPress,
-  danger,
-}: {
-  icon: any;
-  text: string;
-  onPress: () => void;
-  danger?: boolean;
-}) {
+function ActionRow({ icon, text, onPress, danger }: any) {
   return (
-    <TouchableOpacity
-      style={styles.actionRow}
-      onPress={onPress}
-      activeOpacity={0.9}
-    >
-      <View
-        style={[
-          styles.actionIcon,
-          danger && { backgroundColor: "rgba(220,53,69,0.18)" },
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={18}
-          color={danger ? "#FFFFFF" : "#0A6E8A"}
-        />
-      </View>
-      <Text style={[styles.actionText, danger && { color: "#FFFFFF" }]}>
-        {text}
-      </Text>
-      <Ionicons
-        name="chevron-forward"
-        size={18}
-        color="rgba(255,255,255,0.72)"
-      />
+    <TouchableOpacity style={styles.actionRow} onPress={onPress}>
+      <Ionicons name={icon} size={18} color={danger ? "#FF6B6B" : "#0A6E8A"} />
+      <Text style={styles.actionText}>{text}</Text>
     </TouchableOpacity>
   );
 }
@@ -388,336 +299,181 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#062C49",
+  },
+
+  contentContainer: {
     padding: SPACING.md,
+    paddingBottom: SPACING.xl ?? 24,
   },
 
   center: {
     flex: 1,
-    alignItems: "center",
     justifyContent: "center",
-    padding: SPACING.lg,
-    backgroundColor: "#0C6A80",
-  },
-
-  backgroundBlobTop: {
-    position: "absolute",
-    top: -120,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-
-  backgroundBlobMiddle: {
-    position: "absolute",
-    top: 240,
-    left: -80,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-
-  backgroundBlobBottom: {
-    position: "absolute",
-    bottom: -120,
-    right: -40,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  backgroundGlowOne: {
-    position: "absolute",
-    top: 120,
-    right: 20,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(12,192,183,0.10)",
-  },
-
-  backgroundGlowTwo: {
-    position: "absolute",
-    bottom: 160,
-    left: 10,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(140,240,199,0.08)",
-  },
-
-  loadingText: {
-    marginTop: 8,
-    color: "rgba(255,255,255,0.78)",
-  },
-
-  emptyTitle: {
-    fontSize: FONT.section,
-    fontWeight: "900",
-    color: "#FFFFFF",
-  },
-
-  emptySub: {
-    marginTop: 6,
-    color: "rgba(255,255,255,0.78)",
-    textAlign: "center",
-  },
-
-  primaryBtn: {
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-  },
-
-  primaryBtnText: {
-    color: "#0C6A80",
-    fontWeight: "900",
+    alignItems: "center",
+    backgroundColor: "#062C49",
+    padding: SPACING.md,
   },
 
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: "rgba(49, 180, 217, 0.22)",
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(189, 244, 255, 0.15)",
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    ...SHADOW.card,
-  },
-
-  heroGlowOne: {
-    position: "absolute",
-    right: -28,
-    top: -20,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,255,255,0.09)",
-  },
-
-  heroGlowTwo: {
-    position: "absolute",
-    left: -20,
-    bottom: -26,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(236,251,255,0.10)",
-  },
-
-  heroGlowThree: {
-    position: "absolute",
-    right: 30,
-    bottom: -16,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    backgroundColor: "rgba(49,180,217,0.22)",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
   },
 
   header: {
     flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
+    gap: 10,
   },
 
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "rgba(236,251,255,0.92)",
-    alignItems: "center",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#EFFFFF",
     justifyContent: "center",
+    alignItems: "center",
   },
 
   title: {
-    fontSize: FONT.section,
-    fontWeight: "900",
-    color: "#FFFFFF",
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
   },
 
   sub: {
+    color: "#CCC",
     marginTop: 2,
-    color: "rgba(255,255,255,0.78)",
+  },
+
+  idBadge: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+
+  idBadgeText: {
+    color: "#DFFBFF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+
+  idBadgePlaceholder: {
+    marginTop: 10,
+    width: 110,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 
   heroStatsRow: {
     flexDirection: "row",
-    gap: SPACING.sm as any,
-    marginTop: SPACING.lg,
+    marginTop: 12,
+    gap: 8,
   },
 
   heroStatPill: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.sm,
-  },
-
-  heroStatLabel: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: FONT.regular,
-  },
-
-  heroStatValue: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-  },
-
-  errorCard: {
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "rgba(220,53,69,0.18)",
-  },
-
-  errorText: {
-    flex: 1,
-    color: "#FFFFFF",
-    lineHeight: 18,
-  },
-
-  banner: {
-    marginTop: SPACING.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    padding: SPACING.md,
-    borderRadius: RADIUS.lg,
-    gap: 8,
-  },
-
-  bannerSuccess: {
-    backgroundColor: "rgba(140,240,199,0.12)",
-  },
-
-  bannerTop: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-start",
-  },
-
-  bannerIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(236,251,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  bannerIconWrapSuccess: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(236,251,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  bannerTitle: {
-    fontWeight: "900",
-    color: "#FFFFFF",
-  },
-
-  bannerText: {
-    color: "rgba(255,255,255,0.84)",
-    lineHeight: 18,
-    marginTop: 4,
-  },
-
-  bannerSuccessTitle: {
-    color: "#FFFFFF",
-  },
-
-  bannerSuccessText: {
-    color: "rgba(255,255,255,0.84)",
-  },
-
-  bannerBtn: {
-    alignSelf: "flex-start",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    padding: 8,
     borderRadius: 10,
   },
 
-  bannerBtnText: {
-    color: "#0C6A80",
-    fontWeight: "900",
+  heroStatLabel: {
+    color: "#CCC",
+    fontSize: 10,
+  },
+
+  heroStatValue: {
+    color: "#FFF",
+    fontWeight: "bold",
   },
 
   card: {
-    marginTop: SPACING.md,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    ...SHADOW.card,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    padding: 12,
+    borderRadius: 16,
+    marginTop: 10,
   },
 
   cardTitle: {
-    fontSize: FONT.body,
-    fontWeight: "900",
-    color: "#FFFFFF",
+    color: "#FFF",
+    fontWeight: "bold",
     marginBottom: 10,
   },
 
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
-    gap: 10,
+    marginBottom: 6,
+    gap: 12,
   },
 
   label: {
-    color: "rgba(255,255,255,0.72)",
-    fontWeight: "700",
+    color: "#AAA",
     flex: 1,
   },
 
   value: {
-    color: "#FFFFFF",
-    fontWeight: "800",
+    color: "#FFF",
+    fontWeight: "bold",
     flex: 1,
     textAlign: "right",
   },
 
   actionRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 10,
-    paddingVertical: 12,
-  },
-
-  actionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: "rgba(236,251,255,0.92)",
+    paddingVertical: 10,
     alignItems: "center",
-    justifyContent: "center",
   },
 
   actionText: {
+    color: "#FFF",
+    fontWeight: "bold",
+  },
+
+  errorCard: {
+    backgroundColor: "rgba(255,0,0,0.2)",
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+
+  errorText: {
+    color: "#FFF",
     flex: 1,
-    color: "#FFFFFF",
-    fontWeight: "900",
+  },
+
+  emptyTitle: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 6,
+  },
+
+  emptySub: {
+    color: "#AAA",
+    textAlign: "center",
+  },
+
+  primaryBtn: {
+    marginTop: 12,
+    backgroundColor: "#FFF",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+
+  primaryBtnText: {
+    color: "#0C6A80",
+    fontWeight: "bold",
   },
 });

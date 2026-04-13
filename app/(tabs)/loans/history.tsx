@@ -3,7 +3,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -127,7 +126,7 @@ function HistoryHero({
   count,
 }: {
   onBack: () => void;
-  count: number;
+  count: number | string;
 }) {
   return (
     <View style={styles.heroCard}>
@@ -209,6 +208,19 @@ function LoanRow({ loan }: { loan: Loan }) {
   );
 }
 
+function SilentLoadingCard() {
+  return (
+    <View style={styles.silentWrap}>
+      <View style={styles.silentCard}>
+        <Text style={styles.silentTitle}>Loading support history</Text>
+        <Text style={styles.silentText}>
+          Your recent and past community support activity will appear here shortly.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function LoanHistoryScreen() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,16 +279,6 @@ export default function LoanHistoryScreen() {
     router.replace(ROUTES.tabs.loans as any);
   }, []);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color={UI.mint} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <ScrollView
@@ -298,9 +300,9 @@ export default function LoanHistoryScreen() {
         <View style={styles.backgroundGlowOne} />
         <View style={styles.backgroundGlowTwo} />
 
-        <HistoryHero onBack={handleBack} count={sortedLoans.length} />
+        <HistoryHero onBack={handleBack} count={loading ? "—" : sortedLoans.length} />
 
-        {error ? (
+        {!loading && error ? (
           <TouchableOpacity activeOpacity={0.92} onPress={onRefresh} style={styles.errorCard}>
             <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
@@ -308,7 +310,9 @@ export default function LoanHistoryScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {sortedLoans.length === 0 ? (
+        {loading ? (
+          <SilentLoadingCard />
+        ) : sortedLoans.length === 0 ? (
           <View style={styles.emptyWrap}>
             <EmptyState
               title="No activity yet"
@@ -327,8 +331,6 @@ export default function LoanHistoryScreen() {
             </View>
           </>
         )}
-
-        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -348,13 +350,6 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.md,
     paddingBottom: SPACING.xl,
-  },
-
-  loadingWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: UI.page,
   },
 
   backgroundBlobTop: {
@@ -535,6 +530,35 @@ const styles = StyleSheet.create({
 
   emptyWrap: {
     marginTop: SPACING.sm,
+  },
+
+  silentWrap: {
+    marginTop: SPACING.xs,
+  },
+
+  silentCard: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: UI.glass,
+    borderWidth: 1,
+    borderColor: UI.border,
+    marginBottom: SPACING.lg,
+  },
+
+  silentTitle: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: FONT.bold,
+    marginBottom: 6,
+  },
+
+  silentText: {
+    color: UI.textSoft,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.regular,
   },
 
   list: {

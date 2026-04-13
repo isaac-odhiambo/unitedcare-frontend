@@ -24,6 +24,10 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
+
+        // Preload tab screens so first switch is quieter
+        lazy: false,
+
         sceneStyle: {
           backgroundColor: COLORS.background,
         },
@@ -144,15 +148,12 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Hidden tab routes */}
       <Tabs.Screen name="notifications/index" options={{ href: null }} />
-      
-      {/* Savings */}
+
       <Tabs.Screen name="savings/[id]" options={{ href: null }} />
       <Tabs.Screen name="savings/history" options={{ href: null }} />
       <Tabs.Screen name="savings/save" options={{ href: null }} />
 
-      {/* Payments */}
       <Tabs.Screen name="payments/index" options={{ href: null }} />
       <Tabs.Screen name="payments/ledger" options={{ href: null }} />
       <Tabs.Screen name="payments/deposit" options={{ href: null }} />
@@ -162,7 +163,6 @@ export default function TabsLayout() {
         options={{ href: null }}
       />
 
-      {/* Loans */}
       <Tabs.Screen name="loans/[id]" options={{ href: null }} />
       <Tabs.Screen name="loans/add-guarantor" options={{ href: null }} />
       <Tabs.Screen name="loans/admin-approve" options={{ href: null }} />
@@ -172,7 +172,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="loans/pay" options={{ href: null }} />
       <Tabs.Screen name="loans/request" options={{ href: null }} />
 
-      {/* Merry */}
       <Tabs.Screen name="merry/contribute" options={{ href: null }} />
       <Tabs.Screen name="merry/history" options={{ href: null }} />
       <Tabs.Screen name="merry/join-request" options={{ href: null }} />
@@ -190,7 +189,6 @@ export default function TabsLayout() {
       />
       <Tabs.Screen name="merry/[id]" options={{ href: null }} />
 
-      {/* Groups */}
       <Tabs.Screen name="groups/[id]" options={{ href: null }} />
       <Tabs.Screen name="groups/available" options={{ href: null }} />
       <Tabs.Screen name="groups/contribute" options={{ href: null }} />

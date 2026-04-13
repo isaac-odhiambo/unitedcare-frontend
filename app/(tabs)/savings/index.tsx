@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -24,9 +23,8 @@ import Section from "@/components/ui/Section";
 import { ROUTES } from "@/constants/routes";
 import { COLORS, FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
-import { getMe, isKycComplete } from "@/services/profile";
+import { getMe } from "@/services/profile";
 import {
-  buildSavingsReference,
   getOrCreateDefaultSavingsAccount,
   SavingsAccount,
 } from "@/services/savings";
@@ -49,6 +47,22 @@ function formatKes(value?: string | number) {
   })}`;
 }
 
+function getUserId(user: any): number | null {
+  const raw =
+    user?.id ??
+    user?.user_id ??
+    user?.pk ??
+    null;
+
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function buildSavingsUserReference(user: any): string {
+  const userId = getUserId(user);
+  return userId ? `saving${userId}` : "";
+}
+
 type SummaryTileProps = {
   label: string;
   value: string;
@@ -64,8 +78,8 @@ function SummaryTile({
     tone === "success"
       ? COLORS.success
       : tone === "warning"
-        ? COLORS.warning
-        : WHITE;
+      ? COLORS.warning
+      : WHITE;
 
   return (
     <View style={styles.summaryTile}>
@@ -123,8 +137,6 @@ export default function SavingsIndexScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const kycComplete = isKycComplete(user);
-
   const goToProfile = useCallback(() => {
     router.push(ROUTES.tabs.profile as any);
   }, []);
@@ -138,19 +150,14 @@ export default function SavingsIndexScreen() {
         category: "SAVINGS",
         purpose: "SAVINGS_DEPOSIT",
         accountId: String(account.id),
-        reference: buildSavingsReference(account.id),
-        title: account.name || "Savings Club",
+        reference: buildSavingsUserReference(user),
+        title: account.name || "Rescue Plan",
       },
     });
-  }, [account]);
+  }, [account, user]);
 
   const goToWithdraw = useCallback(() => {
     if (!account?.id) return;
-
-    if (!kycComplete) {
-      goToProfile();
-      return;
-    }
 
     router.push({
       pathname: ROUTES.tabs.paymentsWithdrawals as any,
@@ -158,11 +165,11 @@ export default function SavingsIndexScreen() {
         category: "SAVINGS",
         purpose: "SAVINGS_WITHDRAWAL",
         accountId: String(account.id),
-        reference: buildSavingsReference(account.id),
-        title: account.name || "Savings Club",
+        reference: buildSavingsUserReference(user),
+        title: account.name || "Rescue Plan",
       },
     });
-  }, [account, kycComplete, goToProfile]);
+  }, [account, user]);
 
   const goToHistory = useCallback(() => {
     if (!account?.id) return;
@@ -185,21 +192,33 @@ export default function SavingsIndexScreen() {
     } catch (e: any) {
       setError(getErrorMessage(e));
       setAccount(null);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+
       const run = async () => {
         try {
           setLoading(true);
-          await load();
+          if (active) {
+            await load();
+          }
         } finally {
-          setLoading(false);
+          if (active) {
+            setLoading(false);
+          }
         }
       };
 
       run();
+
+      return () => {
+        active = false;
+      };
     }, [load])
   );
 
@@ -221,47 +240,6 @@ export default function SavingsIndexScreen() {
     () => formatKes(account?.reserved_amount),
     [account]
   );
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator color="#8CF0C7" />
-          <Text style={styles.loadingText}>
-            Loading your community savings...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.centerWrap}>
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>
-              Please login to access your savings space.
-            </Text>
-          </Card>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!account) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.centerWrap}>
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>
-              {error || "Unable to load your savings space right now."}
-            </Text>
-          </Card>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -296,24 +274,29 @@ export default function SavingsIndexScreen() {
 
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
-              <Ionicons name="wallet-outline" size={24} color={COLORS.white} />
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={24}
+                color={COLORS.white}
+              />
             </View>
 
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroEyebrow}>UNITED CARE</Text>
               <Text style={styles.heroTitle}>
-                {account.name || "Savings Club"}
+                {account?.name || "Rescue Plan"}
               </Text>
               <Text style={styles.heroSubtitle}>
-                Save together, stay ready, and support your community when
-                needed.
+                Build your community cushion, stay ready, and support one another when needed.
               </Text>
             </View>
           </View>
 
           <View style={styles.heroBalanceBox}>
             <Text style={styles.heroBalanceLabel}>Ready to use</Text>
-            <Text style={styles.heroBalanceValue}>{available}</Text>
+            <Text style={styles.heroBalanceValue}>
+              {account ? available : "—"}
+            </Text>
           </View>
 
           <View style={styles.heroMetaRow}>
@@ -323,7 +306,7 @@ export default function SavingsIndexScreen() {
                 size={14}
                 color="rgba(255,255,255,0.9)"
               />
-              <Text style={styles.heroMetaText}>Steady growth</Text>
+              <Text style={styles.heroMetaText}>Steady support</Text>
             </View>
 
             <View style={styles.heroMetaPill}>
@@ -340,6 +323,7 @@ export default function SavingsIndexScreen() {
             <Button
               title="Contribute"
               onPress={goToDeposit}
+              disabled={!account?.id}
               leftIcon={
                 <Ionicons
                   name="add-circle-outline"
@@ -357,38 +341,22 @@ export default function SavingsIndexScreen() {
           </Card>
         ) : null}
 
-        {!kycComplete ? (
-          <Card style={styles.noticeCard} onPress={goToProfile}>
-            <View style={styles.noticeGlow} />
-            <View style={styles.noticeIcon}>
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={18}
-                color={COLORS.info}
-              />
-            </View>
-
-            <View style={styles.noticeBody}>
-              <Text style={styles.noticeTitle}>Profile completion</Text>
-              <Text style={styles.noticeText}>
-                Contributing is open. Profile completion is only needed before
-                requesting support.
-              </Text>
-            </View>
-
-            <Ionicons name="chevron-forward" size={18} color={TEXT_ON_DARK_MUTED} />
-          </Card>
-        ) : null}
-
         <Section title="Overview">
           <View style={styles.summaryGrid}>
-            <SummaryTile label="Total contributions" value={balance} />
+            <SummaryTile
+              label="Total contributions"
+              value={account ? balance : "—"}
+            />
             <SummaryTile
               label="Ready to use"
-              value={available}
+              value={account ? available : "—"}
               tone="success"
             />
-            <SummaryTile label="Reserved" value={reserved} tone="warning" />
+            <SummaryTile
+              label="Reserved"
+              value={account ? reserved : "—"}
+              tone="warning"
+            />
           </View>
         </Section>
 
@@ -396,7 +364,7 @@ export default function SavingsIndexScreen() {
           <View style={styles.actionList}>
             <ActionRow
               title="Contribute"
-              subtitle="Add your share to the community savings."
+              subtitle="Add your share to the community rescue plan."
               icon="add-circle-outline"
               iconBg={`${COLORS.primary}16`}
               iconColor={COLORS.primary}
@@ -405,7 +373,7 @@ export default function SavingsIndexScreen() {
 
             <ActionRow
               title="History"
-              subtitle="See your savings journey and past activity."
+              subtitle="See your contribution journey and past activity."
               icon="time-outline"
               iconBg={`${COLORS.info}16`}
               iconColor={COLORS.info}
@@ -414,14 +382,10 @@ export default function SavingsIndexScreen() {
 
             <ActionRow
               title="Request support"
-              subtitle={
-                kycComplete
-                  ? "Request support from your savings when needed."
-                  : "Complete your profile before requesting support."
-              }
+              subtitle="Request support from this shared plan when needed."
               icon="arrow-up-circle-outline"
               iconBg={`${COLORS.success}16`}
-              iconColor={kycComplete ? COLORS.success : COLORS.info}
+              iconColor={COLORS.success}
               onPress={goToWithdraw}
             />
           </View>
@@ -437,12 +401,12 @@ export default function SavingsIndexScreen() {
                 color={COLORS.primary}
               />
             </View>
-            <Text style={styles.communityTitle}>Why savings matter here</Text>
+            <Text style={styles.communityTitle}>Why this plan matters here</Text>
           </View>
 
           <Text style={styles.communityText}>
-            Small, consistent saving helps members stay ready for goals, family
-            needs, and future opportunities. Every step adds to your stability.
+            Small, consistent contributions help members stay ready for family needs,
+            shared goals, and unexpected moments. Every step strengthens the community.
           </Text>
         </Card>
       </ScrollView>
@@ -471,21 +435,6 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.md,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
-    paddingHorizontal: SPACING.lg,
-  },
-
-  loadingText: {
-    marginTop: SPACING.sm,
-    color: TEXT_ON_DARK_SOFT,
-    fontFamily: FONT.regular,
-    fontSize: 12,
   },
 
   backgroundBlobTop: {
@@ -684,58 +633,6 @@ const styles = StyleSheet.create({
 
   errorText: {
     color: WHITE,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
-  noticeCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: GLASS,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: GLASS_BORDER,
-    padding: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.md,
-    marginBottom: SPACING.lg,
-    ...SHADOW.card,
-  },
-
-  noticeGlow: {
-    position: "absolute",
-    right: -18,
-    top: -10,
-    width: 90,
-    height: 90,
-    borderRadius: 999,
-    backgroundColor: "rgba(12,106,128,0.08)",
-  },
-
-  noticeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: `${COLORS.info}18`,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  noticeBody: {
-    flex: 1,
-  },
-
-  noticeTitle: {
-    color: WHITE,
-    fontFamily: FONT.bold,
-    fontSize: 14,
-  },
-
-  noticeText: {
-    marginTop: 4,
-    color: TEXT_ON_DARK_SOFT,
     fontFamily: FONT.regular,
     fontSize: 12,
     lineHeight: 18,
