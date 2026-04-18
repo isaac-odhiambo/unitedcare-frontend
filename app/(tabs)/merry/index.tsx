@@ -27,10 +27,8 @@ import {
   getApiErrorMessage,
   getAvailableMerries,
   getMyAllMerryDueSummary,
-  getMyMerries,
   MerryDueSummaryItem,
   MyAllMerryDueSummaryResponse,
-  MyMerriesResponse,
 } from "@/services/merry";
 import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
@@ -42,18 +40,13 @@ const BRAND = "#0C6A80";
 const WHITE = "#FFFFFF";
 const TEXT_ON_DARK = "rgba(255,255,255,0.90)";
 const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
-const SOFT_WHITE = "rgba(255,255,255,0.10)";
-const SOFT_WHITE_2 = "rgba(255,255,255,0.14)";
-const SURFACE_LIGHT = "rgba(255,255,255,0.72)";
-const MERRY_CARD = "rgba(98, 192, 98, 0.23)";
-const MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
-const MERRY_ICON_BG = "rgba(236, 255, 235, 0.76)";
-const MERRY_ICON = "#379B4A";
+const SOFT_WHITE = "rgba(255,255,255,0.08)";
+const SOFT_WHITE_2 = "rgba(255,255,255,0.12)";
 const SUCCESS_BG = "rgba(34,197,94,0.16)";
 const SUCCESS_TEXT = "#DCFCE7";
 const WARNING_BG = "rgba(245,158,11,0.18)";
 const WARNING_TEXT = "#FEF3C7";
-const ACCENT_BG = "rgba(12,106,128,0.20)";
+const ACCENT_BG = "rgba(12,106,128,0.22)";
 const ACCENT_TEXT = "#D9F3F9";
 
 function moneyNumber(value?: string | number | null) {
@@ -67,28 +60,25 @@ function hasAmount(value?: string | number | null) {
 
 function getFrequencyLabel(item: AvailableMerryRow) {
   const freq = String(item.payout_frequency || "").toUpperCase();
-  const perPeriod = Number(item.payouts_per_period || 1);
 
-  if (freq === "MONTHLY") {
-    return perPeriod > 1 ? `${perPeriod} times monthly` : "Monthly";
-  }
-
-  return perPeriod > 1 ? `${perPeriod} times weekly` : "Weekly";
+  if (freq === "DAILY") return "Daily payout";
+  if (freq === "MONTHLY") return "Monthly payout";
+  return "Weekly payout";
 }
 
 function getJoinStatusText(item: AvailableMerryRow) {
   const status = String(item.my_join_request?.status || "").toUpperCase();
 
   if (item.is_member) return "Joined";
-  if (status === "PENDING") return "Request pending";
+  if (status === "PENDING") return "Pending";
   if (status === "APPROVED") return "Approved";
-  if (status === "REJECTED") return "Request rejected";
+  if (status === "REJECTED") return "Rejected";
   if (!item.is_open) return "Closed";
   if (item.available_seats !== null && Number(item.available_seats) <= 0) {
     return "Full";
   }
-  if (item.can_request_join) return "Open to join";
-  return "View merry";
+  if (item.can_request_join) return "Open";
+  return "View";
 }
 
 function getSeatSummary(item: MerryDueSummaryItem) {
@@ -96,133 +86,22 @@ function getSeatSummary(item: MerryDueSummaryItem) {
   const numbers = Array.isArray(item.seat_numbers) ? item.seat_numbers : [];
 
   if (numbers.length > 0) {
-    return `Seats: ${count} • ${numbers.join(", ")}`;
+    return `${count} seat${count === 1 ? "" : "s"} • ${numbers.join(", ")}`;
   }
 
-  return `Seats: ${count}`;
+  return `${count} seat${count === 1 ? "" : "s"}`;
 }
 
-function getUserId(user?: MerryUser | null) {
-  const raw =
-    (user as any)?.id ??
-    (user as any)?.user_id ??
-    (user as any)?.pk ??
-    null;
+function formatShortDueDate(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
 
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function getMerryReferenceByUser(user?: MerryUser | null) {
-  const userId = getUserId(user);
-  return userId ? `MUS${userId}` : "MUS";
-}
-
-function SummaryTile({
-  label,
-  value,
-  icon,
-  onPress,
-  actionLabel,
-}: {
-  label: string;
-  value: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress?: () => void;
-  actionLabel?: string;
-}) {
-  const Wrapper = onPress ? TouchableOpacity : View;
-
-  return (
-    <Wrapper
-      {...(onPress
-        ? {
-            activeOpacity: 0.92,
-            onPress,
-          }
-        : {})}
-      style={[
-        styles.summaryTile,
-        onPress ? styles.summaryTilePressable : null,
-      ]}
-    >
-      <View style={styles.summaryIconWrap}>
-        <Ionicons name={icon} size={16} color={BRAND} />
-      </View>
-
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue} numberOfLines={1}>
-        {value}
-      </Text>
-
-      {actionLabel ? (
-        <View style={styles.summaryActionRow}>
-          <Text style={styles.summaryActionText}>{actionLabel}</Text>
-          <Ionicons name="chevron-forward" size={13} color={WHITE} />
-        </View>
-      ) : null}
-    </Wrapper>
-  );
-}
-
-function DueSummaryHero({
-  amount,
-  onPress,
-}: {
-  amount: number;
-  onPress: () => void;
-}) {
-  return (
-    <Card style={styles.heroCard} variant="default">
-      <View style={styles.spaceGlowTop} />
-      <View style={styles.spaceGlowBottom} />
-
-      <View style={styles.heroTop}>
-        <View style={styles.heroIconWrap}>
-          <Ionicons name="people-outline" size={20} color={MERRY_ICON} />
-        </View>
-
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.heroTitle}>Your merry contribution</Text>
-          <Text style={styles.heroSubtitle}>
-            Keep your circle active by contributing your share for this period.
-          </Text>
-        </View>
-      </View>
-
-      <TouchableOpacity
-        activeOpacity={0.92}
-        onPress={onPress}
-        style={styles.heroAmountBox}
-      >
-        <View style={styles.heroAmountTopRow}>
-          <Text style={styles.heroAmountLabel}>Ready now</Text>
-          <View style={styles.heroAmountAction}>
-            <Text style={styles.heroAmountActionText}>Contribute</Text>
-            <Ionicons name="chevron-forward" size={14} color={WHITE} />
-          </View>
-        </View>
-
-        <Text style={styles.heroAmountValue}>{fmtKES(amount)}</Text>
-      </TouchableOpacity>
-
-      <View style={styles.heroPillsRow}>
-        <View style={styles.heroPill}>
-          <Ionicons name="heart-outline" size={13} color={WHITE} />
-          <Text style={styles.heroPillText}>Community first</Text>
-        </View>
-
-        <View style={styles.heroPill}>
-          <Ionicons name="repeat-outline" size={13} color={WHITE} />
-          <Text style={styles.heroPillText}>Shared support</Text>
-        </View>
-      </View>
-
-      <View style={{ marginTop: SPACING.md }}>
-        <Button title="Contribute to Merry" onPress={onPress} />
-      </View>
-    </Card>
-  );
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function MyMerryCard({
@@ -234,36 +113,95 @@ function MyMerryCard({
   onContribute: (item: MerryDueSummaryItem) => void;
   onOpenDetail: (item: MerryDueSummaryItem) => void;
 }) {
-  const hasOverdue = hasAmount(item.overdue);
-  const hasCurrent = hasAmount(item.current_due);
+  const overdueTotal = moneyNumber(item.overdue_total);
+  const currentTotal = moneyNumber(item.current_total);
+  const totalDueNow = moneyNumber(item.total_due_now);
+  const walletBalance = moneyNumber(item.wallet_balance);
+  const remainingAfterWallet = Math.max(0, totalDueNow - walletBalance);
+  const fullyCoveredByWallet = totalDueNow > 0 && walletBalance >= totalDueNow;
+  const partiallyCoveredByWallet =
+    walletBalance > 0 && totalDueNow > walletBalance;
 
-  const badgeLabel = hasOverdue
-    ? "Needs attention"
-    : hasCurrent
-      ? "Due this period"
-      : "Up to date";
+  const breakdownRows = Array.isArray(item.breakdown) ? item.breakdown : [];
 
-  const badgeStyle = hasOverdue
-    ? styles.badgeWarning
-    : hasCurrent
-      ? styles.badgeAccent
-      : styles.badgeSuccess;
+  const overdueRows = breakdownRows.filter((row) => {
+    const bucket = String((row as any)?.bucket || "").toLowerCase();
+    const status = String((row as any)?.status || "").toUpperCase();
+    const outstanding = moneyNumber((row as any)?.outstanding);
 
-  const badgeTextStyle = hasOverdue
-    ? styles.badgeTextWarning
-    : hasCurrent
-      ? styles.badgeTextAccent
-      : styles.badgeTextSuccess;
+    if (outstanding <= 0) return false;
+    return bucket === "overdue" || status === "OVERDUE";
+  });
+
+  const overdueCount = overdueRows.length;
+
+  const maxDaysOverdue = overdueRows.reduce((max, row) => {
+    const days = Number((row as any)?.days_overdue || 0);
+    return days > max ? days : max;
+  }, 0);
+
+  const hasPenalty = breakdownRows.some(
+    (row) => moneyNumber((row as any)?.penalty_amount) > 0
+  );
+
+  const showOverdueState = overdueTotal > 0 && !fullyCoveredByWallet;
+
+  const badgeLabel = fullyCoveredByWallet
+    ? "Use wallet"
+    : showOverdueState
+      ? "Overdue"
+      : currentTotal > 0
+        ? "Due now"
+        : "Up to date";
+
+  const badgeStyle = fullyCoveredByWallet
+    ? styles.badgeSuccess
+    : showOverdueState
+      ? styles.badgeWarning
+      : currentTotal > 0
+        ? styles.badgeAccent
+        : styles.badgeSuccess;
+
+  const badgeTextStyle = fullyCoveredByWallet
+    ? styles.badgeTextSuccess
+    : showOverdueState
+      ? styles.badgeTextWarning
+      : currentTotal > 0
+        ? styles.badgeTextAccent
+        : styles.badgeTextSuccess;
+
+  const primaryTitle = "Details";
+
+  const onPrimaryPress = () => {
+    onOpenDetail(item);
+  };
+
+  const overdueBreakdownText =
+    overdueRows.length > 0
+      ? overdueRows
+          .slice(0, 2)
+          .map((row) => {
+            const dueDate = (row as any)?.due_date;
+            const turnNo = (row as any)?.turn_no;
+            const outstanding = (row as any)?.outstanding;
+
+            const label = dueDate
+              ? formatShortDueDate(dueDate)
+              : turnNo
+                ? `Turn ${turnNo}`
+                : "Due";
+
+            return `${label}: ${fmtKES(outstanding)}`;
+          })
+          .join(" • ")
+      : "";
 
   return (
     <Card style={styles.merryCard} variant="default">
-      <View style={styles.spaceGlowTop} />
-      <View style={styles.spaceGlowBottom} />
-
       <View style={styles.cardTop}>
         <View style={styles.cardTitleWrap}>
           <View style={styles.cardIconWrap}>
-            <Ionicons name="people-outline" size={17} color={MERRY_ICON} />
+            <Ionicons name="people-outline" size={17} color="#379B4A" />
           </View>
 
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -284,53 +222,97 @@ function MyMerryCard({
       </View>
 
       <View style={styles.amountPanel}>
-        <Text style={styles.amountPanelLabel}>Your share for now</Text>
+        <Text style={styles.amountPanelLabel}>
+          {remainingAfterWallet > 0 ? "Pay now" : "Amount left"}
+        </Text>
         <Text
           style={styles.amountPanelValue}
           numberOfLines={1}
           adjustsFontSizeToFit
         >
-          {fmtKES(item.required_now)}
+          {fmtKES(remainingAfterWallet)}
         </Text>
       </View>
 
-      {hasAmount(item.overdue) ? (
-        <Text style={styles.helperText}>
-          Pending from earlier: {fmtKES(item.overdue)}
+      <View style={styles.walletRow}>
+        <Ionicons name="wallet-outline" size={14} color={ACCENT_TEXT} />
+        <Text style={styles.walletText}>
+          Wallet balance: {fmtKES(item.wallet_balance)}
+        </Text>
+      </View>
+
+      {fullyCoveredByWallet ? (
+        <Text style={[styles.helperTextStrong, { color: SUCCESS_TEXT }]}>
+          Wallet can pay this.
         </Text>
       ) : null}
 
-      {!hasAmount(item.required_now) && hasAmount(item.next_due) ? (
-        <Text style={styles.helperText}>
-          Next contribution
-          {item.next_due_date ? ` on ${item.next_due_date}` : ""} •{" "}
-          {fmtKES(item.next_due)}
+      {partiallyCoveredByWallet ? (
+        <Text style={styles.helperTextStrong}>
+          Wallet: {fmtKES(walletBalance)} • Left: {fmtKES(remainingAfterWallet)}
         </Text>
+      ) : null}
+
+      {showOverdueState ? (
+        <Text style={styles.helperTextStrong}>
+          {overdueCount} missed contribution
+          {overdueCount === 1 ? "" : "s"}
+          {maxDaysOverdue > 0
+            ? ` • ${maxDaysOverdue} day${maxDaysOverdue === 1 ? "" : "s"} overdue`
+            : ""}
+        </Text>
+      ) : null}
+
+      {showOverdueState ? (
+        <Text style={styles.helperText}>
+          Overdue total: {fmtKES(item.overdue_total)}
+        </Text>
+      ) : null}
+
+      {currentTotal > 0 && overdueTotal <= 0 && !fullyCoveredByWallet ? (
+        <Text style={styles.helperText}>
+          Due now: {fmtKES(item.current_total)}
+        </Text>
+      ) : null}
+
+      {showOverdueState && overdueBreakdownText ? (
+        <Text style={styles.helperText}>{overdueBreakdownText}</Text>
+      ) : null}
+
+      {hasPenalty ? (
+        <Text style={[styles.helperText, { color: WARNING_TEXT }]}>
+          Includes penalties
+        </Text>
+      ) : null}
+
+      {!hasAmount(item.total_due_now) && hasAmount(item.next_total) ? (
+        <Text style={styles.helperText}>
+          Next due
+          {item.next_due_date
+            ? ` on ${formatShortDueDate(item.next_due_date)}`
+            : ""}{" "}
+          • {fmtKES(item.next_total)}
+        </Text>
+      ) : null}
+
+      {!hasAmount(item.total_due_now) && !hasAmount(item.next_total) ? (
+        <Text style={styles.helperText}>You are all caught up.</Text>
       ) : null}
 
       <View style={styles.cardActions}>
         <Button
-          title="Contribute"
-          onPress={() => onContribute(item)}
+          title={primaryTitle}
+          variant="secondary"
+          onPress={onPrimaryPress}
           style={{ flex: 1 }}
         />
         <View style={{ width: SPACING.sm }} />
         <Button
-          title="Details"
-          variant="secondary"
-          onPress={() => onOpenDetail(item)}
+          title={remainingAfterWallet > 0 ? "Pay now" : "Contribute"}
+          onPress={() => onContribute(item)}
           style={{ flex: 1 }}
         />
       </View>
-
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => onOpenDetail(item)}
-        style={styles.inlineAction}
-      >
-        <Text style={styles.inlineActionText}>View members and merry details</Text>
-        <Ionicons name="chevron-forward" size={15} color={WHITE} />
-      </TouchableOpacity>
     </Card>
   );
 }
@@ -347,20 +329,12 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
     requestStatus !== "PENDING" &&
     requestStatus !== "APPROVED";
 
-  const primaryTitle = item.is_member
-    ? "Open Merry"
-    : requestStatus === "PENDING"
-      ? "Open Request"
-      : canJoinDirect
-        ? "Join Merry"
-        : "Open Merry";
-
   const onPrimaryPress = () => {
-    if (item.is_member || requestStatus === "PENDING" || !canJoinDirect) {
+    if (canJoinDirect) {
       router.push({
-        pathname: "/(tabs)/merry/[id]" as any,
+        pathname: "/(tabs)/merry/join-request" as any,
         params: {
-          id: String(item.id),
+          merryId: String(item.id),
           returnTo: ROUTES.tabs.merry,
           backLabel: "Back to Merry",
           landingTitle: "Merry",
@@ -370,9 +344,9 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
     }
 
     router.push({
-      pathname: "/(tabs)/merry/join-request" as any,
+      pathname: "/(tabs)/merry/[id]" as any,
       params: {
-        merryId: String(item.id),
+        id: String(item.id),
         returnTo: ROUTES.tabs.merry,
         backLabel: "Back to Merry",
         landingTitle: "Merry",
@@ -381,113 +355,48 @@ function AvailableMerryCard({ item }: { item: AvailableMerryRow }) {
   };
 
   return (
-    <Card style={styles.merryCard} variant="default">
-      <View style={styles.spaceGlowTop} />
-      <View style={styles.spaceGlowBottom} />
+    <TouchableOpacity activeOpacity={0.92} onPress={onPrimaryPress}>
+      <Card style={styles.availableCard} variant="default">
+        <View style={styles.cardTop}>
+          <View style={styles.cardTitleWrap}>
+            <View style={styles.cardIconWrap}>
+              <Ionicons name="sparkles-outline" size={17} color="#379B4A" />
+            </View>
 
-      <View style={styles.cardTop}>
-        <View style={styles.cardTitleWrap}>
-          <View style={styles.cardIconWrap}>
-            <Ionicons name="sparkles-outline" size={17} color={MERRY_ICON} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.cardSubtitle} numberOfLines={2}>
+                {getFrequencyLabel(item)} • {item.seats_count} seat
+                {Number(item.seats_count) === 1 ? "" : "s"}
+              </Text>
+            </View>
           </View>
 
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text style={styles.cardSubtitle} numberOfLines={2}>
-              {getFrequencyLabel(item)} • {item.seats_count} seat
-              {Number(item.seats_count) === 1 ? "" : "s"}
+          <View style={styles.amountBadge}>
+            <Text style={styles.amountBadgeText} numberOfLines={1}>
+              {fmtKES(item.contribution_amount)}
             </Text>
           </View>
         </View>
 
-        <View style={styles.amountBadge}>
-          <Text style={styles.amountBadgeText} numberOfLines={1}>
-            {fmtKES(item.contribution_amount)}
-          </Text>
+        <View style={styles.metaRow}>
+          <View style={styles.metaPillNeutral}>
+            <Text style={styles.metaPillText} numberOfLines={1}>
+              {item.available_seats == null
+                ? "Unlimited seats"
+                : `${item.available_seats} left`}
+            </Text>
+          </View>
+
+          <View style={styles.metaPillAccent}>
+            <Text style={styles.metaPillText} numberOfLines={1}>
+              {joinStatus}
+            </Text>
+          </View>
         </View>
-      </View>
-
-      <View style={styles.metaRow}>
-        <View style={styles.metaPillNeutral}>
-          <Text style={styles.metaPillText} numberOfLines={1}>
-            {item.available_seats == null
-              ? "Unlimited seats"
-              : `${item.available_seats} seat${
-                  Number(item.available_seats) === 1 ? "" : "s"
-                } left`}
-          </Text>
-        </View>
-
-        <View style={styles.metaPillAccent}>
-          <Text style={styles.metaPillText} numberOfLines={1}>
-            {joinStatus}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.cardActions}>
-        <Button
-          title={primaryTitle}
-          onPress={onPrimaryPress}
-          style={{ flex: 1 }}
-        />
-        <View style={{ width: SPACING.sm }} />
-        <Button
-          title="View"
-          variant="secondary"
-          onPress={() =>
-            router.push({
-              pathname: "/(tabs)/merry/[id]" as any,
-              params: {
-                id: String(item.id),
-                returnTo: ROUTES.tabs.merry,
-                backLabel: "Back to Merry",
-                landingTitle: "Merry",
-              },
-            })
-          }
-          style={{ flex: 1 }}
-        />
-      </View>
-    </Card>
-  );
-}
-
-function QuickLink({
-  title,
-  subtitle,
-  icon,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={onPress}
-      style={styles.quickLinkCard}
-    >
-      <View style={styles.quickLinkLeft}>
-        <View style={styles.quickLinkIcon}>
-          <Ionicons name={icon} size={18} color={BRAND} />
-        </View>
-
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.quickLinkTitle} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.quickLinkSubtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-
-      <Ionicons name="chevron-forward" size={16} color={TEXT_ON_DARK_SOFT} />
+      </Card>
     </TouchableOpacity>
   );
 }
@@ -498,11 +407,9 @@ export default function MerryIndexScreen() {
   const [user, setUser] = useState<MerryUser | null>(null);
   const [summary, setSummary] =
     useState<MyAllMerryDueSummaryResponse | null>(null);
-  const [myMerries, setMyMerries] = useState<MyMerriesResponse>({
-    created: [],
-    memberships: [],
-  });
-  const [availableMerries, setAvailableMerries] = useState<AvailableMerryRow[]>([]);
+  const [availableMerries, setAvailableMerries] = useState<AvailableMerryRow[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -511,12 +418,11 @@ export default function MerryIndexScreen() {
     try {
       setError("");
 
-      const [sessionRes, meRes, summaryRes, myMerriesRes, availableRes] =
+      const [sessionRes, meRes, summaryRes, availableRes] =
         await Promise.allSettled([
           getSessionUser(),
           getMe(),
           getMyAllMerryDueSummary(),
-          getMyMerries(),
           getAvailableMerries(),
         ]);
 
@@ -533,16 +439,7 @@ export default function MerryIndexScreen() {
           : null
       );
 
-      setSummary(
-        summaryRes.status === "fulfilled" ? summaryRes.value : null
-      );
-
-      setMyMerries(
-        myMerriesRes.status === "fulfilled"
-          ? (myMerriesRes.value ?? { created: [], memberships: [] })
-          : { created: [], memberships: [] }
-      );
-
+      setSummary(summaryRes.status === "fulfilled" ? summaryRes.value : null);
       setAvailableMerries(
         availableRes.status === "fulfilled" ? (availableRes.value ?? []) : []
       );
@@ -566,7 +463,6 @@ export default function MerryIndexScreen() {
       setError(errors.filter(Boolean).join(" • "));
     } catch (e: any) {
       setSummary(null);
-      setMyMerries({ created: [], memberships: [] });
       setAvailableMerries([]);
       setError(getApiErrorMessage(e) || getErrorMessage(e));
     }
@@ -597,75 +493,106 @@ export default function MerryIndexScreen() {
   }, [load]);
 
   const myGroupsPreview = useMemo<MerryDueSummaryItem[]>(
-    () => (Array.isArray(summary?.items) ? summary!.items.slice(0, 4) : []),
+    () => (Array.isArray(summary?.items) ? summary.items : []),
     [summary]
   );
 
   const availablePreview = useMemo<AvailableMerryRow[]>(
-    () => (Array.isArray(availableMerries) ? availableMerries.slice(0, 4) : []),
-    [availableMerries]
-  );
-
-  const firstJoinableMerry = useMemo(
-    () =>
-      availableMerries.find((item) => {
-        const requestStatus = String(item.my_join_request?.status || "").toUpperCase();
-
-        return (
-          !item.is_member &&
-          item.can_request_join &&
-          item.is_open !== false &&
-          (item.available_seats == null || Number(item.available_seats) > 0) &&
-          requestStatus !== "PENDING" &&
-          requestStatus !== "APPROVED"
-        );
-      }) || null,
+    () => (Array.isArray(availableMerries) ? availableMerries : []),
     [availableMerries]
   );
 
   const totalRequiredNow = useMemo(
-    () => moneyNumber(summary?.total_required_now),
+    () => moneyNumber(summary?.total_due_now),
     [summary]
   );
 
-  const activeMerryCount = useMemo(
-    () => (Array.isArray(summary?.items) ? summary!.items.length : 0),
-    [summary]
-  );
+  const totalPenaltyNow = useMemo(() => {
+    const items = Array.isArray(summary?.items) ? summary.items : [];
 
-  const totalOpenMerries = useMemo(
-    () => availableMerries.length,
-    [availableMerries]
-  );
+    return items.reduce((sum, item) => {
+      const rows = Array.isArray((item as any)?.breakdown)
+        ? (item as any).breakdown
+        : [];
 
-  const merryReference = useMemo(() => getMerryReferenceByUser(user), [user]);
+      const penaltyForItem = rows.reduce((rowSum: number, row: any) => {
+        return rowSum + moneyNumber(row?.penalty_amount);
+      }, 0);
 
-  const goToMerryLanding = useCallback(() => {
-    router.replace(ROUTES.tabs.merry as any);
-  }, []);
+      return sum + penaltyForItem;
+    }, 0);
+  }, [summary]);
 
-  const openContributionRecords = useCallback(() => {
+  const totalCurrentNow = useMemo(() => {
+    const items = Array.isArray(summary?.items) ? summary.items : [];
+    return items.reduce(
+      (sum, item) => sum + moneyNumber((item as any)?.current_total),
+      0
+    );
+  }, [summary]);
+
+  const totalOverdueNow = useMemo(() => {
+    const items = Array.isArray(summary?.items) ? summary.items : [];
+    return items.reduce(
+      (sum, item) => sum + moneyNumber((item as any)?.overdue_total),
+      0
+    );
+  }, [summary]);
+
+  const totalWalletBalance = useMemo(() => {
+    return moneyNumber(summary?.wallet_balance);
+  }, [summary]);
+
+  const remainingAfterWallet = useMemo(() => {
+    return Math.max(0, totalRequiredNow - totalWalletBalance);
+  }, [totalRequiredNow, totalWalletBalance]);
+
+  const onPayAllMerryNow = useCallback(() => {
+    if (!user?.id || remainingAfterWallet <= 0) return;
+
     router.push({
-      pathname: "/(tabs)/merry/contributions" as any,
+      pathname: "/(tabs)/payments/deposit" as any,
       params: {
+        amount: String(remainingAfterWallet),
+        purpose: "MERRY_CONTRIBUTION",
+        reference: `mus${user.id}`,
+        title: "Pay merry due",
+        subtitle: "Combined merry due",
+        source: "merry_index_total",
+        scope: "all",
         returnTo: ROUTES.tabs.merry,
         backLabel: "Back to Merry",
         landingTitle: "Merry",
       },
     });
-  }, []);
+  }, [user?.id, remainingAfterWallet]);
 
-  const onContribute = useCallback((item: MerryDueSummaryItem) => {
-    router.push({
-      pathname: "/(tabs)/merry/contribute" as any,
-      params: {
-        merryId: String(item.merry_id),
-        returnTo: ROUTES.tabs.merry,
-        backLabel: "Back to Merry",
-        landingTitle: "Merry",
-      },
-    });
-  }, []);
+  const onContribute = useCallback(
+    (item: MerryDueSummaryItem) => {
+      const amount = Math.max(
+        0,
+        moneyNumber(item.total_due_now) - moneyNumber(item.wallet_balance)
+      );
+
+      router.push({
+        pathname: "/(tabs)/payments/deposit" as any,
+        params: {
+          amount: amount > 0 ? String(amount) : "",
+          purpose: "MERRY_CONTRIBUTION",
+          reference: user?.id ? `mus${user.id}` : "",
+          merryId: String(item.merry_id),
+          title: amount > 0 ? "Pay this merry" : "Contribute to merry",
+          subtitle: item.merry_name || "Merry contribution",
+          source: "merry_index_single",
+          scope: amount > 0 ? "single" : "extra",
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
+      });
+    },
+    [user?.id]
+  );
 
   const openMerryDetail = useCallback((item: MerryDueSummaryItem) => {
     router.push({
@@ -678,61 +605,6 @@ export default function MerryIndexScreen() {
       },
     });
   }, []);
-
-  const openHeroContribution = useCallback(() => {
-    const items = summary?.items ?? [];
-    const payable =
-      items.find((item) => hasAmount(item.required_now)) ||
-      items.find((item) => hasAmount(item.pay_with_next)) ||
-      items[0];
-
-    if (!payable) {
-      router.push(ROUTES.tabs.merry as any);
-      return;
-    }
-
-    router.push({
-      pathname: "/(tabs)/merry/contribute" as any,
-      params: {
-        merryId: String(payable.merry_id),
-        returnTo: ROUTES.tabs.merry,
-        backLabel: "Back to Merry",
-        landingTitle: "Merry",
-      },
-    });
-  }, [summary]);
-
-  const openReadyNowContribution = useCallback(() => {
-    const items = summary?.items ?? [];
-    const payable =
-      items.find((item) => hasAmount(item.required_now)) ||
-      items.find((item) => hasAmount(item.pay_with_next)) ||
-      items[0];
-
-    if (!payable) {
-      router.push(ROUTES.tabs.merry as any);
-      return;
-    }
-
-    router.replace({
-      pathname: "/(tabs)/payments/deposit" as any,
-      params: {
-        purpose: "MERRY_CONTRIBUTION",
-        source: "merry",
-        reference: merryReference,
-        merryId: String(payable.merry_id),
-        merry_id: String(payable.merry_id),
-        amount: String(payable.required_now || payable.pay_with_next || 0),
-        editableAmount: "true",
-        title: "Merry Contribution",
-        narration: `Merry contribution - ${payable.merry_name || "Merry"}`,
-        subtitle: payable.merry_name || "Merry",
-        returnTo: ROUTES.tabs.merry,
-        backLabel: "Back to Merry",
-        landingTitle: "Merry",
-      },
-    });
-  }, [merryReference, summary]);
 
   if (!loading && !user) {
     return (
@@ -770,12 +642,6 @@ export default function MerryIndexScreen() {
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobMiddle} />
-        <View style={styles.backgroundBlobBottom} />
-        <View style={styles.backgroundGlowOne} />
-        <View style={styles.backgroundGlowTwo} />
-
         <View style={styles.topBar}>
           <View style={styles.brandRow}>
             <View style={styles.logoBadge}>
@@ -786,7 +652,7 @@ export default function MerryIndexScreen() {
               <Text style={styles.brandWordmark}>
                 MERRY <Text style={styles.brandWordmarkGreen}>CIRCLE</Text>
               </Text>
-              <Text style={styles.brandSub}>Community sharing space</Text>
+              <Text style={styles.brandSub}>Simple and clear</Text>
             </View>
           </View>
 
@@ -798,50 +664,58 @@ export default function MerryIndexScreen() {
             >
               <Ionicons name="refresh-outline" size={18} color="#FFFFFF" />
             </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={goToMerryLanding}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="arrow-back-outline" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.heroShell}>
-          <View style={styles.heroOrbOne} />
-          <View style={styles.heroOrbTwo} />
-          <View style={styles.heroOrbThree} />
+          <Text style={styles.heroEyebrow}>Amount left</Text>
+          <Text style={styles.heroAmount}>{fmtKES(remainingAfterWallet)}</Text>
 
-          <Text style={styles.heroTag}>COMMUNITY MERRY</Text>
+          {totalWalletBalance > 0 ? (
+            <Text style={styles.heroSubText}>
+              Wallet: {fmtKES(totalWalletBalance)}
+            </Text>
+          ) : null}
 
-          <Text style={styles.pageTitle}>Grow together through merry</Text>
+          {totalOverdueNow > 0 && remainingAfterWallet > 0 ? (
+            <Text style={styles.heroSubText}>
+              Still to pay: {fmtKES(totalOverdueNow)}
+            </Text>
+          ) : null}
 
-          <Text style={styles.pageSubtitle}>
-            Join a circle, keep contributions flowing, and stay connected with your
-            community in one simple space.
-          </Text>
+          {totalCurrentNow > 0 && remainingAfterWallet > 0 ? (
+            <Text style={styles.heroSubText}>
+              Current due: {fmtKES(totalCurrentNow)}
+            </Text>
+          ) : null}
 
-          <View style={styles.summaryRow}>
-            <SummaryTile
-              label="My merry"
-              value={String(activeMerryCount)}
-              icon="repeat-outline"
-            />
-            <SummaryTile
-              label="Open spaces"
-              value={String(totalOpenMerries)}
-              icon="compass-outline"
-            />
-            <SummaryTile
-              label="Ready now"
-              value={fmtKES(totalRequiredNow)}
-              icon="wallet-outline"
-              onPress={openReadyNowContribution}
-              actionLabel="Contribute"
-            />
+          <View style={styles.heroWalletRow}>
+            <Ionicons name="wallet-outline" size={15} color={ACCENT_TEXT} />
+            <Text style={styles.heroWalletText}>
+              Total wallet balance: {fmtKES(totalWalletBalance)}
+            </Text>
           </View>
+
+          {remainingAfterWallet <= 0 && totalRequiredNow > 0 ? (
+            <Text style={[styles.heroSubText, { color: SUCCESS_TEXT }]}>
+              Your merry wallet can clear what is due now.
+            </Text>
+          ) : totalPenaltyNow > 0 ? (
+            <Text style={[styles.heroSubText, { color: WARNING_TEXT }]}>
+              Includes penalties: {fmtKES(totalPenaltyNow)}
+            </Text>
+          ) : (
+            <Text style={styles.heroSubText}>
+              Combined total across your merry groups
+            </Text>
+          )}
+
+          <Button
+            title={remainingAfterWallet > 0 ? "Pay total now" : "Use wallet"}
+            onPress={onPayAllMerryNow}
+            disabled={remainingAfterWallet <= 0}
+            style={styles.heroButton}
+          />
         </View>
 
         {error ? (
@@ -855,12 +729,18 @@ export default function MerryIndexScreen() {
           </Card>
         ) : null}
 
-        <DueSummaryHero amount={totalRequiredNow} onPress={openHeroContribution} />
+        {availablePreview.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Available merry groups</Text>
+            <View style={styles.cardList}>
+              {availablePreview.map((item) => (
+                <AvailableMerryCard key={`available-${item.id}`} item={item} />
+              ))}
+            </View>
+          </>
+        ) : null}
 
-        <Text style={styles.sectionTitle}>Your merry groups</Text>
-        <Text style={styles.sectionSubtitle}>
-          See your active merry spaces and continue contributing when ready.
-        </Text>
+        <Text style={styles.sectionTitle}>My merry groups</Text>
 
         {!loading && myGroupsPreview.length === 0 ? (
           <View style={styles.emptyCardWrap}>
@@ -868,7 +748,7 @@ export default function MerryIndexScreen() {
               <EmptyState
                 icon="people-outline"
                 title="No merry groups yet"
-                subtitle="Once you join a merry circle, your active groups will be shown here."
+                subtitle="When you join a merry, it will appear here."
               />
             </Card>
           </View>
@@ -884,78 +764,6 @@ export default function MerryIndexScreen() {
             ))}
           </View>
         )}
-
-        <Text style={styles.sectionTitle}>Open merry spaces</Text>
-        <Text style={styles.sectionSubtitle}>
-          Explore community merry circles and join the one that fits you.
-        </Text>
-
-        {!loading && availablePreview.length === 0 ? (
-          <View style={styles.emptyCardWrap}>
-            <Card style={styles.emptyCard} variant="default">
-              <EmptyState
-                icon="grid-outline"
-                title="No open merry spaces right now"
-                subtitle="New community merry opportunities will show here as soon as they become available."
-              />
-            </Card>
-          </View>
-        ) : (
-          <View style={styles.cardList}>
-            {availablePreview.map((item) => (
-              <AvailableMerryCard key={`available-${item.id}`} item={item} />
-            ))}
-          </View>
-        )}
-
-        <Text style={styles.sectionTitle}>Quick access</Text>
-        <Text style={styles.sectionSubtitle}>
-          Move to the next merry step with one tap.
-        </Text>
-
-        <View style={styles.quickLinksWrap}>
-          <QuickLink
-            title="Your Contributions"
-            subtitle="See how you’ve been supporting your merry"
-            icon="time-outline"
-            onPress={openContributionRecords}
-          />
-
-          {firstJoinableMerry ? (
-            <QuickLink
-              title="Join a Merry"
-              subtitle="Open a merry and send your join request"
-              icon="person-add-outline"
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/merry/join-request" as any,
-                  params: {
-                    merryId: String(firstJoinableMerry.id),
-                    returnTo: ROUTES.tabs.merry,
-                    backLabel: "Back to Merry",
-                    landingTitle: "Merry",
-                  },
-                })
-              }
-            />
-          ) : null}
-        </View>
-
-        <Card style={styles.communityCard} variant="default">
-          <View style={styles.communityTop}>
-            <View style={styles.communityIconWrap}>
-              <Ionicons name="sparkles-outline" size={18} color={BRAND} />
-            </View>
-            <Text style={styles.communityTitle}>Why merry matters</Text>
-          </View>
-
-          <Text style={styles.communityText}>
-            Merry helps members support one another through regular contribution,
-            shared responsibility, and a stronger community bond.
-          </Text>
-        </Card>
-
-        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -969,8 +777,8 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xs,
     paddingBottom: SPACING.xl,
-    position: "relative",
   },
 
   emptyWrap: {
@@ -1007,63 +815,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
   },
 
-  backgroundBlobTop: {
-    position: "absolute",
-    top: -60,
-    right: -30,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(19, 195, 178, 0.10)",
-  },
-
-  backgroundBlobMiddle: {
-    position: "absolute",
-    top: 260,
-    left: -80,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(52, 174, 213, 0.08)",
-  },
-
-  backgroundBlobBottom: {
-    position: "absolute",
-    bottom: 80,
-    right: -40,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: "rgba(112, 208, 115, 0.09)",
-  },
-
-  backgroundGlowOne: {
-    position: "absolute",
-    top: 100,
-    left: 40,
-    width: 6,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.45)",
-  },
-
-  backgroundGlowTwo: {
-    position: "absolute",
-    top: 180,
-    right: 60,
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: SPACING.sm,
     marginBottom: SPACING.md,
-    paddingTop: SPACING.xs,
   },
 
   brandRow: {
@@ -1074,21 +831,21 @@ const styles = StyleSheet.create({
   },
 
   logoBadge: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   brandWordmark: {
     color: WHITE,
     fontSize: 17,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
 
   brandWordmarkGreen: {
@@ -1114,263 +871,66 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   heroShell: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: "rgba(12,106,128,0.48)",
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: "rgba(176, 243, 234, 0.10)",
-  },
-
-  heroOrbOne: {
-    position: "absolute",
-    right: -36,
-    top: -20,
-    width: 170,
-    height: 170,
-    borderRadius: 999,
-    backgroundColor: "rgba(38, 208, 214, 0.18)",
-  },
-
-  heroOrbTwo: {
-    position: "absolute",
-    left: -12,
-    bottom: -35,
-    width: 145,
-    height: 145,
-    borderRadius: 999,
-    backgroundColor: "rgba(42, 191, 120, 0.18)",
-  },
-
-  heroOrbThree: {
-    position: "absolute",
-    right: 70,
-    bottom: -60,
-    width: 150,
-    height: 150,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  heroTag: {
-    color: "#D8FFF0",
-    fontSize: 11,
-    letterSpacing: 1.1,
-    marginBottom: 8,
-    fontFamily: FONT.bold,
-  },
-
-  pageTitle: {
-    color: WHITE,
-    fontSize: 26,
-    lineHeight: 32,
-    fontFamily: FONT.bold,
-  },
-
-  pageSubtitle: {
-    color: TEXT_ON_DARK,
-    marginTop: 8,
-    lineHeight: 21,
-    fontSize: 14,
-    fontFamily: FONT.regular,
-  },
-
-  summaryRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm as any,
-    marginTop: SPACING.md,
-  },
-
-  summaryTile: {
-    flexGrow: 1,
-    minWidth: 98,
-    minHeight: 112,
-    padding: 14,
-    borderRadius: RADIUS.lg,
-    backgroundColor: SOFT_WHITE_2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  summaryTilePressable: {
-    borderColor: "rgba(255,255,255,0.22)",
-  },
-
-  summaryIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    marginBottom: 8,
-  },
-
-  summaryLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.regular,
-    color: "rgba(255,255,255,0.80)",
-  },
-
-  summaryValue: {
-    marginTop: 6,
-    fontSize: 18,
-    lineHeight: 22,
-    fontFamily: FONT.bold,
-    color: WHITE,
-  },
-
-  summaryActionRow: {
-    marginTop: "auto",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-
-  summaryActionText: {
-    color: WHITE,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.medium,
-  },
-
-  heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: MERRY_CARD,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: MERRY_BORDER,
-    marginBottom: SPACING.lg,
-    ...SHADOW.card,
-  },
-
-  spaceGlowTop: {
-    position: "absolute",
-    top: -18,
-    right: -10,
-    width: 96,
-    height: 96,
-    borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 26,
+    paddingHorizontal: 18,
+    paddingVertical: 22,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
-  spaceGlowBottom: {
-    position: "absolute",
-    bottom: -24,
-    left: -8,
-    width: 120,
-    height: 70,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.05)",
+  heroEyebrow: {
+    color: TEXT_ON_DARK_SOFT,
+    fontSize: 13,
+    fontFamily: FONT.medium,
+    marginBottom: 8,
   },
 
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: SPACING.md,
-  },
-
-  heroIconWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: MERRY_ICON_BG,
-  },
-
-  heroTitle: {
+  heroAmount: {
     color: WHITE,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 34,
+    lineHeight: 40,
     fontFamily: FONT.bold,
   },
 
-  heroSubtitle: {
-    color: TEXT_ON_DARK_SOFT,
-    marginTop: 4,
+  heroSubText: {
+    color: TEXT_ON_DARK,
     fontSize: 13,
     lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  heroAmountBox: {
-    marginTop: SPACING.md,
-    backgroundColor: SOFT_WHITE,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    borderRadius: RADIUS.xl,
-    padding: SPACING.md,
-  },
-
-  heroAmountTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  heroAmountLabel: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  heroAmountAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-
-  heroAmountActionText: {
-    color: WHITE,
-    fontSize: 12,
     fontFamily: FONT.medium,
-  },
-
-  heroAmountValue: {
     marginTop: 8,
-    color: WHITE,
-    fontSize: 24,
-    lineHeight: 30,
-    fontFamily: FONT.bold,
   },
 
-  heroPillsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-
-  heroPill: {
+  heroWalletRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    marginTop: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: RADIUS.round,
-    backgroundColor: SOFT_WHITE,
+    borderRadius: 999,
+    alignSelf: "flex-start",
+    backgroundColor: ACCENT_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(12,106,128,0.18)",
   },
 
-  heroPillText: {
-    color: WHITE,
+  heroWalletText: {
+    color: ACCENT_TEXT,
     fontSize: 12,
-    lineHeight: 15,
+    lineHeight: 16,
     fontFamily: FONT.medium,
+  },
+
+  heroButton: {
+    marginTop: SPACING.md,
   },
 
   sectionTitle: {
@@ -1378,14 +938,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  sectionSubtitle: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
     marginBottom: SPACING.md,
   },
 
@@ -1395,12 +947,18 @@ const styles = StyleSheet.create({
   },
 
   merryCard: {
-    position: "relative",
-    overflow: "hidden",
     backgroundColor: SOFT_WHITE,
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.08)",
+    ...SHADOW.card,
+  },
+
+  availableCard: {
+    backgroundColor: SOFT_WHITE,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
     ...SHADOW.card,
   },
 
@@ -1424,7 +982,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MERRY_ICON_BG,
+    backgroundColor: "rgba(236,255,235,0.78)",
   },
 
   cardTitle: {
@@ -1484,7 +1042,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     backgroundColor: SOFT_WHITE_2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   amountPanelLabel: {
@@ -1502,6 +1060,27 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
   },
 
+  walletRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: SPACING.sm,
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: ACCENT_BG,
+    borderWidth: 1,
+    borderColor: "rgba(12,106,128,0.18)",
+  },
+
+  walletText: {
+    color: ACCENT_TEXT,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.medium,
+  },
+
   helperText: {
     marginTop: SPACING.sm,
     color: TEXT_ON_DARK_SOFT,
@@ -1510,24 +1089,18 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
+  helperTextStrong: {
+    marginTop: SPACING.sm,
+    color: WHITE,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.bold,
+  },
+
   cardActions: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: SPACING.md,
-  },
-
-  inlineAction: {
-    marginTop: SPACING.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  inlineActionText: {
-    color: WHITE,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.medium,
   },
 
   amountBadge: {
@@ -1536,7 +1109,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.round,
     backgroundColor: SOFT_WHITE_2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   amountBadgeText: {
@@ -1557,9 +1130,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: RADIUS.round,
-    backgroundColor: SOFT_WHITE,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   metaPillAccent: {
@@ -1568,7 +1141,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.round,
     backgroundColor: ACCENT_BG,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.20)",
+    borderColor: "rgba(12,106,128,0.18)",
   },
 
   metaPillText: {
@@ -1576,95 +1149,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontFamily: FONT.medium,
     color: WHITE,
-  },
-
-  quickLinksWrap: {
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-
-  quickLinkCard: {
-    minHeight: 74,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    borderRadius: RADIUS.xl,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.sm,
-  },
-
-  quickLinkLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    flex: 1,
-    minWidth: 0,
-  },
-
-  quickLinkIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: SURFACE_LIGHT,
-  },
-
-  quickLinkTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontFamily: FONT.bold,
-    color: WHITE,
-  },
-
-  quickLinkSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    color: TEXT_ON_DARK_SOFT,
-  },
-
-  communityCard: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
-    marginBottom: SPACING.md,
-  },
-
-  communityTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-
-  communityIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: SURFACE_LIGHT,
-  },
-
-  communityTitle: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontFamily: FONT.bold,
-    color: WHITE,
-  },
-
-  communityText: {
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
-    color: TEXT_ON_DARK,
   },
 
   errorCard: {
@@ -1692,9 +1176,9 @@ const styles = StyleSheet.create({
   },
 
   emptyCard: {
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 });

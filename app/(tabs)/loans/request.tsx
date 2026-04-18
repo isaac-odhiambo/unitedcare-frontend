@@ -3,6 +3,8 @@ import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -137,23 +139,39 @@ function normalizeApiMessage(message: string) {
   const lower = message.toLowerCase();
 
   if (lower.includes("active loan")) {
-    return "You already have an active support request.";
+    return "You already have an active support request. Finish it first before starting another one.";
+  }
+
+  if (lower.includes("already received your merry turn")) {
+    return "You cannot start a new support request because your merry turn has already been received.";
+  }
+
+  if (lower.includes("merry turn")) {
+    return "Your current merry status does not allow a new support request right now.";
   }
 
   if (lower.includes("principal")) {
-    return "Enter a valid amount.";
+    return "Please enter a valid support amount greater than zero.";
   }
 
   if (lower.includes("term_weeks")) {
-    return "Choose a valid repayment period.";
+    return "Please enter a repayment period of at least 1 week.";
   }
 
-  if (lower.includes("guarantor")) {
-    return "Please check the selected members and try again.";
+  if (lower.includes("their own guarantor")) {
+    return "You cannot choose yourself as a supporting member.";
+  }
+
+  if (lower.includes("guarantor") && lower.includes("not found")) {
+    return "One selected member could not be found. Refresh the list and choose again.";
+  }
+
+  if (lower.includes("not eligible") && lower.includes("guarantor")) {
+    return "One selected member is not currently available to support this request. Please choose another one.";
   }
 
   if (lower.includes("insufficient security")) {
-    return "This amount needs more security. Add member support or reduce the amount.";
+    return "This request may still need more support. You can reduce the amount or add supporting members.";
   }
 
   return message;
@@ -226,20 +244,46 @@ function SummaryCard({
 
 function SectionCard({
   title,
+  subtitle,
   children,
 }: {
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
 }) {
   return (
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
       {children}
     </View>
   );
 }
 
-function GuarantorRow({
+function SelectedChip({
+  label,
+  onRemove,
+}: {
+  label: string;
+  onRemove: () => void;
+}) {
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipText} numberOfLines={1}>
+        {label}
+      </Text>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onRemove}
+        style={styles.chipClose}
+      >
+        <Ionicons name="close" size={14} color="#FFFFFF" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function MemberRow({
   item,
   selected,
   onPress,
@@ -252,18 +296,10 @@ function GuarantorRow({
     <TouchableOpacity
       activeOpacity={0.92}
       onPress={onPress}
-      style={[
-        styles.guarantorRow,
-        selected && styles.guarantorRowSelected,
-      ]}
+      style={[styles.memberRow, selected && styles.memberRowSelected]}
     >
-      <View style={styles.guarantorLeft}>
-        <View
-          style={[
-            styles.guarantorAvatar,
-            selected && styles.guarantorAvatarSelected,
-          ]}
-        >
+      <View style={styles.memberLeft}>
+        <View style={[styles.memberAvatar, selected && styles.memberAvatarSelected]}>
           <Ionicons
             name={selected ? "checkmark" : "person-outline"}
             size={16}
@@ -272,14 +308,18 @@ function GuarantorRow({
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.guarantorName}>{item.full_name}</Text>
-          <Text style={styles.guarantorMeta}>
-            {selected ? "Selected" : "Tap to add"}
+          <Text style={styles.memberName} numberOfLines={1}>
+            {item.full_name}
+          </Text>
+          <Text style={styles.memberMeta}>
+            {selected ? "Selected for this request" : "Tap to add as supporting member"}
           </Text>
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={18} color={UI.textMuted} />
+      <View style={selected ? styles.selectedBadge : styles.addBadge}>
+        <Text style={styles.badgeLabel}>{selected ? "Selected" : "Add"}</Text>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -290,52 +330,57 @@ export default function RequestLoanScreen() {
 
   const [principal, setPrincipal] = useState("");
   const [termWeeks, setTermWeeks] = useState("12");
+  const [memberNote, setMemberNote] = useState("");
 
   const [eligibility, setEligibility] =
     useState<LoanEligibilityPreview | null>(null);
   const [securityPreview, setSecurityPreview] =
     useState<LoanSecurityPreview | null>(null);
 
-  const [guarantorSearch, setGuarantorSearch] = useState("");
-  const [guarantorCandidates, setGuarantorCandidates] = useState<
-    GuarantorCandidate[]
-  >([]);
-  const [selectedGuarantorIds, setSelectedGuarantorIds] = useState<number[]>([]);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberCandidates, setMemberCandidates] = useState<GuarantorCandidate[]>([]);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
 
   const [loadingPage, setLoadingPage] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingSecurity, setCheckingSecurity] = useState(false);
-  const [loadingGuarantors, setLoadingGuarantors] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [error, setError] = useState("");
 
   const hasValidAmount = isPositiveNumber(principal);
   const hasActiveLoan = Boolean(eligibility?.has_active_loan);
+  const isEligible = eligibility ? Boolean(eligibility.eligible) : true;
+  const eligibilityReason = normalizeApiMessage(eligibility?.reason || "");
+  const blockedReason = !isEligible ? eligibilityReason : "";
   const fullySecured = Boolean(securityPreview?.fully_secured);
 
-  const needsGuarantors =
+  const showMemberSupportSection =
     hasValidAmount &&
+    isEligible &&
     !hasActiveLoan &&
     Boolean(securityPreview) &&
-    !fullySecured &&
     toNumber(securityPreview?.shortfall) > 0;
 
   const formState = useMemo(() => {
     return buildLoanRequestPayload({
       principal,
       term_weeks: Number(termWeeks || 0),
-      guarantor_ids: selectedGuarantorIds,
-      member_note: "",
+      guarantor_ids: selectedMemberIds,
+      member_note: memberNote.trim(),
     });
-  }, [principal, termWeeks, selectedGuarantorIds]);
+  }, [principal, termWeeks, selectedMemberIds, memberNote]);
 
   const amountLabel = useMemo(() => formatKes(principal || 0), [principal]);
 
-  const selectedGuarantors = useMemo(() => {
-    const ids = new Set(selectedGuarantorIds);
-    return guarantorCandidates.filter((item) => ids.has(item.id));
-  }, [selectedGuarantorIds, guarantorCandidates]);
+  const selectedNamesById = useMemo(() => {
+    const map = new Map<number, string>();
+    memberCandidates.forEach((item) => {
+      map.set(item.id, item.full_name);
+    });
+    return map;
+  }, [memberCandidates]);
 
   const loadEligibility = async () => {
     try {
@@ -344,6 +389,16 @@ export default function RequestLoanScreen() {
       setEligibility(res);
     } catch (e: any) {
       setEligibility(null);
+      setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
+    }
+  };
+
+  const loadMembers = async (q?: string) => {
+    try {
+      const rows = await getGuarantorCandidates(q?.trim() || "");
+      setMemberCandidates(Array.isArray(rows) ? rows.slice(0, 30) : []);
+    } catch (e: any) {
+      setMemberCandidates([]);
       setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
     }
   };
@@ -368,7 +423,7 @@ export default function RequestLoanScreen() {
   useEffect(() => {
     let active = true;
 
-    if (!hasValidAmount || hasActiveLoan) {
+    if (!hasValidAmount || hasActiveLoan || !isEligible) {
       setSecurityPreview(null);
       return;
     }
@@ -380,7 +435,7 @@ export default function RequestLoanScreen() {
 
         const preview = await getLoanSecurityPreview({
           principal: Number(principal),
-          guarantor_ids: selectedGuarantorIds,
+          guarantor_ids: selectedMemberIds,
         });
 
         if (!active) return;
@@ -398,28 +453,28 @@ export default function RequestLoanScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [principal, selectedGuarantorIds, hasValidAmount, hasActiveLoan]);
+  }, [principal, selectedMemberIds, hasValidAmount, hasActiveLoan, isEligible]);
 
   useEffect(() => {
     let active = true;
 
-    if (!needsGuarantors) {
-      setGuarantorCandidates([]);
+    if (!showMemberSupportSection) {
+      setMemberCandidates([]);
       return;
     }
 
     const timer = setTimeout(async () => {
       try {
-        setLoadingGuarantors(true);
-        const rows = await getGuarantorCandidates(guarantorSearch.trim());
+        setLoadingMembers(true);
+        const rows = await getGuarantorCandidates(memberSearch.trim());
         if (!active) return;
-        setGuarantorCandidates(Array.isArray(rows) ? rows.slice(0, 20) : []);
+        setMemberCandidates(Array.isArray(rows) ? rows.slice(0, 30) : []);
       } catch (e: any) {
         if (!active) return;
-        setGuarantorCandidates([]);
+        setMemberCandidates([]);
         setError(normalizeApiMessage(getApiErrorMessage(e) || getErrorMessage(e)));
       } finally {
-        if (active) setLoadingGuarantors(false);
+        if (active) setLoadingMembers(false);
       }
     }, 250);
 
@@ -427,21 +482,32 @@ export default function RequestLoanScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [guarantorSearch, needsGuarantors]);
+  }, [memberSearch, showMemberSupportSection]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
       await loadEligibility();
+      if (showMemberSupportSection) {
+        await loadMembers(memberSearch);
+      }
     } finally {
       setRefreshing(false);
     }
   };
 
-  const toggleGuarantor = (id: number) => {
-    setSelectedGuarantorIds((prev) =>
+  const toggleMember = (id: number) => {
+    setSelectedMemberIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  };
+
+  const removeMember = (id: number) => {
+    setSelectedMemberIds((prev) => prev.filter((x) => x !== id));
+  };
+
+  const clearSelectedMembers = () => {
+    setSelectedMemberIds([]);
   };
 
   const goBack = () => {
@@ -463,25 +529,25 @@ export default function RequestLoanScreen() {
   const submit = async () => {
     try {
       if (hasActiveLoan) {
-        Alert.alert("Support", "You already have an active support request.");
+        Alert.alert(
+          "Support request",
+          "You already have an active support request. Finish it first before starting another one."
+        );
+        return;
+      }
+
+      if (!isEligible) {
+        Alert.alert(
+          "Support request",
+          blockedReason || "You are not eligible to submit a support request right now."
+        );
         return;
       }
 
       if (!formState.canSubmit || !formState.payload) {
         Alert.alert(
-          "Support",
+          "Support request",
           normalizeApiMessage(formState.error || "Please check your details.")
-        );
-        return;
-      }
-
-      if (!securityPreview?.fully_secured) {
-        Alert.alert(
-          "Support",
-          normalizeApiMessage(
-            securityPreview?.message ||
-              "This amount still needs more security."
-          )
         );
         return;
       }
@@ -493,7 +559,7 @@ export default function RequestLoanScreen() {
 
       Alert.alert(
         "Request sent",
-        res?.message || "Your support request was sent successfully.",
+        res?.message || "Your support request was sent successfully and is now waiting for review.",
         [
           {
             text: "OK",
@@ -506,7 +572,7 @@ export default function RequestLoanScreen() {
         getApiErrorMessage(e) || getErrorMessage(e)
       );
       setError(msg);
-      Alert.alert("Support", msg);
+      Alert.alert("Support request", msg);
     } finally {
       setSubmitting(false);
     }
@@ -515,36 +581,46 @@ export default function RequestLoanScreen() {
   const summaryState = useMemo(() => {
     if (!hasValidAmount) {
       return {
-        title: "Enter amount first",
+        title: "Enter support amount",
         amount: amountLabel,
-        subtitle: "We will check whether your current security is enough.",
+        subtitle: "Start with the amount you need and your repayment period.",
         tone: "info" as const,
+      };
+    }
+
+    if (!isEligible) {
+      return {
+        title: "Support request unavailable",
+        amount: amountLabel,
+        subtitle:
+          blockedReason || "You are not eligible to start a new support request right now.",
+        tone: "warning" as const,
       };
     }
 
     if (checkingSecurity) {
       return {
-        title: "Checking security",
+        title: "Checking your current support position",
         amount: amountLabel,
-        subtitle: "Please wait while we review your current coverage.",
+        subtitle: "We are reviewing your current coverage now.",
         tone: "info" as const,
       };
     }
 
     if (securityPreview?.fully_secured) {
       return {
-        title: "Ready to submit",
+        title: "Strong support position",
         amount: formatKes(securityPreview.secured_total),
-        subtitle: "Your request is fully secured and ready to send.",
+        subtitle: "Your current coverage looks complete for this request.",
         tone: "success" as const,
       };
     }
 
     if (securityPreview) {
       return {
-        title: "More support needed",
+        title: "You can improve this request",
         amount: formatKes(securityPreview.shortfall),
-        subtitle: "Add member support or reduce the amount.",
+        subtitle: "You can still send the request, but adding supporting members may improve approval.",
         tone: "warning" as const,
       };
     }
@@ -552,10 +628,10 @@ export default function RequestLoanScreen() {
     return {
       title: "Support summary",
       amount: amountLabel,
-      subtitle: "Enter details to continue.",
+      subtitle: "Enter your details to continue.",
       tone: "support" as const,
     };
-  }, [hasValidAmount, checkingSecurity, securityPreview, amountLabel]);
+  }, [hasValidAmount, checkingSecurity, securityPreview, amountLabel, isEligible, blockedReason]);
 
   if (loadingPage) {
     return (
@@ -563,7 +639,7 @@ export default function RequestLoanScreen() {
     );
   }
 
-  if (hasActiveLoan) {
+  if (hasActiveLoan || !isEligible) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
@@ -571,14 +647,26 @@ export default function RequestLoanScreen() {
             <View
               style={[
                 styles.blockIconWrap,
-                { backgroundColor: UI.warningIconBg },
+                {
+                  backgroundColor: hasActiveLoan
+                    ? UI.warningIconBg
+                    : UI.infoIconBg,
+                },
               ]}
             >
-              <Ionicons name="time-outline" size={18} color={UI.warningIcon} />
+              <Ionicons
+                name={hasActiveLoan ? "time-outline" : "information-circle-outline"}
+                size={18}
+                color={hasActiveLoan ? UI.warningIcon : UI.infoIcon}
+              />
             </View>
-            <Text style={styles.blockTitle}>Support already active</Text>
+            <Text style={styles.blockTitle}>
+              {hasActiveLoan ? "Support already active" : "Support request unavailable"}
+            </Text>
             <Text style={styles.blockText}>
-              Finish the current one before starting another.
+              {hasActiveLoan
+                ? "You already have an active support request. Finish it first before starting another one."
+                : blockedReason || "You are not eligible to start a support request right now."}
             </Text>
 
             <View style={{ marginTop: SPACING.md, width: "100%" }}>
@@ -592,238 +680,308 @@ export default function RequestLoanScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <ScrollView
-        style={styles.page}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: Math.max(insets.bottom + 24, 36) },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={UI.mint}
-            colors={[UI.mint, UI.aqua]}
-          />
-        }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobMiddle} />
-        <View style={styles.backgroundBlobBottom} />
-        <View style={styles.backgroundGlowOne} />
-        <View style={styles.backgroundGlowTwo} />
-
-        <View
-          style={[
-            styles.heroCard,
-            {
-              backgroundColor: palette.card,
-              borderColor: palette.border,
-            },
+        <ScrollView
+          style={styles.page}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom + 32, 48) },
           ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={UI.mint}
+              colors={[UI.mint, UI.aqua]}
+            />
+          }
         >
-          <View style={styles.heroOrbOne} />
-          <View style={styles.heroOrbTwo} />
-          <View style={styles.heroOrbThree} />
+          <View style={styles.backgroundBlobTop} />
+          <View style={styles.backgroundBlobMiddle} />
+          <View style={styles.backgroundBlobBottom} />
+          <View style={styles.backgroundGlowOne} />
+          <View style={styles.backgroundGlowTwo} />
 
-          <View style={styles.heroTopRow}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={goBack}
-              style={[styles.backButton, { backgroundColor: palette.chip }]}
-            >
-              <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
+          <View
+            style={[
+              styles.heroCard,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+              },
+            ]}
+          >
+            <View style={styles.heroOrbOne} />
+            <View style={styles.heroOrbTwo} />
+            <View style={styles.heroOrbThree} />
 
-            <View style={styles.heroBadge}>
-              <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
-            </View>
-          </View>
+            <View style={styles.heroTopRow}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={goBack}
+                style={[styles.backButton, { backgroundColor: palette.chip }]}
+              >
+                <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+              </TouchableOpacity>
 
-          <View style={styles.heroHeader}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.heroTitle}>Ask for support</Text>
-              <Text style={styles.heroSubtitle}>
-                Enter amount and repayment period. We check your current
-                security right away and show whether you are ready to submit.
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.heroIconWrap,
-                { backgroundColor: palette.iconBg },
-              ]}
-            >
-              <Ionicons name="create-outline" size={22} color={palette.icon} />
-            </View>
-          </View>
-
-          <View style={styles.heroMiniWrap}>
-            <View
-              style={[
-                styles.heroMiniPill,
-                { backgroundColor: palette.amountBg },
-              ]}
-            >
-              <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.heroMiniText}>{amountLabel}</Text>
+              <View style={styles.heroBadge}>
+                <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
+              </View>
             </View>
 
-            <View
-              style={[
-                styles.heroMiniPill,
-                { backgroundColor: palette.amountBg },
-              ]}
-            >
-              <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.heroMiniText}>
-                {termWeeks ? `${termWeeks} weeks` : "Repayment period"}
-              </Text>
-            </View>
-          </View>
-        </View>
+            <View style={styles.heroHeader}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.heroTitle}>Ask for support</Text>
+                <Text style={styles.heroSubtitle}>
+                  Enter the amount you need, choose a repayment period, and add supporting members if needed.
+                  We will show your current position clearly before you send the request.
+                </Text>
+              </View>
 
-        {error ? (
-          <View style={styles.errorCard}>
-            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-
-        <SectionCard title="Support details">
-          <Input
-            label="Amount"
-            value={principal}
-            onChangeText={setPrincipal}
-            placeholder="e.g. 5000"
-            keyboardType="decimal-pad"
-          />
-
-          <Input
-            label="Repayment period (weeks)"
-            value={termWeeks}
-            onChangeText={setTermWeeks}
-            placeholder="e.g. 12"
-            keyboardType="number-pad"
-          />
-        </SectionCard>
-
-        <SummaryCard
-          title={summaryState.title}
-          amount={summaryState.amount}
-          subtitle={summaryState.subtitle}
-          tone={summaryState.tone}
-        />
-
-        {securityPreview && hasValidAmount && !checkingSecurity ? (
-          <View style={styles.metricsWrap}>
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>Amount</Text>
-              <Text style={styles.metricValue}>{amountLabel}</Text>
-            </View>
-
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>Covered</Text>
-              <Text style={styles.metricValue}>
-                {formatKes(securityPreview.secured_total)}
-              </Text>
-            </View>
-
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>Still needed</Text>
-              <Text
+              <View
                 style={[
-                  styles.metricValue,
-                  fullySecured ? styles.successText : styles.warningText,
+                  styles.heroIconWrap,
+                  { backgroundColor: palette.iconBg },
                 ]}
               >
-                {formatKes(securityPreview.shortfall)}
-              </Text>
+                <Ionicons name="create-outline" size={22} color={palette.icon} />
+              </View>
             </View>
 
-            <View style={styles.metricTile}>
-              <Text style={styles.metricLabel}>Your savings</Text>
-              <Text style={styles.metricValue}>
-                {formatKes(securityPreview.borrower_savings)}
-              </Text>
+            <View style={styles.heroMiniWrap}>
+              <View
+                style={[
+                  styles.heroMiniPill,
+                  { backgroundColor: palette.amountBg },
+                ]}
+              >
+                <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.heroMiniText}>{amountLabel}</Text>
+              </View>
+
+              <View
+                style={[
+                  styles.heroMiniPill,
+                  { backgroundColor: palette.amountBg },
+                ]}
+              >
+                <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.heroMiniText}>
+                  {termWeeks ? `${termWeeks} weeks` : "Repayment period"}
+                </Text>
+              </View>
             </View>
           </View>
-        ) : null}
 
-        {needsGuarantors ? (
-          <SectionCard title="Add member support">
+          {error ? (
+            <View style={styles.errorCard}>
+              <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          <SectionCard
+            title="Request details"
+            subtitle="Fill in the amount, repayment period, and optional note."
+          >
             <Input
-              label="Search member"
-              value={guarantorSearch}
-              onChangeText={setGuarantorSearch}
-              placeholder="Type member name"
+              label="Amount"
+              value={principal}
+              onChangeText={setPrincipal}
+              placeholder="e.g. 5000"
+              keyboardType="decimal-pad"
             />
 
-            {selectedGuarantors.length > 0 ? (
-              <View style={styles.chipsWrap}>
-                {selectedGuarantors.map((item) => (
-                  <View key={item.id} style={styles.chip}>
-                    <Text style={styles.chipText}>{item.full_name}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={styles.helperText}>
-                Select members who can support this request.
-              </Text>
-            )}
+            <Input
+              label="Repayment period (weeks)"
+              value={termWeeks}
+              onChangeText={setTermWeeks}
+              placeholder="e.g. 12"
+              keyboardType="number-pad"
+            />
+
+            <Input
+              label="Short note (optional)"
+              value={memberNote}
+              onChangeText={setMemberNote}
+              placeholder="Tell the team what this support is for"
+              multiline
+            />
           </SectionCard>
-        ) : null}
 
-        {needsGuarantors ? (
-          loadingGuarantors ? null : guarantorCandidates.length === 0 ? (
-            <View style={styles.emptyWrap}>
-              <EmptyState
-                icon="people-outline"
-                title="No members found"
-                subtitle="Try another name."
+          <SummaryCard
+            title={summaryState.title}
+            amount={summaryState.amount}
+            subtitle={summaryState.subtitle}
+            tone={summaryState.tone}
+          />
+
+          {securityPreview && hasValidAmount && !checkingSecurity ? (
+            <View style={styles.metricsWrap}>
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Request amount</Text>
+                <Text style={styles.metricValue}>{amountLabel}</Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Covered now</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.secured_total)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Still needed</Text>
+                <Text
+                  style={[
+                    styles.metricValue,
+                    fullySecured ? styles.successText : styles.warningText,
+                  ]}
+                >
+                  {formatKes(securityPreview.shortfall)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Savings</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.borrower_savings)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Merry</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.borrower_merry)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Groups</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.borrower_group)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Your total cover</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.borrower_total)}
+                </Text>
+              </View>
+
+              <View style={styles.metricTile}>
+                <Text style={styles.metricLabel}>Support from members</Text>
+                <Text style={styles.metricValue}>
+                  {formatKes(securityPreview.guarantor_total)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {showMemberSupportSection ? (
+            <SectionCard
+              title="Add supporting members"
+              subtitle="Search active approved members and tap to add them to this request."
+            >
+              <Input
+                label="Search member"
+                value={memberSearch}
+                onChangeText={setMemberSearch}
+                placeholder="Type a member name"
               />
-            </View>
-          ) : (
-            <View style={styles.guarantorList}>
-              {guarantorCandidates.map((item) => {
-                const selected = selectedGuarantorIds.includes(item.id);
 
-                return (
-                  <GuarantorRow
-                    key={item.id}
-                    item={item}
-                    selected={selected}
-                    onPress={() => toggleGuarantor(item.id)}
+              {selectedMemberIds.length > 0 ? (
+                <>
+                  <View style={styles.selectedHeader}>
+                    <Text style={styles.selectedHeaderText}>
+                      Selected members ({selectedMemberIds.length})
+                    </Text>
+
+                    <TouchableOpacity activeOpacity={0.9} onPress={clearSelectedMembers}>
+                      <Text style={styles.clearText}>Clear all</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.chipsWrap}>
+                    {selectedMemberIds.map((id) => (
+                      <SelectedChip
+                        key={id}
+                        label={selectedNamesById.get(id) || `Member #${id}`}
+                        onRemove={() => removeMember(id)}
+                      />
+                    ))}
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.helperText}>
+                  No supporting members selected yet. You can still submit without them, but adding support may improve approval.
+                </Text>
+              )}
+
+              {loadingMembers ? (
+                <View style={styles.inlineInfoCard}>
+                  <Ionicons name="search-outline" size={16} color={UI.textSoft} />
+                  <Text style={styles.inlineInfoText}>Searching members...</Text>
+                </View>
+              ) : memberCandidates.length === 0 ? (
+                <View style={styles.emptyWrapBox}>
+                  <EmptyState
+                    icon="people-outline"
+                    title="No members found"
+                    subtitle="Try a different name or clear the search."
                   />
-                );
-              })}
-            </View>
-          )
-        ) : null}
+                </View>
+              ) : (
+                <View style={styles.memberList}>
+                  {memberCandidates.map((item) => {
+                    const selected = selectedMemberIds.includes(item.id);
 
-        <View style={styles.actionCard}>
-          <Button
-            title={submitting ? "Sending..." : "Submit request"}
-            onPress={submit}
-            loading={false}
-            disabled={!fullySecured || submitting || !formState.canSubmit}
-          />
+                    return (
+                      <MemberRow
+                        key={item.id}
+                        item={item}
+                        selected={selected}
+                        onPress={() => toggleMember(item.id)}
+                      />
+                    );
+                  })}
+                </View>
+              )}
+            </SectionCard>
+          ) : null}
 
-          <View style={{ height: SPACING.sm }} />
+          <View style={styles.actionCard}>
+            <Text style={styles.actionHint}>
+              When you send this request, the backend will review it and place it in the pending review flow.
+            </Text>
 
-          <Button
-            title="Cancel"
-            variant="secondary"
-            onPress={goBack}
-            disabled={submitting}
-          />
-        </View>
-      </ScrollView>
+            <Button
+              title={submitting ? "Sending..." : "Submit request"}
+              onPress={submit}
+              loading={false}
+              disabled={submitting || !formState.canSubmit || hasActiveLoan || !isEligible}
+            />
+
+            <View style={{ height: SPACING.sm }} />
+
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onPress={goBack}
+              disabled={submitting}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -1095,6 +1253,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontFamily: FONT.bold,
+    marginBottom: 4,
+  },
+
+  sectionSubtitle: {
+    color: UI.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
     marginBottom: SPACING.sm,
   },
 
@@ -1179,43 +1345,92 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
+  selectedHeader: {
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  selectedHeaderText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: FONT.bold,
+  },
+
+  clearText: {
+    color: UI.mint,
+    fontSize: 12,
+    fontFamily: FONT.bold,
+  },
+
   chipsWrap: {
     marginTop: SPACING.sm,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
 
   chip: {
+    maxWidth: "100%",
     borderRadius: 999,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 8,
     paddingVertical: 8,
     backgroundColor: "rgba(140,240,199,0.16)",
     borderWidth: 1,
     borderColor: "rgba(140,240,199,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 
   chipText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontFamily: FONT.regular,
+    maxWidth: 180,
   },
 
-  inlineLoader: {
-    paddingVertical: SPACING.lg,
+  chipClose: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
-  emptyWrap: {
-    marginBottom: SPACING.md,
+  inlineInfoCard: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: UI.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: SPACING.sm,
   },
 
-  guarantorList: {
-    marginBottom: SPACING.md,
+  inlineInfoText: {
+    color: UI.textSoft,
+    fontSize: 12,
+    fontFamily: FONT.regular,
   },
 
-  guarantorRow: {
+  emptyWrapBox: {
+    marginTop: SPACING.sm,
+  },
+
+  memberList: {
+    marginTop: SPACING.sm,
+  },
+
+  memberRow: {
     marginBottom: SPACING.sm,
     borderRadius: 18,
     padding: SPACING.md,
@@ -1227,51 +1442,90 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  guarantorRowSelected: {
+  memberRowSelected: {
     backgroundColor: "rgba(140,240,199,0.16)",
     borderColor: "rgba(140,240,199,0.22)",
   },
 
-  guarantorLeft: {
+  memberLeft: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 12,
     flex: 1,
   },
 
-  guarantorAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.14)",
+  memberAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: SPACING.sm,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
-  guarantorAvatarSelected: {
+  memberAvatarSelected: {
     backgroundColor: UI.mint,
+    borderColor: "rgba(140,240,199,0.26)",
   },
 
-  guarantorName: {
+  memberName: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT.bold,
+    marginBottom: 2,
   },
 
-  guarantorMeta: {
-    marginTop: 4,
+  memberMeta: {
     color: UI.textMuted,
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: FONT.regular,
   },
 
+  addBadge: {
+    minWidth: 54,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginLeft: 12,
+  },
+
+  selectedBadge: {
+    minWidth: 72,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(140,240,199,0.22)",
+    marginLeft: 12,
+  },
+
+  badgeLabel: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+  },
+
   actionCard: {
-    marginTop: SPACING.sm,
     borderRadius: 22,
     padding: SPACING.md,
     backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
+    marginBottom: SPACING.md,
+  },
+
+  actionHint: {
+    color: UI.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginBottom: SPACING.sm,
   },
 
   successText: {
@@ -1279,6 +1533,6 @@ const styles = StyleSheet.create({
   },
 
   warningText: {
-    color: UI.warningIcon,
+    color: "#FFD27D",
   },
 });

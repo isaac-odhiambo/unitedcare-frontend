@@ -12,37 +12,40 @@ export type LoanStatus =
   | "REJECTED"
   | "DEFAULTED"
   | "COMPLETED"
-  | "CANCELLED"
   | "UNDER_REPAYMENT"
   | "DISBURSED"
   | string;
 
 export type SimpleUser = {
   id: number;
-  full_name: string;
+  username?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
 };
 
 export type LoanProduct = {
   id: number;
-  name: string;
-  interest_type: "FLAT" | "REDUCING" | string;
-  annual_interest_rate: string;
-  repayment_frequency: "WEEKLY" | "MONTHLY" | string;
-  repayment_weekday: number;
-  max_weeks: number;
-  late_fee_rate_weekly: string;
-  is_active: boolean;
+  name?: string;
+  interest_type?: "FLAT" | "REDUCING" | string;
+  annual_interest_rate?: string | number;
+  repayment_frequency?: "WEEKLY" | "MONTHLY" | string;
+  repayment_weekday?: number;
+  max_weeks?: number;
+  late_fee_rate_weekly?: string | number;
+  is_active?: boolean;
   is_default?: boolean;
 };
 
 export type LoanGuarantor = {
   id: number;
-  loan: number;
-  guarantor: number;
+  loan?: number;
+  guarantor?: number | SimpleUser | null;
   guarantor_detail?: SimpleUser;
-  accepted: boolean;
+  accepted?: boolean;
   accepted_at?: string | null;
-  reserved_amount?: string;
+  reserved_amount?: string | number;
   request_note?: string;
   admin_note?: string;
   created_at?: string;
@@ -50,7 +53,7 @@ export type LoanGuarantor = {
 
 export type LoanSecurityAllocation = {
   id: number;
-  loan: number;
+  loan?: number;
   source_type:
     | "BORROWER_SAVINGS"
     | "BORROWER_GROUP_SHARE"
@@ -59,13 +62,13 @@ export type LoanSecurityAllocation = {
     | "GUARANTOR_GROUP_SHARE"
     | "GUARANTOR_MERRY_CREDIT"
     | string;
-  owner_user: number;
+  owner_user?: number | SimpleUser;
   owner_detail?: SimpleUser;
   guarantor_link_id?: number | null;
   savings_account?: number | null;
   merry?: number | null;
   group?: number | null;
-  amount: string;
+  amount: string | number;
   is_active: boolean;
   created_at?: string;
   released_at?: string | null;
@@ -73,55 +76,60 @@ export type LoanSecurityAllocation = {
 
 export type LoanInstallment = {
   id: number;
-  loan: number;
+  loan?: number;
   installment_no: number;
-  due_date: string;
-  principal_due: string;
-  interest_due: string;
-  total_due: string;
-  late_fee: string;
-  paid_amount: string;
-  is_paid: boolean;
+  due_date?: string | null;
+  principal_due?: string | number;
+  interest_due?: string | number;
+  total_due?: string | number;
+  late_fee?: string | number;
+  paid_amount?: string | number;
+  is_paid?: boolean;
 };
 
 export type LoanPayment = {
   id: number;
-  loan: number;
-  amount: string;
-  paid_at: string;
-  method: string;
+  loan?: number;
+  amount: string | number;
+  paid_at?: string;
+  created_at?: string;
+  method?: string;
   reference?: string | null;
 };
 
 export type Loan = {
   id: number;
-  borrower: number;
+
+  borrower?: number | SimpleUser;
+  borrower_id?: number;
   borrower_detail?: SimpleUser;
 
-  product: number;
+  product?: number | LoanProduct | null;
   product_detail?: LoanProduct;
   product_name?: string;
 
-  principal: string;
-  term_weeks: number;
+  principal?: string | number;
+  term_weeks?: number;
 
-  status: LoanStatus;
+  status?: LoanStatus;
   is_defaulter?: boolean;
 
   approved_at?: string | null;
   rejected_at?: string | null;
   completed_at?: string | null;
+  reviewed_at?: string | null;
   created_at?: string;
 
-  total_payable?: string;
-  total_paid?: string;
-  outstanding_balance?: string;
+  total_payable?: string | number;
+  total_paid?: string | number;
+  outstanding_balance?: string | number;
 
-  security_target?: string;
-  security_reserved_total?: string;
+  security_target?: string | number;
+  security_reserved_total?: string | number;
 
   member_note?: string;
   admin_note?: string;
+  rejection_reason?: string | null;
 
   guarantors?: LoanGuarantor[];
   security_allocations?: LoanSecurityAllocation[];
@@ -140,8 +148,8 @@ export type LoanApiListResponse<T> =
 
 export type LoanEligibilityPreview = {
   eligible: boolean;
-  max_allowed: string;
-  available_savings: string;
+  max_allowed: string | number;
+  available_savings: string | number;
   has_active_loan: boolean;
   missing_deposit_months: string[];
   reason: string;
@@ -175,7 +183,10 @@ export type LoanSecurityPreview = {
 
 export type GuarantorCandidate = {
   id: number;
-  full_name: string;
+  full_name?: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
 };
 
 export type RequestLoanPayload = {
@@ -185,10 +196,24 @@ export type RequestLoanPayload = {
   member_note?: string;
 };
 
+export type RequestLoanResponse = {
+  message: string;
+  loan_id?: number;
+  status?: LoanStatus;
+  note?: string;
+  loan: Loan;
+};
+
 export type AddGuarantorPayload = {
   loan: number;
   guarantor: number;
   request_note?: string;
+};
+
+export type AddGuarantorResponse = {
+  message: string;
+  note?: string;
+  guarantor: LoanGuarantor;
 };
 
 export type PayLoanPayload = {
@@ -202,6 +227,19 @@ export type PayLoanResponse = {
   loan_status: LoanStatus;
   total_paid: string;
   outstanding_balance: string;
+  note?: string;
+  loan?: Loan;
+};
+
+export type ApproveLoanResponse = {
+  message: string;
+  loan: Loan;
+};
+
+export type RejectLoanResponse = {
+  message: string;
+  note?: string;
+  loan: Loan;
 };
 
 /* =========================================================
@@ -251,12 +289,8 @@ export type StkPushResponse = {
 };
 
 /**
- * IMPORTANT:
- * Backend canonical rule is:
- *   loan2 => loan repayment for borrower USER id 2
- *
- * So this payload uses borrower_user_id explicitly.
- * loan_id remains optional only for UI/display context.
+ * Backend canonical rule:
+ * reference should identify the borrower user, not rely on loan pk.
  */
 export type StkLoanRepaymentPayload = {
   phone: string;
@@ -301,12 +335,61 @@ function toPositiveInt(value: unknown): number {
   return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
+export function toNumber(value?: string | number | null): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function fmtKES(value?: string | number | null): string {
+  const n = toNumber(value);
+  return `KES ${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export function getLoanBorrowerName(loan?: Loan | null): string {
+  const borrower =
+    typeof loan?.borrower === "object" && loan?.borrower
+      ? loan.borrower
+      : loan?.borrower_detail;
+
+  if (!borrower) return "Member";
+
+  const full =
+    borrower.full_name?.trim() ||
+    `${borrower.first_name || ""} ${borrower.last_name || ""}`.trim();
+
+  return full || borrower.username || borrower.email || "Member";
+}
+
+export function getLoanProductName(loan?: Loan | null): string {
+  if (!loan) return "Community Loan";
+
+  if (loan.product_name) return loan.product_name;
+  if (loan.product_detail?.name) return loan.product_detail.name;
+  if (typeof loan.product === "object" && loan.product?.name) return loan.product.name;
+
+  return "Community Loan";
+}
+
+export function getLoanBorrowerId(loan?: Loan | null): number {
+  if (!loan) return 0;
+  if (loan.borrower_id) return toPositiveInt(loan.borrower_id);
+  if (typeof loan.borrower === "number") return toPositiveInt(loan.borrower);
+  if (typeof loan.borrower === "object" && loan.borrower?.id) {
+    return toPositiveInt(loan.borrower.id);
+  }
+  if (loan.borrower_detail?.id) return toPositiveInt(loan.borrower_detail.id);
+  return 0;
+}
+
 export function buildLoanRepaymentReference(borrowerUserId: number | string): string {
   const userId = toPositiveInt(borrowerUserId);
   if (!userId) {
     throw new Error("A valid borrower user id is required to build loan reference.");
   }
-  return `loan${userId}`;
+  return `LOAN${userId}`;
 }
 
 export function buildLoanRepaymentNarration(input: {
@@ -411,13 +494,7 @@ export async function getGuarantorCandidates(
 
 export async function requestLoan(
   payload: RequestLoanPayload
-): Promise<{
-  message: string;
-  loan_id?: number;
-  status?: LoanStatus;
-  note?: string;
-  loan: Loan;
-}> {
+): Promise<RequestLoanResponse> {
   const body = {
     principal: normalizeMoneyInput(payload.principal),
     term_weeks: Number(payload.term_weeks),
@@ -442,7 +519,7 @@ export async function getLoanDetail(loanId: number | string): Promise<Loan> {
 
 export async function addGuarantor(
   payload: AddGuarantorPayload
-): Promise<{ message: string; guarantor: LoanGuarantor }> {
+): Promise<AddGuarantorResponse> {
   const body = {
     loan: Number(payload.loan),
     guarantor: Number(payload.guarantor),
@@ -473,13 +550,23 @@ export async function rejectGuarantee(
 }
 
 /* =========================================================
-   Admin approval
+   Admin approval / rejection
 ========================================================= */
 
 export async function approveLoan(
   loanId: number | string
-): Promise<{ message: string; loan: Loan }> {
+): Promise<ApproveLoanResponse> {
   const res = await api.patch(ENDPOINTS.loans.approve(loanId));
+  return res.data;
+}
+
+export async function rejectLoan(
+  loanId: number | string,
+  rejectionReason: string
+): Promise<RejectLoanResponse> {
+  const res = await api.patch(ENDPOINTS.loans.reject(loanId), {
+    rejection_reason: rejectionReason,
+  });
   return res.data;
 }
 
@@ -490,7 +577,7 @@ export async function approveLoan(
 export async function payLoan(
   loanId: number | string,
   payload: PayLoanPayload
-): Promise<PayLoanResponse & { note?: string }> {
+): Promise<PayLoanResponse> {
   const body = {
     amount: normalizeMoneyInput(payload.amount),
     method: payload.method ?? "MANUAL",
@@ -543,20 +630,16 @@ export async function stkRepayLoan(
 
 export function canAddGuarantor(loan?: Loan | null) {
   if (!loan) return false;
-  return loan.status === "PENDING" || loan.status === "UNDER_REVIEW";
+  const s = String(loan.status || "").toUpperCase();
+  return s === "PENDING" || s === "UNDER_REVIEW";
 }
 
 export function canPayLoan(loan?: Loan | null) {
   if (!loan) return false;
   return (
-    [
-      "APPROVED",
-      "ACTIVE",
-      "DISBURSED",
-      "UNDER_REPAYMENT",
-      "DEFAULTED",
-    ].includes(String(loan.status || "").toUpperCase()) &&
-    Number(loan.outstanding_balance ?? "0") > 0
+    ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"].includes(
+      String(loan.status || "").toUpperCase()
+    ) && toNumber(loan.outstanding_balance) > 0
   );
 }
 
@@ -564,14 +647,17 @@ export function isLoanComplete(loan?: Loan | null) {
   if (!loan) return false;
   return (
     String(loan.status || "").toUpperCase() === "COMPLETED" ||
-    Number(loan.outstanding_balance ?? "0") <= 0
+    toNumber(loan.outstanding_balance) <= 0
   );
 }
 
 export function getLoanSecuritySummary(loan?: Loan | null) {
   if (!loan) return "—";
-  return loan.security_reserved_total
-    ? `KES ${Number(loan.security_reserved_total).toLocaleString()} reserved`
+  return loan.security_reserved_total != null
+    ? `KES ${toNumber(loan.security_reserved_total).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} reserved`
     : "No reserved security";
 }
 

@@ -58,6 +58,8 @@ export const ENDPOINTS = {
     myMpesaTransactions: "/payments/mpesa/me/transactions/",
     myMpesaTransactionDetail: (id: number | string) =>
       `/payments/mpesa/me/transactions/${id}/`,
+
+    feePreview: "/payments/fees/preview/",
   },
 
   /* =========================================================
@@ -112,6 +114,9 @@ export const ENDPOINTS = {
     approve: (loanId: number | string) =>
       `/api/loans/loan/${loanId}/approve/`,
 
+    reject: (loanId: number | string) =>
+      `/api/loans/loan/${loanId}/reject/`,
+
     pay: (loanId: number | string) =>
       `/api/loans/loan/${loanId}/pay/`,
 
@@ -129,7 +134,7 @@ export const ENDPOINTS = {
   },
 
   /* =========================================================
-     MERRY-GO-ROUND
+     MERRY-GO-ROUND (QUEUE-BASED ROSCA)
   ========================================================= */
   merry: {
     my: "/api/merry/my/",
@@ -138,9 +143,13 @@ export const ENDPOINTS = {
 
     detail: (merryId: number | string) => `/api/merry/${merryId}/`,
 
+    dashboard: (merryId: number | string) =>
+      `/api/merry/${merryId}/dashboard/`,
+
     duesSummary: "/api/merry/dues/summary/",
 
-    duesAdmin: (merryId: number | string) => `/api/merry/${merryId}/dues/`,
+    duesAdmin: (merryId: number | string) =>
+      `/api/merry/${merryId}/dues/`,
 
     ensureDues: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/ensure/`,
@@ -148,21 +157,38 @@ export const ENDPOINTS = {
     duesMy: (merryId: number | string) =>
       `/api/merry/${merryId}/dues/my/`,
 
+    /* =========================
+       JOIN FLOW
+    ========================= */
     joinRequest: (merryId: number | string) =>
       `/api/merry/${merryId}/join/request/`,
+
+    myJoinRequests: "/api/merry/join/requests/my/",
 
     adminJoinRequests: (merryId: number | string) =>
       `/api/merry/${merryId}/join/requests/`,
 
+    approveJoinRequest: (requestId: number | string) =>
+      `/api/merry/join/requests/${requestId}/approve/`,
+
+    cancelJoinRequest: (requestId: number | string) =>
+      `/api/merry/join/requests/${requestId}/cancel/`,
+
+    rejectJoinRequest: (requestId: number | string) =>
+      `/api/merry/join/requests/${requestId}/reject/`,
+
+    /* =========================
+       MEMBERS / SEATS
+    ========================= */
     members: (merryId: number | string) =>
       `/api/merry/${merryId}/members/`,
 
     seats: (merryId: number | string) =>
       `/api/merry/${merryId}/seats/`,
 
-    slots: (merryId: number | string) =>
-      `/api/merry/${merryId}/slots/`,
-
+    /* =========================
+       PAYMENTS
+    ========================= */
     paymentBreakdown: (merryId: number | string) =>
       `/api/merry/${merryId}/payments/breakdown/`,
 
@@ -174,31 +200,35 @@ export const ENDPOINTS = {
     confirmPayment: (paymentId: number | string) =>
       `/api/merry/payments/${paymentId}/confirm/`,
 
+    /* =========================
+       WALLET
+    ========================= */
     myWallet: "/api/merry/wallet/my/",
     myWalletTransactions: "/api/merry/wallet/my/transactions/",
 
     adminUserWallet: (userId: number | string) =>
       `/api/merry/admin/users/${userId}/wallet/`,
 
-    createPayout: (merryId: number | string) =>
-      `/api/merry/${merryId}/payouts/create/`,
-
+    /* =========================
+       PAYOUT FLOW
+    ========================= */
     payoutSchedule: (merryId: number | string) =>
       `/api/merry/${merryId}/payouts/schedule/`,
 
+    nextTurn: (merryId: number | string) =>
+      `/api/merry/${merryId}/payouts/next-turn/`,
+
+    payoutReadiness: (merryId: number | string) =>
+      `/api/merry/${merryId}/payouts/readiness/`,
+
+    createPayout: (merryId: number | string) =>
+      `/api/merry/${merryId}/payouts/create/`,
+
+    createNextPayout: (merryId: number | string) =>
+      `/api/merry/${merryId}/payouts/create-next/`,
+
     markPayoutPaid: (payoutId: number | string) =>
       `/api/merry/payouts/${payoutId}/paid/`,
-
-    myJoinRequests: "/api/merry/join/requests/my/",
-
-    approveJoinRequest: (requestId: number | string) =>
-      `/api/merry/join/requests/${requestId}/approve/`,
-
-    cancelJoinRequest: (requestId: number | string) =>
-      `/api/merry/join/requests/${requestId}/cancel/`,
-
-    rejectJoinRequest: (requestId: number | string) =>
-      `/api/merry/join/requests/${requestId}/reject/`,
   },
 } as const;
 

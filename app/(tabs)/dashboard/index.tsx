@@ -151,6 +151,47 @@ function getMemberIdentity(user: DashboardUser | null) {
   );
 }
 
+function getDashboardUserId(user: DashboardUser | null): number {
+  const candidates = [
+    (user as any)?.id,
+    (user as any)?.user_id,
+    (user as any)?.pk,
+  ];
+
+  for (const value of candidates) {
+    const id = toNumber(value);
+    if (id > 0) return id;
+  }
+
+  return 0;
+}
+
+function buildSavingsDepositReference(userId: number): string {
+  return userId > 0 ? `SAVING${userId}` : "";
+}
+
+function buildSavingsDepositNarration(userId: number): string {
+  return userId > 0
+    ? `Savings deposit for member ${userId}`
+    : "Savings deposit";
+}
+
+function buildMerryContributionReference(userId: number): string {
+  return userId > 0 ? `MUS${userId}` : "";
+}
+
+function buildMerryContributionNarration(userId: number, merryId?: number | null): string {
+  if (userId > 0 && merryId && merryId > 0) {
+    return `Merry contribution for member ${userId} - merry ${merryId}`;
+  }
+
+  if (userId > 0) {
+    return `Merry contribution for member ${userId}`;
+  }
+
+  return "Merry contribution";
+}
+
 function getGroupMeta(membership: any) {
   const group = membership?.group && typeof membership.group === "object" ? membership.group : null;
   const contributionAmount = toNumber(
@@ -260,15 +301,15 @@ function getOverviewTonePalette(tone: NoticeItem["tone"]) {
     warning: {
       iconBg: "rgba(24,140,132,0.12)",
       icon: "#148C84",
-      buttonBg: "#FFFFFF",
-      buttonBorder: "rgba(12,106,128,0.20)",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
       soft: "rgba(20,140,132,0.05)",
     },
     info: {
       iconBg: "rgba(12,106,128,0.12)",
       icon: "#0C6A80",
-      buttonBg: "#FFFFFF",
-      buttonBorder: "rgba(12,106,128,0.20)",
+      buttonBg: "#197D71",
+      buttonBorder: "#197D71",
       soft: "rgba(12,106,128,0.05)",
     },
   };
@@ -562,30 +603,43 @@ export default function DashboardScreen() {
   const [groupSavingsSummaries, setGroupSavingsSummaries] = useState<any[]>([]);
 
   const isAdmin = isAdminUser(user as any);
-    const loanAllowed = canRequestLoan(user as any);
+  const loanAllowed = canRequestLoan(user as any);
+  const memberUserId = useMemo(() => getDashboardUserId(user), [user]);
 
   const openFirstMerryFlow = useCallback(() => {
     const items = merrySummary?.items ?? [];
-    const payable =
-      items.find((item) => hasAmount(item.required_now)) ||
-      items.find((item) => hasAmount(item.pay_with_next)) ||
-      items[0];
+    const payable = items[0];
 
     if (!payable) {
       router.push(ROUTES.tabs.merry as any);
       return;
     }
 
-    router.replace({
-      pathname: "/(tabs)/payments/deposit" as any,
+    const merryId = toNumber((payable as any)?.merry_id);
+    const amount =
+      toNumber(payable.total_due_now) ||
+      toNumber((payable as any)?.current_total) ||
+      toNumber((payable as any)?.next_total);
+
+    const reference =
+      String((payable as any)?.reference || "").trim() ||
+      buildMerryContributionReference(memberUserId);
+
+    router.push({
+      pathname: ROUTES.tabs.paymentsDeposit as any,
       params: {
+        title: "Merry Contribution",
         source: "merry",
+        purpose: "MERRY_CONTRIBUTION",
+        reference,
+        narration: buildMerryContributionNarration(memberUserId, merryId),
         merryId: String(payable.merry_id),
-        amount: String(payable.required_now || payable.pay_with_next || 0),
+        amount: amount > 0 ? String(amount) : "",
         editableAmount: "true",
+        returnTo: merryId > 0 ? ROUTES.dynamic.merryDetail(merryId) : ROUTES.tabs.merry,
       },
     });
-  }, [merrySummary]);
+  }, [memberUserId, merrySummary]);
 
   const openSavingsFlow = useCallback((account?: SavingsAccount | null) => {
     if (!account) {
@@ -593,16 +647,22 @@ export default function DashboardScreen() {
       return;
     }
 
+    const reference = buildSavingsDepositReference(memberUserId);
+
     router.replace({
       pathname: "/(tabs)/payments/deposit" as any,
       params: {
+        title: "Savings Deposit",
         source: "savings",
+        purpose: "SAVINGS_DEPOSIT",
+        reference,
+        narration: buildSavingsDepositNarration(memberUserId),
         savingsId: String(account.id),
         amount: "",
         editableAmount: "true",
       },
     });
-  }, []);
+  }, [memberUserId]);
 
   const openLoanPaymentFlow = useCallback((loan?: Loan | null) => {
     if (!loan) {
@@ -671,20 +731,40 @@ export default function DashboardScreen() {
       return;
     }
 
+    const groupCode = String(groupItem?.paymentCode || "")
+      .trim()
+      .toUpperCase();
+
+    const targetUserId =
+      toNumber(groupItem?.userId) ||
+      toNumber(groupItem?.member_user_id) ||
+      toNumber(groupItem?.user_id);
+
+    if (!groupCode || targetUserId <= 0) {
+      router.push({
+        pathname: "/(tabs)/groups/[id]" as any,
+        params: { id: String(groupId) },
+      });
+      return;
+    }
+
     const groupName = String(groupItem?.name || "Community space").trim();
     const narration = groupName ? `${groupName} contribution` : "Community contribution";
     const amount = toNumber(groupItem?.contributionAmount ?? 0);
 
-    router.replace({
+    router.push({
       pathname: ROUTES.tabs.paymentsDeposit as any,
       params: {
-        title: "Community Contribution",
+        title: groupName || "Community Contribution",
+        source: "group",
         purpose: "GROUP_CONTRIBUTION",
-        reference: `GROUP${groupId}`,
-        groupCode: String(groupItem?.paymentCode || ""),
+        reference: `${groupCode}${targetUserId}`,
+        groupCode,
+        groupName,
         narration,
         amount: amount > 0 ? String(amount) : "",
         groupId: String(groupId),
+        editableAmount: "true",
         returnTo: ROUTES.dynamic.groupDetail(groupId),
       },
     });
@@ -829,6 +909,10 @@ export default function DashboardScreen() {
         return {
           id,
           name,
+          userId:
+            toNumber((membership as any)?.user_id) ||
+            toNumber((membership as any)?.user?.id) ||
+            toNumber((membership as any)?.member_user_id),
           contributionAmount: meta.contributionAmount,
           paymentCode: meta.paymentCode,
           requiresContributions: meta.requiresContributions,
@@ -850,7 +934,7 @@ export default function DashboardScreen() {
   }, [user]);
 
   const merryDueNow = useMemo(
-    () => toNumber(merrySummary?.total_required_now),
+    () => toNumber(merrySummary?.total_due_now),
     [merrySummary]
   );
 
@@ -873,7 +957,7 @@ export default function DashboardScreen() {
     }
 
     if (merryDueNow > 0) {
-      return fmtKES(merrySummary?.total_required_now);
+      return fmtKES(merrySummary?.total_due_now);
     }
 
     return "Active";
@@ -917,7 +1001,7 @@ export default function DashboardScreen() {
         id: "merry-due",
         title: "Merry contribution waiting",
         subtitle: `${fmtKES(
-          merrySummary?.total_required_now
+          merrySummary?.total_due_now
         )} is ready for contribution.`,
         icon: "repeat-outline",
         tone: "success",

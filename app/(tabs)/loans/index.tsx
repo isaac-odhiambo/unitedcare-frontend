@@ -1,4 +1,3 @@
-// app/(tabs)/loans/index.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -19,62 +18,41 @@ import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
-  getLoanEligibilityPreview,
-  getMyGuaranteeRequests,
+  getLoanBorrowerId,
+  getLoanDetail,
   getMyLoans,
   Loan,
-  LoanEligibilityPreview,
-  LoanGuarantor,
+  toNumber,
 } from "@/services/loans";
-import {
-  canRequestLoan,
-  getMe,
-  MeResponse,
-} from "@/services/profile";
-import {
-  getSessionUser,
-  saveSessionUser,
-  SessionUser,
-} from "@/services/session";
+import { getMe, MeResponse } from "@/services/profile";
+import { getSessionUser, saveSessionUser, SessionUser } from "@/services/session";
 
 type LoanUser = Partial<MeResponse> & Partial<SessionUser>;
 
 const UI = {
   page: "#062C49",
-
   text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.88)",
+  textSoft: "rgba(255,255,255,0.90)",
   textMuted: "rgba(255,255,255,0.72)",
-
-  mint: "#8CF0C7",
-  aqua: "#0CC0B7",
-  careGreen: "#197D71",
-
-  glassStrong: "rgba(255,255,255,0.14)",
-  border: "rgba(255,255,255,0.12)",
-
-  supportCard: "rgba(52, 198, 191, 0.22)",
-  supportBorder: "rgba(195, 255, 250, 0.16)",
-  supportIconBg: "rgba(236, 255, 252, 0.76)",
-  supportIcon: "#148C84",
-
-  successCard: "rgba(98, 192, 98, 0.23)",
-  successBorder: "rgba(194, 255, 188, 0.16)",
-  successIconBg: "rgba(236, 255, 235, 0.76)",
-  successIcon: "#379B4A",
-
-  infoCard: "rgba(49, 180, 217, 0.22)",
-  infoBorder: "rgba(189, 244, 255, 0.15)",
-  infoIconBg: "rgba(236, 251, 255, 0.76)",
-  infoIcon: "#0A6E8A",
-
-  warningCard: "rgba(255, 204, 102, 0.16)",
-  warningBorder: "rgba(255, 220, 140, 0.18)",
-  warningIconBg: "rgba(255, 247, 224, 0.88)",
-  warningIcon: "#B7791F",
-
-  dangerCard: "rgba(220,53,69,0.18)",
+  supportCard: "rgba(52, 198, 191, 0.18)",
+  supportBorder: "rgba(195, 255, 250, 0.14)",
+  glass: "rgba(255,255,255,0.08)",
+  glassSoft: "rgba(255,255,255,0.06)",
+  border: "rgba(255,255,255,0.10)",
+  whiteButton: "#FFFFFF",
+  whiteButtonText: "#197D71",
 };
+
+const ACTIVE_SUPPORT_STATUSES = [
+  "PENDING",
+  "UNDER_REVIEW",
+  "APPROVED",
+  "DISBURSED",
+  "UNDER_REPAYMENT",
+  "DEFAULTED",
+];
+
+const REPAYABLE_STATUSES = ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"];
 
 function toNum(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -98,218 +76,164 @@ function getStatusLabel(status?: string | null) {
 function getPrimaryLoan(loans: Loan[]) {
   if (!Array.isArray(loans) || loans.length === 0) return null;
 
-  const byStatus = (statuses: string[]) =>
+  return (
     loans.find((loan) =>
-      statuses.includes(String(loan?.status || "").toUpperCase())
-    ) || null;
-
-  return (
-    byStatus(["PENDING"]) ||
-    byStatus(["UNDER_REVIEW"]) ||
-    byStatus([
-      "APPROVED",
-      "ACTIVE",
-      "DISBURSED",
-      "UNDER_REPAYMENT",
-      "DEFAULTED",
-    ]) ||
-    null
+      ACTIVE_SUPPORT_STATUSES.includes(String(loan?.status || "").toUpperCase())
+    ) || null
   );
 }
 
-function getTonePalette(tone: "support" | "success" | "info" | "warning") {
-  const map = {
-    support: {
-      card: UI.supportCard,
-      border: UI.supportBorder,
-      iconBg: UI.supportIconBg,
-      icon: UI.supportIcon,
-    },
-    success: {
-      card: UI.successCard,
-      border: UI.successBorder,
-      iconBg: UI.successIconBg,
-      icon: UI.successIcon,
-    },
-    info: {
-      card: UI.infoCard,
-      border: UI.infoBorder,
-      iconBg: UI.infoIconBg,
-      icon: UI.infoIcon,
-    },
-    warning: {
-      card: UI.warningCard,
-      border: UI.warningBorder,
-      iconBg: UI.warningIconBg,
-      icon: UI.warningIcon,
-    },
-  };
+function getLoanRate(loan?: Loan | null): number {
+  if (!loan) return 0;
 
-  return map[tone];
+  const raw =
+    loan.product_detail?.annual_interest_rate ??
+    (typeof loan.product === "object" ? loan.product?.annual_interest_rate : 0);
+
+  const n = Number(raw ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function HeroCard({
-  title,
-  amount,
-  subtitle,
-  status,
-  primaryLabel,
-  secondaryLabel,
-  onPrimary,
-  onSecondary,
-}: {
-  title: string;
-  amount: string;
-  subtitle: string;
-  status?: string | null;
-  primaryLabel: string;
-  secondaryLabel?: string;
-  onPrimary: () => void;
-  onSecondary?: () => void;
-}) {
-  return (
-    <View style={styles.heroCard}>
-      <View style={styles.heroOrbOne} />
-      <View style={styles.heroOrbTwo} />
-      <View style={styles.heroOrbThree} />
-
-      <View style={styles.heroTopRow}>
-        <View style={styles.heroBadge}>
-          <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
-          <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
-        </View>
-
-        {status ? (
-          <View style={styles.heroStatusChip}>
-            <Text style={styles.heroStatusChipText}>
-              {getStatusLabel(status).toUpperCase()}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      <Text style={styles.heroTitle}>{title}</Text>
-      <Text style={styles.heroAmount}>{amount}</Text>
-      <Text style={styles.heroSubtitle}>{subtitle}</Text>
-
-      <View style={styles.heroActions}>
-        <TouchableOpacity
-          activeOpacity={0.92}
-          onPress={onPrimary}
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonText}>{primaryLabel}</Text>
-        </TouchableOpacity>
-
-        {secondaryLabel && onSecondary ? (
-          <TouchableOpacity
-            activeOpacity={0.92}
-            onPress={onSecondary}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonText}>{secondaryLabel}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    </View>
-  );
+function getLoanInterestType(loan?: Loan | null): string {
+  return String(
+    loan?.product_detail?.interest_type ??
+      (typeof loan?.product === "object" ? loan.product?.interest_type : "") ??
+      ""
+  ).toUpperCase();
 }
 
-function SummaryCard({
-  title,
-  value,
-  subtitle,
+function computeEstimatedTotalPayable(loan?: Loan | null): number {
+  if (!loan) return 0;
+
+  const principal = toNumber(loan.principal);
+  const termWeeks = Math.max(0, Number(loan.term_weeks || 0));
+  const rate = getLoanRate(loan) / 100;
+
+  if (principal <= 0 || termWeeks <= 0) return principal;
+
+  const backendTotal = toNumber(loan.total_payable);
+  if (backendTotal > 0) return backendTotal;
+
+  const interestType = getLoanInterestType(loan);
+
+  if (interestType === "REDUCING") {
+    const weeklyRate = rate / 52;
+    const weeklyPrincipal = principal / termWeeks;
+    let totalInterest = 0;
+    let balance = principal;
+
+    for (let i = 0; i < termWeeks; i += 1) {
+      totalInterest += balance * weeklyRate;
+      balance -= weeklyPrincipal;
+    }
+
+    return Math.max(0, principal + totalInterest);
+  }
+
+  const flatInterest = principal * rate * (termWeeks / 52);
+  return Math.max(0, principal + flatInterest);
+}
+
+function computeDisplayOutstanding(loan?: Loan | null): number {
+  if (!loan) return 0;
+
+  const backendOutstanding = toNumber(loan.outstanding_balance);
+  if (backendOutstanding > 0) return backendOutstanding;
+
+  const status = String(loan.status || "").toUpperCase();
+  const totalPaid = toNumber(loan.total_paid);
+  const estimatedTotal = computeEstimatedTotalPayable(loan);
+
+  if (REPAYABLE_STATUSES.includes(status)) {
+    return Math.max(0, estimatedTotal - totalPaid);
+  }
+
+  return Math.max(0, backendOutstanding);
+}
+
+function getCurrentStepAmount(loan?: Loan | null) {
+  if (!loan) return 0;
+
+  const installments = Array.isArray(loan.installments) ? loan.installments : [];
+  const current = installments.find((item: any) => {
+    const planned = toNumber(item.total_due);
+    const lateFee = toNumber(item.late_fee);
+    const paid = toNumber(item.paid_amount);
+    const remaining = planned + lateFee - paid;
+    const isPaid = !!item?.is_paid || !!item?.isPaid || remaining <= 0;
+    return !isPaid && remaining > 0;
+  });
+
+  if (current) {
+    const remaining =
+      toNumber(current.total_due) +
+      toNumber(current.late_fee) -
+      toNumber(current.paid_amount);
+    return Math.max(0, remaining);
+  }
+
+  const weeks = Math.max(0, Number(loan.term_weeks || 0));
+  const totalPayable = computeEstimatedTotalPayable(loan);
+  const totalPaid = toNumber(loan.total_paid);
+
+  if (weeks > 0 && totalPayable > 0) {
+    const weekly = totalPayable / weeks;
+    const balance = Math.max(0, totalPayable - totalPaid);
+    return Math.min(weekly, balance);
+  }
+
+  return 0;
+}
+
+function openLoanDetail(loan?: Loan | null) {
+  const loanId = Number(loan?.id ?? 0);
+  if (!loanId) return;
+
+  router.push({
+    pathname: "/(tabs)/loans/[id]" as any,
+    params: { id: String(loanId) },
+  });
+}
+
+function openLoanDeposit(loan?: Loan | null, amount?: number) {
+  const loanId = Number(loan?.id ?? 0);
+  const borrowerUserId = getLoanBorrowerId(loan);
+  const payAmount = Math.max(amount ?? 0, 0);
+
+  if (!loanId || !borrowerUserId) return;
+
+  router.push({
+    pathname: "/(tabs)/payments/deposit" as any,
+    params: {
+      title: "Support Payment",
+      source: "loan",
+      purpose: "LOAN_REPAYMENT",
+      loanId: String(loanId),
+      borrowerUserId: String(borrowerUserId),
+      reference: `LOAN${borrowerUserId}`,
+      narration: `Loan repayment for borrower #${borrowerUserId} (Loan #${loanId})`,
+      amount: payAmount > 0 ? String(payAmount) : "",
+      editableAmount: "true",
+      returnTo: ROUTES.dynamic.loanDetail(loanId),
+    },
+  });
+}
+
+function QuickAction({
   icon,
-  tone,
-  actionLabel,
+  label,
   onPress,
 }: {
-  title: string;
-  value: string;
-  subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  tone: "support" | "success" | "info" | "warning";
-  actionLabel?: string;
-  onPress?: () => void;
-}) {
-  const palette = getTonePalette(tone);
-
-  return (
-    <View
-      style={[
-        styles.summaryCard,
-        {
-          backgroundColor: palette.card,
-          borderColor: palette.border,
-        },
-      ]}
-    >
-      <View style={styles.summaryTopRow}>
-        <View
-          style={[styles.summaryIconWrap, { backgroundColor: palette.iconBg }]}
-        >
-          <Ionicons name={icon} size={18} color={palette.icon} />
-        </View>
-        <Text style={styles.summaryValue}>{value}</Text>
-      </View>
-
-      <Text style={styles.summaryTitle}>{title}</Text>
-      <Text style={styles.summarySubtitle}>{subtitle}</Text>
-
-      {actionLabel && onPress ? (
-        <TouchableOpacity
-          activeOpacity={0.92}
-          onPress={onPress}
-          style={styles.inlineLink}
-        >
-          <Text style={styles.inlineLinkText}>{actionLabel}</Text>
-          <Ionicons name="arrow-forward" size={14} color="#DFFFE8" />
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-}
-
-function ActionItem({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  badge,
-}: {
-  title: string;
-  subtitle?: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
   onPress: () => void;
-  badge?: string;
 }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={onPress}
-      style={styles.actionItem}
-    >
-      <View style={styles.actionLeft}>
-        <View style={styles.actionIconWrap}>
-          <Ionicons name={icon} size={18} color={UI.supportIcon} />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.actionTitle}>{title}</Text>
-          {subtitle ? (
-            <Text style={styles.actionSubtitle}>{subtitle}</Text>
-          ) : null}
-        </View>
+    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.quickAction}>
+      <View style={styles.quickIconWrap}>
+        <Ionicons name={icon} size={18} color={UI.text} />
       </View>
-
-      <View style={styles.actionRight}>
-        {badge ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge}</Text>
-          </View>
-        ) : null}
-        <Ionicons name="chevron-forward" size={18} color={UI.textSoft} />
-      </View>
+      <Text style={styles.quickLabel}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -317,11 +241,7 @@ function ActionItem({
 export default function LoansIndexScreen() {
   const [user, setUser] = useState<LoanUser | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [guaranteeRequests, setGuaranteeRequests] = useState<LoanGuarantor[]>(
-    []
-  );
-  const [eligibility, setEligibility] =
-    useState<LoanEligibilityPreview | null>(null);
+  const [activeLoanDetail, setActiveLoanDetail] = useState<Loan | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
@@ -332,14 +252,11 @@ export default function LoansIndexScreen() {
     try {
       setError("");
 
-      const [sessionRes, meRes, loansRes, guaranteesRes, eligibilityRes] =
-        await Promise.allSettled([
-          getSessionUser(),
-          getMe(),
-          getMyLoans(),
-          getMyGuaranteeRequests(),
-          getLoanEligibilityPreview(),
-        ]);
+      const [sessionRes, meRes, loansRes] = await Promise.allSettled([
+        getSessionUser(),
+        getMe(),
+        getMyLoans(),
+      ]);
 
       const sessionUser =
         sessionRes.status === "fulfilled" ? sessionRes.value : null;
@@ -359,23 +276,26 @@ export default function LoansIndexScreen() {
         await saveSessionUser(mergedUser);
       }
 
-      setLoans(
+      const nextLoans =
         loansRes.status === "fulfilled" && Array.isArray(loansRes.value)
           ? loansRes.value
-          : []
-      );
+          : [];
 
-      setGuaranteeRequests(
-        guaranteesRes.status === "fulfilled" && Array.isArray(guaranteesRes.value)
-          ? guaranteesRes.value
-          : []
-      );
+      setLoans(nextLoans);
 
-      setEligibility(
-        eligibilityRes.status === "fulfilled"
-          ? eligibilityRes.value ?? null
-          : null
-      );
+      const primaryFromList = getPrimaryLoan(nextLoans);
+
+      if (primaryFromList?.id) {
+        try {
+          const detailed = await getLoanDetail(primaryFromList.id);
+          setActiveLoanDetail(detailed);
+        } catch (detailError: any) {
+          setActiveLoanDetail(primaryFromList);
+          setError(getApiErrorMessage(detailError) || getErrorMessage(detailError));
+        }
+      } else {
+        setActiveLoanDetail(null);
+      }
 
       let nextError = "";
 
@@ -385,17 +305,9 @@ export default function LoansIndexScreen() {
       } else if (loansRes.status === "rejected") {
         nextError =
           getApiErrorMessage(loansRes.reason) || getErrorMessage(loansRes.reason);
-      } else if (guaranteesRes.status === "rejected") {
-        nextError =
-          getApiErrorMessage(guaranteesRes.reason) ||
-          getErrorMessage(guaranteesRes.reason);
-      } else if (eligibilityRes.status === "rejected") {
-        nextError =
-          getApiErrorMessage(eligibilityRes.reason) ||
-          getErrorMessage(eligibilityRes.reason);
       }
 
-      setError(nextError);
+      if (nextError) setError(nextError);
     } catch (e: any) {
       setError(getApiErrorMessage(e) || getErrorMessage(e));
     }
@@ -426,248 +338,33 @@ export default function LoansIndexScreen() {
     }
   }, [load]);
 
-  const openLoanDetail = useCallback((loan?: Loan | null) => {
-    const loanId = Number(loan?.id ?? 0);
-    if (!loanId) return;
-
-    router.push({
-      pathname: "/(tabs)/loans/[id]" as any,
-      params: { id: String(loanId) },
-    });
-  }, []);
-
-  const openLoanDeposit = useCallback((loan?: Loan | null) => {
-    const loanId = Number(loan?.id ?? 0);
-    const borrowerUserId = Number(loan?.borrower ?? 0);
-
-    if (!loanId || !borrowerUserId) return;
-
-    router.push({
-      pathname: "/(tabs)/payments/deposit" as any,
-      params: {
-        title: "Support Repayment",
-        source: "loan",
-        purpose: "LOAN_REPAYMENT",
-        loanId: String(loanId),
-        borrowerUserId: String(borrowerUserId),
-        reference: `loan${borrowerUserId}`,
-        narration: `Loan repayment for borrower #${borrowerUserId} (Loan #${loanId})`,
-        amount: "",
-        editableAmount: "true",
-        returnTo: ROUTES.dynamic.loanDetail(loanId),
-      },
-    });
-  }, []);
-
-  const loanAllowed = canRequestLoan(user);
-  const primaryLoan = useMemo(() => getPrimaryLoan(loans), [loans]);
-  const primaryStatus = String(primaryLoan?.status || "").toUpperCase();
-
-  const guaranteeCount = useMemo(() => {
-    return guaranteeRequests.filter((item) => !item.accepted).length;
-  }, [guaranteeRequests]);
-
-  const canRequestSupport = Boolean(
-    loanAllowed &&
-      eligibility?.eligible
+  const primaryLoan = useMemo(
+    () => activeLoanDetail || getPrimaryLoan(loans),
+    [activeLoanDetail, loans]
   );
 
-  const heroState = useMemo(() => {
-    if (primaryLoan) {
-      if (primaryStatus === "PENDING") {
-        return {
-          title: "Support request pending",
-          amount: fmtKES(primaryLoan.principal || 0),
-          subtitle: "Your request has been received and is waiting for review.",
-          primaryLabel: "Open request",
-          secondaryLabel: "Past activity",
-        };
-      }
+  const primaryStatus = String(primaryLoan?.status || "").toUpperCase();
+  const hasSupport = !!primaryLoan;
 
-      if (primaryStatus === "UNDER_REVIEW") {
-        return {
-          title: "Support under review",
-          amount: fmtKES(primaryLoan.principal || 0),
-          subtitle: "Your request is being reviewed. Check details for updates.",
-          primaryLabel: "Open request",
-          secondaryLabel: "Past activity",
-        };
-      }
+  const currentStepAmount = useMemo(
+    () => getCurrentStepAmount(primaryLoan),
+    [primaryLoan]
+  );
 
-      return {
-        title: "My support",
-        amount: fmtKES(primaryLoan.outstanding_balance || 0),
-        subtitle:
-          "Your support is active. This is your current remaining balance.",
-        primaryLabel: "Pay now",
-        secondaryLabel: "View details",
-      };
-    }
+  const balanceAmount = useMemo(
+    () => computeDisplayOutstanding(primaryLoan),
+    [primaryLoan]
+  );
 
-    if (canRequestSupport) {
-      return {
-        title: "Support available",
-        amount: fmtKES(eligibility?.max_allowed || 0),
-        subtitle: "You are eligible to request support.",
-        primaryLabel: "Ask for support",
-        secondaryLabel: "Past activity",
-      };
-    }
+  const canPay =
+    !!primaryLoan &&
+    REPAYABLE_STATUSES.includes(primaryStatus) &&
+    balanceAmount > 0;
 
-    return {
-      title: "Member support",
-      amount: "No active support",
-      subtitle:
-        eligibility?.reason ||
-        "Review your latest support information and continue below.",
-      primaryLabel: "Open history",
-      secondaryLabel: guaranteeCount > 0 ? "Member requests" : undefined,
-    };
-  }, [
-    primaryLoan,
-    primaryStatus,
-    canRequestSupport,
-    eligibility,
-    guaranteeCount,
-  ]);
-
-  const handleHeroPrimary = useCallback(() => {
-    if (primaryLoan) {
-      if (
-        ["APPROVED", "ACTIVE", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"].includes(
-          primaryStatus
-        )
-      ) {
-        openLoanDeposit(primaryLoan);
-        return;
-      }
-
-      openLoanDetail(primaryLoan);
-      return;
-    }
-
-    if (canRequestSupport) {
-      router.push(ROUTES.tabs.loansRequest as any);
-      return;
-    }
-
-    router.push(ROUTES.tabs.loansHistory as any);
-  }, [
-    primaryLoan,
-    primaryStatus,
-    canRequestSupport,
-    openLoanDeposit,
-    openLoanDetail,
-  ]);
-
-  const handleHeroSecondary = useCallback(() => {
-    if (primaryLoan) {
-      if (["PENDING", "UNDER_REVIEW"].includes(primaryStatus)) {
-        router.push(ROUTES.tabs.loansHistory as any);
-        return;
-      }
-
-      openLoanDetail(primaryLoan);
-      return;
-    }
-
-    if (guaranteeCount > 0) {
-      router.push(ROUTES.tabs.loansGuarantees as any);
-      return;
-    }
-
-    router.push(ROUTES.tabs.loansHistory as any);
-  }, [primaryLoan, primaryStatus, guaranteeCount, openLoanDetail]);
-
-  const summaryCards = useMemo(() => {
-    const cards: Array<{
-      title: string;
-      value: string;
-      subtitle: string;
-      icon: keyof typeof Ionicons.glyphMap;
-      tone: "support" | "success" | "info" | "warning";
-      actionLabel?: string;
-      onPress?: () => void;
-    }> = [];
-
-    if (primaryLoan) {
-      if (primaryStatus === "PENDING") {
-        cards.push({
-          title: "Pending request",
-          value: fmtKES(primaryLoan.principal || 0),
-          subtitle: "Waiting for review.",
-          icon: "hourglass-outline",
-          tone: "warning",
-          actionLabel: "Open",
-          onPress: () => openLoanDetail(primaryLoan),
-        });
-      } else if (primaryStatus === "UNDER_REVIEW") {
-        cards.push({
-          title: "Under review",
-          value: fmtKES(primaryLoan.principal || 0),
-          subtitle: "Your request is in progress.",
-          icon: "search-outline",
-          tone: "info",
-          actionLabel: "Open",
-          onPress: () => openLoanDetail(primaryLoan),
-        });
-      } else {
-        cards.push({
-          title: "Current balance",
-          value: fmtKES(primaryLoan.outstanding_balance || 0),
-          subtitle: getStatusLabel(primaryLoan.status),
-          icon: "wallet-outline",
-          tone: "success",
-          actionLabel: "Details",
-          onPress: () => openLoanDetail(primaryLoan),
-        });
-      }
-    } else {
-      cards.push({
-        title: "Available support",
-        value: canRequestSupport
-          ? fmtKES(eligibility?.max_allowed || 0)
-          : "Not ready",
-        subtitle: canRequestSupport
-          ? "Ready to request."
-          : eligibility?.reason || "Check eligibility.",
-        icon: "checkmark-circle-outline",
-        tone: "success",
-        actionLabel: canRequestSupport
-          ? "Request"
-          : undefined,
-        onPress: canRequestSupport
-          ? () => router.push(ROUTES.tabs.loansRequest as any)
-          : undefined,
-      });
-    }
-
-    cards.push({
-      title: "Member requests",
-      value: String(guaranteeCount),
-      subtitle: "Waiting for your response.",
-      icon: "people-outline",
-      tone: "support",
-      actionLabel: "Open",
-      onPress: () => router.push(ROUTES.tabs.loansGuarantees as any),
-    });
-
-    return cards.slice(0, 2);
-  }, [
-    primaryLoan,
-    primaryStatus,
-    canRequestSupport,
-    eligibility,
-    guaranteeCount,
-    openLoanDetail,
-  ]);
-
-  if (!hasBootstrapped) {
+  if (!hasBootstrapped && loading) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <ScrollView style={styles.page}>
-          <View style={styles.content} />
-        </ScrollView>
+        <View style={styles.page} />
       </SafeAreaView>
     );
   }
@@ -675,7 +372,7 @@ export default function LoansIndexScreen() {
   if (!user) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.loadingWrap}>
+        <View style={styles.centerWrap}>
           <EmptyState
             title="Not signed in"
             subtitle="Please log in to continue."
@@ -696,28 +393,24 @@ export default function LoansIndexScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={UI.mint}
-            colors={[UI.mint, UI.aqua]}
+            tintColor="#8CF0C7"
+            colors={["#8CF0C7", "#0CC0B7"]}
           />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobMiddle} />
-        <View style={styles.backgroundBlobBottom} />
-        <View style={styles.backgroundGlowOne} />
-        <View style={styles.backgroundGlowTwo} />
+        <View style={styles.blobTopRight} />
+        <View style={styles.blobMidLeft} />
+        <View style={styles.blobBottomRight} />
+        <View style={styles.glowOne} />
+        <View style={styles.glowTwo} />
 
-        <HeroCard
-          title={heroState.title}
-          amount={heroState.amount}
-          subtitle={heroState.subtitle}
-          status={primaryLoan?.status}
-          primaryLabel={heroState.primaryLabel}
-          secondaryLabel={heroState.secondaryLabel}
-          onPrimary={handleHeroPrimary}
-          onSecondary={handleHeroSecondary}
-        />
+        <Text style={styles.pageTitle}>SUPPORT</Text>
+        <Text style={styles.pageSub}>
+          {hasSupport
+            ? "Open your support or make a payment."
+            : "Ask for support when you need it."}
+        </Text>
 
         {error ? (
           <TouchableOpacity
@@ -731,65 +424,95 @@ export default function LoansIndexScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <Text style={styles.sectionTitle}>Overview</Text>
-        <View style={styles.summaryGrid}>
-          {summaryCards.map((item) => (
-            <SummaryCard
-              key={item.title}
-              title={item.title}
-              value={item.value}
-              subtitle={item.subtitle}
-              icon={item.icon}
-              tone={item.tone}
-              actionLabel={item.actionLabel}
-              onPress={item.onPress}
-            />
-          ))}
-        </View>
+        {hasSupport ? (
+          <>
+            <View style={styles.mainCard}>
+              <View style={styles.topRow}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {getStatusLabel(primaryLoan?.status).toUpperCase()}
+                  </Text>
+                </View>
+              </View>
 
-        <Text style={styles.sectionTitle}>What you can do</Text>
-        <View style={styles.actionsWrap}>
-          {!primaryLoan ? (
-            <ActionItem
-              title="Ask for support"
-              subtitle={
-                canRequestSupport
-                  ? "Start a new support request"
-                  : eligibility?.reason || "Check your eligibility first"
-              }
-              icon="create-outline"
-              onPress={() =>
-                canRequestSupport
-                  ? router.push(ROUTES.tabs.loansRequest as any)
-                  : router.push(ROUTES.tabs.loansHistory as any)
-              }
-            />
-          ) : (
-            <ActionItem
-              title="Open current support"
-              subtitle="See request, progress, repayments, and notes"
-              icon="document-text-outline"
-              onPress={() => openLoanDetail(primaryLoan)}
-            />
-          )}
+              <Text style={styles.mainTitle}>My support</Text>
+              <Text style={styles.mainAmount}>{fmtKES(balanceAmount)}</Text>
+              <Text style={styles.mainSub}>Amount left</Text>
 
-          <ActionItem
-            title="Member requests"
-            subtitle="Review requests that need your response"
-            icon="people-outline"
-            badge={guaranteeCount > 0 ? String(guaranteeCount) : undefined}
-            onPress={() => router.push(ROUTES.tabs.loansGuarantees as any)}
-          />
+              <View style={styles.metaRow}>
+                <View style={styles.metaChip}>
+                  <Ionicons name="cash-outline" size={14} color="#FFFFFF" />
+                  <Text style={styles.metaChipText}>
+                    Received: {fmtKES(primaryLoan?.principal)}
+                  </Text>
+                </View>
 
-          <ActionItem
-            title="Past activity"
-            subtitle="See earlier support requests and repayments"
-            icon="time-outline"
-            onPress={() => router.push(ROUTES.tabs.loansHistory as any)}
-          />
-        </View>
+                {canPay && currentStepAmount > 0 ? (
+                  <View style={styles.metaChip}>
+                    <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.metaChipText}>
+                      This week: {fmtKES(currentStepAmount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
 
-        <View style={{ height: 18 }} />
+              <View style={styles.primaryActionWrap}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => openLoanDetail(primaryLoan)}
+                  style={styles.primaryAction}
+                >
+                  <Text style={styles.primaryActionText}>Open Support Details</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {canPay ? (
+              <View style={styles.quickGrid}>
+                <QuickAction
+                  icon="flash-outline"
+                  label="Pay Full Support"
+                  onPress={() => openLoanDeposit(primaryLoan, balanceAmount)}
+                />
+                <QuickAction
+                  icon="calendar-outline"
+                  label="Pay This Week"
+                  onPress={() =>
+                    openLoanDeposit(
+                      primaryLoan,
+                      currentStepAmount > 0 ? currentStepAmount : undefined
+                    )
+                  }
+                />
+                <QuickAction
+                  icon="create-outline"
+                  label="Pay My Amount"
+                  onPress={() => openLoanDeposit(primaryLoan)}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <View style={styles.mainCard}>
+            <Text style={styles.mainTitle}>No active support</Text>
+            <Text style={styles.emptySub}>
+              Start a support request and the request screen will guide the rest.
+            </Text>
+
+            <View style={styles.primaryActionWrap}>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() => router.push(ROUTES.tabs.loansRequest as any)}
+                style={styles.primaryAction}
+              >
+                <Text style={styles.primaryActionText}>Ask for Support</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        <View style={{ height: 22 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -811,203 +534,74 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xl,
   },
 
-  loadingWrap: {
+  centerWrap: {
     flex: 1,
     backgroundColor: UI.page,
   },
 
-  backgroundBlobTop: {
+  blobTopRight: {
     position: "absolute",
-    top: -120,
-    right: -60,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-
-  backgroundBlobMiddle: {
-    position: "absolute",
-    top: 260,
-    left: -80,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-
-  backgroundBlobBottom: {
-    position: "absolute",
-    bottom: -120,
-    right: -40,
+    top: -110,
+    right: -55,
     width: 240,
     height: 240,
     borderRadius: 120,
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
-  backgroundGlowOne: {
+  blobMidLeft: {
     position: "absolute",
-    top: 120,
-    right: 20,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    top: 260,
+    left: -70,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    backgroundColor: "rgba(255,255,255,0.035)",
   },
 
-  backgroundGlowTwo: {
+  blobBottomRight: {
     position: "absolute",
-    bottom: 160,
-    left: 10,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(140,240,199,0.08)",
+    bottom: -110,
+    right: -35,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
 
-  heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: UI.supportCard,
-    borderRadius: 26,
-    padding: 20,
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: UI.supportBorder,
-  },
-
-  heroOrbOne: {
+  glowOne: {
     position: "absolute",
-    top: -34,
-    right: -14,
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    top: 130,
+    right: 15,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    backgroundColor: "rgba(12,192,183,0.08)",
   },
 
-  heroOrbTwo: {
+  glowTwo: {
     position: "absolute",
-    bottom: -26,
-    left: -16,
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: "rgba(236,251,255,0.10)",
+    bottom: 140,
+    left: 8,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "rgba(140,240,199,0.06)",
   },
 
-  heroOrbThree: {
-    position: "absolute",
-    top: 76,
-    right: 42,
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    backgroundColor: "rgba(12,192,183,0.10)",
-  },
-
-  heroTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
-  },
-
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-
-  heroBadgeText: {
-    fontSize: 11,
-    color: "#FFFFFF",
+  pageTitle: {
+    color: UI.text,
+    fontSize: 22,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
+    marginBottom: 6,
   },
 
-  heroStatusChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-
-  heroStatusChipText: {
-    fontSize: 11,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    letterSpacing: 0.5,
-  },
-
-  heroTitle: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    marginBottom: 8,
-  },
-
-  heroAmount: {
-    fontSize: 30,
-    lineHeight: 36,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-  },
-
-  heroSubtitle: {
-    marginTop: 10,
+  pageSub: {
+    color: UI.textMuted,
     fontSize: 14,
-    lineHeight: 21,
-    color: UI.textSoft,
+    lineHeight: 20,
     fontFamily: FONT.regular,
-  },
-
-  heroActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    flexWrap: "wrap",
-  },
-
-  primaryButton: {
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  primaryButtonText: {
-    color: UI.careGreen,
-    fontSize: 14,
-    fontFamily: FONT.bold,
-  },
-
-  secondaryButton: {
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  secondaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontFamily: FONT.bold,
+    marginBottom: SPACING.lg,
   },
 
   errorCard: {
@@ -1015,7 +609,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    backgroundColor: UI.dangerCard,
+    backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
     flexDirection: "row",
@@ -1032,139 +626,144 @@ const styles = StyleSheet.create({
     fontFamily: FONT.medium,
   },
 
-  sectionTitle: {
-    marginBottom: 12,
-    fontSize: 17,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-  },
-
-  summaryGrid: {
-    gap: 12,
-    marginBottom: SPACING.lg,
-  },
-
-  summaryCard: {
-    borderRadius: 20,
+  mainCard: {
+    backgroundColor: UI.supportCard,
+    borderColor: UI.supportBorder,
     borderWidth: 1,
-    padding: 16,
+    borderRadius: 26,
+    padding: 20,
   },
 
-  summaryTopRow: {
+  topRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     marginBottom: 12,
-  },
-
-  summaryIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  summaryValue: {
-    fontSize: 16,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-  },
-
-  summaryTitle: {
-    fontSize: 15,
-    color: "#FFFFFF",
-    fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  summarySubtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: UI.textSoft,
-    fontFamily: FONT.regular,
-  },
-
-  inlineLink: {
-    marginTop: 12,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  inlineLinkText: {
-    color: "#DFFFE8",
-    fontSize: 13,
-    fontFamily: FONT.bold,
-  },
-
-  actionsWrap: {
-    gap: 10,
-  },
-
-  actionItem: {
-    backgroundColor: UI.glassStrong,
-    borderWidth: 1,
-    borderColor: UI.border,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  actionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-  },
-
-  actionIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: UI.supportIconBg,
-  },
-
-  actionTitle: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontFamily: FONT.bold,
-    marginBottom: 2,
-  },
-
-  actionSubtitle: {
-    color: UI.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  actionRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginLeft: 10,
   },
 
   badge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    justifyContent: "center",
+    minHeight: 28,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     backgroundColor: "rgba(255,255,255,0.14)",
+    justifyContent: "center",
   },
 
   badgeText: {
     color: "#FFFFFF",
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    letterSpacing: 0.6,
+  },
+
+  mainTitle: {
+    color: UI.text,
+    fontSize: 20,
+    lineHeight: 26,
+    fontFamily: FONT.bold,
+    marginBottom: 8,
+  },
+
+  mainAmount: {
+    color: UI.text,
+    fontSize: 34,
+    lineHeight: 40,
+    fontFamily: FONT.bold,
+  },
+
+  mainSub: {
+    color: UI.textSoft,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: FONT.regular,
+    marginTop: 6,
+  },
+
+  emptySub: {
+    color: UI.textSoft,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: FONT.regular,
+    marginTop: 4,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: SPACING.md,
+  },
+
+  metaChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: UI.glass,
+    borderWidth: 1,
+    borderColor: UI.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  metaChipText: {
+    color: "#FFFFFF",
     fontSize: 12,
     fontFamily: FONT.bold,
+  },
+
+  primaryActionWrap: {
+    marginTop: SPACING.lg,
+  },
+
+  primaryAction: {
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: UI.whiteButton,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+
+  primaryActionText: {
+    color: UI.whiteButtonText,
+    fontSize: 15,
+    fontFamily: FONT.bold,
+  },
+
+  quickGrid: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  quickAction: {
+    flex: 1,
+    backgroundColor: UI.glassSoft,
+    borderWidth: 1,
+    borderColor: UI.border,
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  quickIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+
+  quickLabel: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: FONT.bold,
+    textAlign: "center",
   },
 });

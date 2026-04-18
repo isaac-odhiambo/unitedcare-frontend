@@ -174,6 +174,16 @@ export type WithdrawalRequest = {
   payout_amount?: string | null;
 };
 
+export type TransactionFeePreview = {
+  purpose: MpesaPurpose | string;
+  base_amount: string;
+  fixed_fee: string;
+  percentage_fee: string;
+  fee: string;
+  total: string;
+  is_configured: boolean;
+};
+
 /* =========================================================
    Payloads / Queries
 ========================================================= */
@@ -449,6 +459,28 @@ export function buildMerryReference(userId: number | string) {
 export function buildGroupReference(groupId: number | string) {
   return `GROUP${Number(groupId)}`;
 }
+
+/* =========================================================
+   Fee Preview
+========================================================= */
+
+export async function getTransactionFeePreview(payload: {
+  purpose: MpesaPurpose | string;
+  amount: string | number;
+}): Promise<TransactionFeePreview> {
+  const body = {
+    purpose: normalizePurpose(payload.purpose),
+    amount: normalizeAmount(payload.amount),
+  };
+
+  const res = await api.post<TransactionFeePreview>(
+    ENDPOINTS.payments.feePreview,
+    body
+  );
+
+  return res.data;
+}
+
 /* =========================================================
    Base API Functions
 ========================================================= */

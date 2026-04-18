@@ -137,10 +137,11 @@ export default function MerryContributeScreen() {
   const merryAllowed = canJoinMerry(user);
   const isMemberOfThisMerry = mySeats.length > 0;
 
+  // IMPORTANT FIX:
+  // Do not multiply by seats here. Use one safe contribution unit as the frontend default.
   const expectedAmount = useMemo(() => {
-    const perSeat = Number(merry?.contribution_amount || 0);
-    return perSeat * mySeats.length;
-  }, [merry?.contribution_amount, mySeats.length]);
+    return Number(merry?.contribution_amount || 0);
+  }, [merry?.contribution_amount]);
 
   const accountReference = useMemo(() => getMerryReference(user), [user]);
 
@@ -231,6 +232,7 @@ export default function MerryContributeScreen() {
     useCallback(() => {
       mountedRef.current = true;
       navigatingRef.current = false;
+      setOpening(false);
 
       const run = async () => {
         try {
@@ -247,6 +249,8 @@ export default function MerryContributeScreen() {
 
       return () => {
         mountedRef.current = false;
+        navigatingRef.current = false;
+        setOpening(false);
       };
     }, [load])
   );
@@ -270,11 +274,9 @@ export default function MerryContributeScreen() {
     setError("");
 
     const suggestedAmount =
-      expectedAmount > 0
-        ? expectedAmount.toFixed(2)
-        : Number(merry.contribution_amount || 0) > 0
-          ? Number(merry.contribution_amount).toFixed(2)
-          : "";
+      Number(merry.contribution_amount || 0) > 0
+        ? Number(merry.contribution_amount).toFixed(2)
+        : "";
 
     router.push({
       pathname: "/(tabs)/payments/deposit" as any,
@@ -293,7 +295,7 @@ export default function MerryContributeScreen() {
         landingTitle: "Merry",
       },
     });
-  }, [accountReference, canContinue, expectedAmount, merry]);
+  }, [accountReference, canContinue, merry]);
 
   if (!merry && !loading) {
     return (
@@ -431,7 +433,7 @@ export default function MerryContributeScreen() {
                   icon="people-outline"
                 />
                 <SummaryTile
-                  label="Expected"
+                  label="Suggested"
                   value={formatKes(expectedAmount)}
                   icon="wallet-outline"
                 />
@@ -524,13 +526,6 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.md,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
   },
 
   emptyWrap: {

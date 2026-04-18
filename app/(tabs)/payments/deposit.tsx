@@ -1,6 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -36,7 +42,11 @@ import {
   findLatestMatchingMyMpesaTransaction,
   getActiveMpesaConfig,
   getApiErrorMessage,
+  getBaseAmount,
+  getChargedAmount,
   getMpesaPaybillNumber,
+  getTransactionFee,
+  getTransactionFeePreview,
   isFailedTxStatus,
   isPaybillEnabled,
   isPendingTxStatus,
@@ -156,9 +166,7 @@ function buildFallbackReference(
     case "MERRY_CONTRIBUTION":
       return userId ? `mus${userId}` : "";
     case "GROUP_CONTRIBUTION":
-      return Number.isFinite(parsedGroupId) && parsedGroupId > 0
-        ? `GROUP${parsedGroupId}`
-        : "";
+     return "";
     case "LOAN_REPAYMENT":
       return userId ? `loan${userId}` : "";
     default:
@@ -204,23 +212,6 @@ function getFailureMessage(tx?: Partial<MpesaTransaction> | null) {
   return tx?.result_desc || "Payment failed.";
 }
 
-function getCommunityServiceFee(purpose: MpesaPurpose, baseAmount: number) {
-  if (!Number.isFinite(baseAmount) || baseAmount <= 0) return 0;
-
-  switch (purpose) {
-    case "SAVINGS_DEPOSIT":
-      return 10;
-    case "MERRY_CONTRIBUTION":
-      return 10;
-    case "GROUP_CONTRIBUTION":
-      return 10;
-    case "LOAN_REPAYMENT":
-      return 10;
-    default:
-      return 10;
-  }
-}
-
 export default function DepositScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<DepositParams>();
@@ -242,21 +233,15 @@ export default function DepositScreen() {
   );
 
   const [statusText, setStatusText] = useState("");
+  const [previewFee, setPreviewFee] = useState(0);
+  const [previewTotal, setPreviewTotal] = useState(0);
+  const [feeLoading, setFeeLoading] = useState(false);
 
   const mountedRef = useRef(true);
   const redirectedRef = useRef(false);
   const paymentRunRef = useRef(0);
   const screenSessionRef = useRef(0);
-
-  const resetUiState = useCallback(() => {
-    paymentRunRef.current += 1;
-    if (!mountedRef.current) return;
-    setError("");
-    setStatusText("");
-    setSubmitting(false);
-    setChecking(false);
-    redirectedRef.current = false;
-  }, []);
+  const feeRunRef = useRef(0);
 
   const purpose = useMemo(
     () => normalizePurpose(params.purpose),
@@ -282,14 +267,12 @@ export default function DepositScreen() {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [amount]);
 
-  const serviceCharge = useMemo(() => {
-    return getCommunityServiceFee(purpose, baseAmountNumber);
-  }, [purpose, baseAmountNumber]);
+  const serviceCharge = useMemo(() => previewFee, [previewFee]);
 
   const totalPayableNumber = useMemo(() => {
     if (!baseAmountNumber) return 0;
-    return baseAmountNumber + serviceCharge;
-  }, [baseAmountNumber, serviceCharge]);
+    return previewTotal > 0 ? previewTotal : baseAmountNumber;
+  }, [baseAmountNumber, previewTotal]);
 
   const totalPayable = useMemo(() => {
     return totalPayableNumber > 0 ? totalPayableNumber.toFixed(2) : "";
@@ -339,6 +322,80 @@ export default function DepositScreen() {
     !checking &&
     !!accountReference;
 
+  const clearFormForNextTransaction = useCallback(
+    (nextPhone = "") => {
+      paymentRunRef.current += 1;
+      feeRunRef.current += 1;
+
+      if (!mountedRef.current) return;
+
+      setAmount("");
+      setPhone(nextPhone);
+      setError("");
+      setStatusText("");
+      setSubmitting(false);
+      setChecking(false);
+      setPreviewFee(0);
+      setPreviewTotal(0);
+      setFeeLoading(false);
+      redirectedRef.current = false;
+    },
+    []
+  );
+
+  const resetUiState = useCallback(() => {
+    paymentRunRef.current += 1;
+    if (!mountedRef.current) return;
+    setError("");
+    setStatusText("");
+    setSubmitting(false);
+    setChecking(false);
+    redirectedRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const runId = feeRunRef.current + 1;
+    feeRunRef.current = runId;
+
+    if (!amountOk || !cleanAmount) {
+      setPreviewFee(0);
+      setPreviewTotal(0);
+      setFeeLoading(false);
+      return;
+    }
+
+    const fetchPreview = async () => {
+      try {
+        setFeeLoading(true);
+
+        const res = await getTransactionFeePreview({
+          purpose,
+          amount: cleanAmount,
+        });
+
+        if (!active || feeRunRef.current !== runId) return;
+
+        setPreviewFee(Number(res.fee || 0) || 0);
+        setPreviewTotal(Number(res.total || 0) || 0);
+      } catch (e) {
+        if (!active || feeRunRef.current !== runId) return;
+        setPreviewFee(0);
+        setPreviewTotal(baseAmountNumber);
+      } finally {
+        if (active && feeRunRef.current === runId) {
+          setFeeLoading(false);
+        }
+      }
+    };
+
+    fetchPreview();
+
+    return () => {
+      active = false;
+    };
+  }, [amountOk, cleanAmount, purpose, baseAmountNumber]);
+
   const redirectToReturn = useCallback(
     (
       tx: Partial<MpesaTransaction> | null,
@@ -364,7 +421,25 @@ export default function DepositScreen() {
         });
       }
 
+      const actualBaseAmount =
+        tx && typeof tx === "object"
+          ? getBaseAmount(tx as MpesaTransaction) || Number(cleanAmount || 0) || baseAmountNumber
+          : Number(cleanAmount || 0) || baseAmountNumber;
+
+      const actualFeeAmount =
+        tx && typeof tx === "object"
+          ? getTransactionFee(tx as MpesaTransaction)
+          : serviceCharge;
+
+      const actualTotalAmount =
+        tx && typeof tx === "object"
+          ? getChargedAmount(tx as MpesaTransaction) || totalPayableNumber
+          : totalPayableNumber;
+
       const returnTo = String(params.returnTo || ROUTES.tabs.payments);
+
+      // Clear local state before leaving so the next transaction starts clean.
+      clearFormForNextTransaction(displayPhone);
 
       router.replace({
         pathname: returnTo as any,
@@ -372,9 +447,9 @@ export default function DepositScreen() {
           deposited: kind === "success" ? "1" : "0",
           payment_success: kind === "success" ? "1" : "0",
           payment_failed: kind === "failed" ? "1" : "0",
-          amount: cleanAmount,
-          total_amount: totalPayable,
-          fee_amount: String(serviceCharge),
+          amount: actualBaseAmount ? actualBaseAmount.toFixed(2) : cleanAmount,
+          total_amount: actualTotalAmount ? actualTotalAmount.toFixed(2) : totalPayable,
+          fee_amount: String(actualFeeAmount ?? serviceCharge),
           phone: displayPhone,
           purpose,
           reference: accountReference,
@@ -392,7 +467,9 @@ export default function DepositScreen() {
     },
     [
       accountReference,
+      baseAmountNumber,
       cleanAmount,
+      clearFormForNextTransaction,
       displayPhone,
       displayTitle,
       params.groupId,
@@ -401,6 +478,7 @@ export default function DepositScreen() {
       serviceCharge,
       showToast,
       totalPayable,
+      totalPayableNumber,
     ]
   );
 
@@ -462,12 +540,21 @@ export default function DepositScreen() {
 
       const defaultPhone = String(
         params.phone || meUser?.phone || sessionUser?.phone || ""
-      );
-      setPhone((prev) => (prev?.trim() ? prev : defaultPhone));
-
+      ).trim();
       const defaultAmount = String(params.amount || "").trim();
-      if (defaultAmount) {
-        setAmount((prev) => (prev?.trim() ? prev : defaultAmount));
+      const defaultMethod = normalizeMethod(
+        params.initialMethod || params.initial_method || params.method
+      );
+
+      // Reset deterministically on each focus/load.
+      setPhone(defaultPhone);
+      setAmount(defaultAmount);
+      setMethod(defaultMethod);
+
+      if (!defaultAmount) {
+        setPreviewFee(0);
+        setPreviewTotal(0);
+        setFeeLoading(false);
       }
 
       if (configRes.status === "fulfilled") {
@@ -484,7 +571,13 @@ export default function DepositScreen() {
       if (!mountedRef.current) return;
       setError(getApiErrorMessage(e));
     }
-  }, [params.amount, params.phone]);
+  }, [
+    params.amount,
+    params.phone,
+    params.initialMethod,
+    params.initial_method,
+    params.method,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -753,18 +846,10 @@ export default function DepositScreen() {
   ]);
 
   const handleCancel = useCallback(() => {
-    paymentRunRef.current += 1;
-    if (mountedRef.current) {
-      setError("");
-      setStatusText("");
-      setSubmitting(false);
-      setChecking(false);
-    }
-    redirectedRef.current = false;
-
+    clearFormForNextTransaction(displayPhone);
     const returnTo = String(params.returnTo || ROUTES.tabs.payments);
     router.replace(returnTo as any);
-  }, [params.returnTo]);
+  }, [clearFormForNextTransaction, displayPhone, params.returnTo]);
 
   if (!loading && !user) {
     return (
@@ -945,7 +1030,9 @@ export default function DepositScreen() {
 
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Community charge</Text>
-                  <Text style={styles.summaryValue}>{money(serviceCharge)}</Text>
+                  <Text style={styles.summaryValue}>
+                    {feeLoading ? "..." : money(serviceCharge)}
+                  </Text>
                 </View>
 
                 <View style={styles.summaryDivider} />
@@ -953,7 +1040,7 @@ export default function DepositScreen() {
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryTotalLabel}>Total</Text>
                   <Text style={styles.summaryTotalValue}>
-                    {money(totalPayableNumber)}
+                    {feeLoading ? "..." : money(totalPayableNumber)}
                   </Text>
                 </View>
 
@@ -974,7 +1061,7 @@ export default function DepositScreen() {
               <Button
                 title={submitting || checking ? "Please wait..." : "Pay now"}
                 onPress={handleSubmit}
-                disabled={!canSubmit}
+                disabled={!canSubmit || feeLoading}
                 leftIcon={
                   submitting || checking ? undefined : (
                     <Ionicons
@@ -1002,18 +1089,18 @@ export default function DepositScreen() {
                 <View style={styles.paybillTotalBox}>
                   <Text style={styles.paybillTotalLabel}>Total to send</Text>
                   <Text style={styles.paybillTotalValue}>
-                    {money(totalPayableNumber)}
+                    {feeLoading ? "..." : money(totalPayableNumber)}
                   </Text>
                 </View>
 
                 <Button
                   title={checking ? "Please wait..." : "I have paid"}
                   onPress={handleManualPaid}
-                  disabled={!canManualCheck}
+                  disabled={!canManualCheck || feeLoading}
                 />
 
                 <TouchableOpacity
-                  disabled={checking}
+                  disabled={checking || feeLoading}
                   onPress={checkExistingManualPayment}
                   style={styles.inlineAction}
                 >
@@ -1417,3 +1504,4 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
+

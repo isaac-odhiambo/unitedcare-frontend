@@ -6,7 +6,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -16,48 +15,86 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
-import { COLORS, FONT, SPACING } from "@/constants/theme";
-import { getErrorMessage } from "@/services/api";
+import { FONT, SHADOW, SPACING } from "@/constants/theme";
+import { api, getErrorMessage } from "@/services/api";
+import { ENDPOINTS } from "@/services/endpoints";
 import {
   fmtKES,
   getApiErrorMessage,
   getMerryDetail,
-  getMerryPaymentBreakdown,
+  getMerryMemberDashboard,
+  getNextPayoutTurn,
+  getPayoutReadiness,
   MerryDetail,
-  MerryPaymentBreakdownResponse,
+  MerryMemberDashboardResponse,
+  NextPayoutTurnResponse,
+  PayoutReadinessResponse,
 } from "@/services/merry";
 import { getMe, MeResponse } from "@/services/profile";
 import { getSessionUser, SessionUser } from "@/services/session";
 
 type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
 
+type BreakdownRow = {
+  due_id?: number;
+  payout_id?: number | null;
+  turn_no?: number | null;
+  cycle_no?: number | null;
+  seat_no?: number;
+  period_key?: string;
+  due_date?: string | null;
+  status?: string;
+  base_amount?: string | number;
+  penalty_amount?: string | number;
+  due_amount?: string | number;
+  paid_amount?: string | number;
+  outstanding?: string | number;
+  days_overdue?: number;
+  bucket?: string;
+};
+
+type ReadinessRow = {
+  due_id?: number;
+  payout_id?: number | null;
+  turn_no?: number | null;
+  seat_id?: number;
+  seat_no?: number;
+  member_id?: number;
+  user_id?: number;
+  username?: string | null;
+  phone?: string | null;
+  base_amount?: string | number;
+  penalty_amount?: string | number;
+  due_amount?: string | number;
+  paid_amount?: string | number;
+  outstanding?: string | number;
+  status?: string;
+  due_date?: string | null;
+  days_overdue?: number;
+};
+
 const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
+const PRIMARY_BTN = "#197D71";
 const WHITE = "#FFFFFF";
-const TEXT_ON_DARK = "rgba(255,255,255,0.92)";
-const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.74)";
-const SOFT_WHITE = "rgba(255,255,255,0.10)";
+const TEXT_SOFT = "rgba(255,255,255,0.74)";
+const TEXT_FAINT = "rgba(255,255,255,0.62)";
 const CARD_BG = "rgba(255,255,255,0.08)";
-const CARD_BG_STRONG = "rgba(255,255,255,0.12)";
-const CARD_BORDER = "rgba(255,255,255,0.10)";
-const MERRY_CARD = "rgba(98, 192, 98, 0.23)";
-const MERRY_BORDER = "rgba(194, 255, 188, 0.16)";
-const MERRY_ICON_BG = "rgba(236, 255, 235, 0.76)";
-const MERRY_ICON = "#379B4A";
+const CARD_BG_2 = "rgba(255,255,255,0.06)";
+const CARD_BORDER = "rgba(255,255,255,0.09)";
 const SUCCESS_BG = "rgba(34,197,94,0.16)";
 const SUCCESS_TEXT = "#DCFCE7";
 const WARNING_BG = "rgba(245,158,11,0.18)";
 const WARNING_TEXT = "#FEF3C7";
-const DANGER_BG = "rgba(239,68,68,0.18)";
+const DANGER_BG = "rgba(239,68,68,0.16)";
 const DANGER_TEXT = "#FECACA";
-const ACCENT_BG = "rgba(12,106,128,0.20)";
-const ACCENT_TEXT = "#D9F3F9";
+const INFO_BG = "rgba(12,106,128,0.18)";
+const INFO_TEXT = "#D7F7FF";
 
 function toBool(value: unknown, fallback = false) {
   if (typeof value === "boolean") return value;
@@ -69,25 +106,61 @@ function toBool(value: unknown, fallback = false) {
   return fallback;
 }
 
-function hasAmount(value?: string | number | null) {
+function moneyNumber(value?: string | number | null) {
   const n = Number(value ?? 0);
-  return Number.isFinite(n) && n > 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
-function statusTone(bucket?: string) {
-  switch ((bucket || "").toLowerCase()) {
-    case "overdue":
-      return { bg: DANGER_BG, text: DANGER_TEXT, label: "Overdue" };
-    case "current":
-      return { bg: WARNING_BG, text: WARNING_TEXT, label: "Due now" };
-    case "future":
-      return { bg: SUCCESS_BG, text: SUCCESS_TEXT, label: "Next due" };
-    default:
-      return { bg: ACCENT_BG, text: ACCENT_TEXT, label: "Open" };
+function formatShortDueDate(value?: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+
+  return d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function getIsAdmin(user?: MerryUser | null) {
+  if (!user) return false;
+
+  const role = String((user as any)?.role || "").toLowerCase();
+
+  return (
+    toBool((user as any)?.is_admin) ||
+    toBool((user as any)?.is_staff) ||
+    toBool((user as any)?.is_superuser) ||
+    role === "admin" ||
+    role === "super_admin" ||
+    role === "superadmin"
+  );
+}
+
+function getStatusColors(status?: string | null) {
+  const s = String(status || "").toUpperCase();
+
+  if (s === "PAID") {
+    return { bg: SUCCESS_BG, text: SUCCESS_TEXT, label: "Paid" };
   }
+
+  if (s === "PARTIAL") {
+    return { bg: INFO_BG, text: INFO_TEXT, label: "Partial" };
+  }
+
+  if (s === "OVERDUE") {
+    return { bg: DANGER_BG, text: DANGER_TEXT, label: "Overdue" };
+  }
+
+  return {
+    bg: WARNING_BG,
+    text: WARNING_TEXT,
+    label: s || "Pending",
+  };
 }
 
-function SummaryBox({
+function SummaryStat({
   label,
   value,
   icon,
@@ -97,102 +170,196 @@ function SummaryBox({
   icon: keyof typeof Ionicons.glyphMap;
 }) {
   return (
-    <Card style={styles.summaryBox} variant="default">
-      <View style={styles.summaryIconWrap}>
-        <Ionicons name={icon} size={18} color={BRAND} />
+    <View style={styles.summaryStat}>
+      <View style={styles.summaryStatIcon}>
+        <Ionicons name={icon} size={16} color={BRAND} />
       </View>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue} numberOfLines={1}>
-        {value}
-      </Text>
-    </Card>
-  );
-}
-
-function DueLine({
-  item,
-}: {
-  item: MerryPaymentBreakdownResponse["items"][number];
-}) {
-  const tone = statusTone(item.bucket);
-
-  return (
-    <View style={styles.dueLine}>
-      <View style={{ flex: 1, paddingRight: SPACING.sm }}>
-        <View style={styles.dueLineTop}>
-          <Text style={styles.dueLineTitle}>
-            Seat {item.seat_no} • Slot {item.slot_no}
-          </Text>
-          <View style={[styles.dueBadge, { backgroundColor: tone.bg }]}>
-            <Text style={[styles.dueBadgeText, { color: tone.text }]}>
-              {tone.label}
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.dueLineSub}>
-          {item.period_key}
-          {item.due_date ? ` • ${item.due_date}` : ""}
-        </Text>
-      </View>
-
-      <Text style={styles.dueLineAmount}>{fmtKES(item.outstanding)}</Text>
+      <Text style={styles.summaryStatLabel}>{label}</Text>
+      <Text style={styles.summaryStatValue}>{value}</Text>
     </View>
   );
 }
 
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number | null | undefined;
-}) {
-  return (
-    <View style={styles.kvRow}>
-      <Text style={styles.kvLabel}>{label}</Text>
-      <Text style={styles.kvValue}>
-        {value == null || value === "" ? "—" : String(value)}
-      </Text>
-    </View>
-  );
-}
-
-function InfoStrip({
-  icon,
+function InfoPill({
   text,
-  tone = "neutral",
+  success = false,
+  danger = false,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
   text: string;
-  tone?: "neutral" | "warning" | "danger";
+  success?: boolean;
+  danger?: boolean;
 }) {
-  const toneStyle =
-    tone === "warning"
-      ? {
-          bg: WARNING_BG,
-          border: "rgba(245,158,11,0.22)",
-          color: WARNING_TEXT,
-        }
-      : tone === "danger"
-        ? {
-            bg: DANGER_BG,
-            border: "rgba(239,68,68,0.22)",
-            color: DANGER_TEXT,
-          }
-        : { bg: SOFT_WHITE, border: CARD_BORDER, color: TEXT_ON_DARK };
+  const backgroundColor = success
+    ? SUCCESS_BG
+    : danger
+      ? DANGER_BG
+      : WARNING_BG;
+
+  const color = success ? SUCCESS_TEXT : danger ? DANGER_TEXT : WARNING_TEXT;
 
   return (
-    <View
+    <View style={[styles.infoPill, { backgroundColor }]}>
+      <Text style={[styles.infoPillText, { color }]}>{text}</Text>
+    </View>
+  );
+}
+
+function ActionButton({
+  title,
+  onPress,
+  variant = "primary",
+  disabled = false,
+}: {
+  title: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+}) {
+  const isPrimary = variant === "primary";
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.92}
+      onPress={onPress}
+      disabled={disabled}
       style={[
-        styles.infoStrip,
-        { backgroundColor: toneStyle.bg, borderColor: toneStyle.border },
+        styles.actionBtn,
+        isPrimary ? styles.actionBtnPrimary : styles.actionBtnSecondary,
+        disabled ? styles.actionBtnDisabled : null,
       ]}
     >
-      <Ionicons name={icon} size={16} color={toneStyle.color} />
-      <Text style={[styles.infoStripText, { color: toneStyle.color }]}>
-        {text}
+      <Text
+        style={[
+          styles.actionBtnText,
+          isPrimary ? styles.actionBtnTextPrimary : styles.actionBtnTextSecondary,
+          disabled ? styles.actionBtnTextDisabled : null,
+        ]}
+      >
+        {title}
       </Text>
+    </TouchableOpacity>
+  );
+}
+
+function BreakdownCard({ row }: { row: BreakdownRow }) {
+  const colors = getStatusColors(row.status);
+  const seatNo = row.seat_no ?? "—";
+  const outstanding = moneyNumber(row.outstanding);
+  const penalty = moneyNumber(row.penalty_amount);
+  const baseAmount = moneyNumber(row.base_amount);
+  const paidAmount = moneyNumber(row.paid_amount);
+  const daysLate = Number(row.days_overdue ?? 0);
+  const dueDateLabel = row.due_date ? formatShortDueDate(String(row.due_date)) : "";
+
+  return (
+    <View style={styles.breakdownCard}>
+      <View style={styles.breakdownTop}>
+        <Text style={styles.breakdownSeat}>Seat {seatNo}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: colors.bg }]}>
+          <Text style={[styles.statusBadgeText, { color: colors.text }]}>
+            {colors.label}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.breakdownMeta}>
+        Turn {row.turn_no ?? "—"} • Cycle {row.cycle_no ?? "—"}
+      </Text>
+
+      {row.due_date ? (
+        <Text style={styles.breakdownMeta}>
+          Due date: {dueDateLabel || String(row.due_date)}
+          {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue` : ""}
+        </Text>
+      ) : null}
+
+      <View style={styles.breakdownMoneyRow}>
+        <Text style={styles.breakdownMoneyLabel}>Base</Text>
+        <Text style={styles.breakdownMoneyValue}>{fmtKES(baseAmount)}</Text>
+      </View>
+
+      {penalty > 0 ? (
+        <View style={styles.breakdownMoneyRow}>
+          <Text style={styles.breakdownMoneyLabel}>
+            Penalty{daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}` : ""}
+          </Text>
+          <Text style={[styles.breakdownMoneyValue, { color: WARNING_TEXT }]}>
+            {fmtKES(penalty)}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.breakdownMoneyRow}>
+        <Text style={styles.breakdownMoneyLabel}>Paid</Text>
+        <Text style={styles.breakdownMoneyValue}>{fmtKES(paidAmount)}</Text>
+      </View>
+
+      <View style={styles.breakdownMoneyRow}>
+        <Text style={styles.breakdownMoneyLabel}>Remaining</Text>
+        <Text style={[styles.breakdownMoneyValue, { color: WHITE }]}>
+          {fmtKES(outstanding)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function AdminRowCard({ row }: { row: ReadinessRow }) {
+  const colors = getStatusColors(row.status);
+  const outstanding = moneyNumber(row.outstanding);
+  const penalty = moneyNumber(row.penalty_amount);
+  const paidAmount = moneyNumber(row.paid_amount);
+  const daysLate = Number(row.days_overdue ?? 0);
+  const dueDateLabel = row.due_date ? formatShortDueDate(String(row.due_date)) : "";
+
+  return (
+    <View style={styles.breakdownCard}>
+      <View style={styles.breakdownTop}>
+        <Text style={styles.breakdownSeat}>
+          {row.username || "Member"} • Seat {row.seat_no ?? "—"}
+        </Text>
+        <View style={[styles.statusBadge, { backgroundColor: colors.bg }]}>
+          <Text style={[styles.statusBadgeText, { color: colors.text }]}>
+            {colors.label}
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.breakdownMeta}>
+        Turn {row.turn_no ?? "—"}
+        {row.phone ? ` • ${row.phone}` : ""}
+      </Text>
+
+      {row.due_date ? (
+        <Text style={styles.breakdownMeta}>
+          Due date: {dueDateLabel || String(row.due_date)}
+          {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue` : ""}
+        </Text>
+      ) : null}
+
+      <View style={styles.breakdownMoneyRow}>
+        <Text style={styles.breakdownMoneyLabel}>Paid</Text>
+        <Text style={styles.breakdownMoneyValue}>{fmtKES(paidAmount)}</Text>
+      </View>
+
+      {penalty > 0 ? (
+        <View style={styles.breakdownMoneyRow}>
+          <Text style={styles.breakdownMoneyLabel}>
+            Penalty
+            {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}` : ""}
+          </Text>
+          <Text style={[styles.breakdownMoneyValue, { color: WARNING_TEXT }]}>
+            {fmtKES(penalty)}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.breakdownMoneyRow}>
+        <Text style={styles.breakdownMoneyLabel}>Outstanding</Text>
+        <Text style={[styles.breakdownMoneyValue, { color: WHITE }]}>
+          {fmtKES(outstanding)}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -201,11 +368,9 @@ export default function MerryDetailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     id?: string;
-    includeNext?: string;
     returnTo?: string;
   }>();
   const merryId = Number(params.id);
-  const initialIncludeNext = toBool(params.includeNext, false);
 
   const backToMerryIndex = useCallback(() => {
     const target =
@@ -218,116 +383,171 @@ export default function MerryDetailScreen() {
 
   const [user, setUser] = useState<MerryUser | null>(null);
   const [detail, setDetail] = useState<MerryDetail | null>(null);
-  const [breakdown, setBreakdown] =
-    useState<MerryPaymentBreakdownResponse | null>(null);
-
-  const [includeNext, setIncludeNext] = useState(initialIncludeNext);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [toggling, setToggling] = useState(false);
-
-  const [error, setError] = useState("");
-  const [breakdownError, setBreakdownError] = useState("");
-
-  const loadBreakdown = useCallback(
-    async (includeNextValue: boolean, showPop = false) => {
-      if (!merryId || Number.isNaN(merryId)) return;
-
-      try {
-        setBreakdownError("");
-        const breakdownRes = await getMerryPaymentBreakdown(
-          merryId,
-          includeNextValue
-        );
-        setBreakdown(breakdownRes);
-      } catch (e: any) {
-        const message =
-          getApiErrorMessage(e) ||
-          getErrorMessage(e) ||
-          "Unable to load contribution summary.";
-        setBreakdown(null);
-        setBreakdownError(message);
-
-        if (showPop) {
-          Alert.alert("Contribution summary unavailable", message);
-        }
-      }
-    },
-    [merryId]
+  const [dashboard, setDashboard] =
+    useState<MerryMemberDashboardResponse | null>(null);
+  const [nextTurn, setNextTurn] = useState<NextPayoutTurnResponse | null>(null);
+  const [readiness, setReadiness] = useState<PayoutReadinessResponse | null>(
+    null
   );
 
-  const load = useCallback(
-    async (includeNextValue = includeNext, showBreakdownPop = false) => {
-      if (!merryId || Number.isNaN(merryId)) {
-        setError("Invalid merry selected.");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [creatingNextPayout, setCreatingNextPayout] = useState(false);
+
+  const [error, setError] = useState("");
+  const [dashboardError, setDashboardError] = useState("");
+  const [payoutMetaError, setPayoutMetaError] = useState("");
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showAdminBreakdown, setShowAdminBreakdown] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    if (!merryId || Number.isNaN(merryId)) return;
+
+    try {
+      setDashboardError("");
+      const res = await getMerryMemberDashboard(merryId);
+      setDashboard(res);
+    } catch (e: any) {
+      setDashboard(null);
+      setDashboardError(
+        getApiErrorMessage(e) || "Unable to load merry dashboard."
+      );
+    }
+  }, [merryId]);
+
+  const loadPayoutMeta = useCallback(async () => {
+    if (!merryId || Number.isNaN(merryId)) return;
+
+    try {
+      setPayoutMetaError("");
+
+      const [turnRes, readinessRes] = await Promise.allSettled([
+        getNextPayoutTurn(merryId),
+        getPayoutReadiness(merryId),
+      ]);
+
+      setNextTurn(turnRes.status === "fulfilled" ? turnRes.value : null);
+      setReadiness(
+        readinessRes.status === "fulfilled" ? readinessRes.value : null
+      );
+
+      const payoutErrors: string[] = [];
+
+      if (turnRes.status === "rejected") {
+        payoutErrors.push(
+          getApiErrorMessage(turnRes.reason) || getErrorMessage(turnRes.reason)
+        );
+      }
+
+      if (readinessRes.status === "rejected") {
+        payoutErrors.push(
+          getApiErrorMessage(readinessRes.reason) ||
+            getErrorMessage(readinessRes.reason)
+        );
+      }
+
+      setPayoutMetaError(payoutErrors.filter(Boolean).join(" • "));
+    } catch (e: any) {
+      setNextTurn(null);
+      setReadiness(null);
+      setPayoutMetaError(
+        getApiErrorMessage(e) || "Unable to load payout information."
+      );
+    }
+  }, [merryId]);
+
+  const load = useCallback(async () => {
+    if (!merryId || Number.isNaN(merryId)) {
+      setError("Invalid merry selected.");
+      setDetail(null);
+      setDashboard(null);
+      setReadiness(null);
+      setNextTurn(null);
+      setDashboardError("");
+      setPayoutMetaError("");
+      return;
+    }
+
+    try {
+      setError("");
+
+      const [sessionRes, meRes, detailRes] = await Promise.allSettled([
+        getSessionUser(),
+        getMe(),
+        getMerryDetail(merryId),
+      ]);
+
+      const sessionUser =
+        sessionRes.status === "fulfilled" ? sessionRes.value : null;
+      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+
+      const mergedUser: MerryUser | null =
+        sessionUser || meUser
+          ? {
+              ...(sessionUser ?? {}),
+              ...(meUser ?? {}),
+            }
+          : null;
+
+      setUser(mergedUser);
+
+      if (detailRes.status !== "fulfilled") {
         setDetail(null);
-        setBreakdown(null);
-        setBreakdownError("");
+        setDashboard(null);
+        setReadiness(null);
+        setNextTurn(null);
+        setDashboardError("");
+        setPayoutMetaError("");
+        setError(
+          getApiErrorMessage(detailRes.reason) ||
+            getErrorMessage(detailRes.reason)
+        );
         return;
       }
 
-      try {
-        setError("");
+      const nextDetail = detailRes.value;
+      setDetail(nextDetail);
 
-        const [sessionRes, meRes, detailRes] = await Promise.allSettled([
-          getSessionUser(),
-          getMe(),
-          getMerryDetail(merryId),
-        ]);
+      const tasks: Promise<any>[] = [];
 
-        const sessionUser =
-          sessionRes.status === "fulfilled" ? sessionRes.value : null;
-        const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+      if (nextDetail.is_member) {
+        tasks.push(loadDashboard());
+        tasks.push(loadPayoutMeta());
+      } else {
+        setDashboard(null);
+        setDashboardError("");
 
-        const mergedUser: MerryUser | null =
-          sessionUser || meUser
-            ? {
-                ...(sessionUser ?? {}),
-                ...(meUser ?? {}),
-              }
-            : null;
-
-        setUser(mergedUser);
-
-        if (detailRes.status !== "fulfilled") {
-          setDetail(null);
-          setBreakdown(null);
-          setBreakdownError("");
-          setError(
-            getApiErrorMessage(detailRes.reason) ||
-              getErrorMessage(detailRes.reason)
-          );
-          return;
-        }
-
-        const nextDetail = detailRes.value;
-        setDetail(nextDetail);
-
-        if (nextDetail.is_member) {
-          await loadBreakdown(includeNextValue, showBreakdownPop);
+        if (getIsAdmin(mergedUser)) {
+          tasks.push(loadPayoutMeta());
         } else {
-          setBreakdown(null);
-          setBreakdownError("");
+          setReadiness(null);
+          setNextTurn(null);
+          setPayoutMetaError("");
         }
-      } catch (e: any) {
-        setDetail(null);
-        setBreakdown(null);
-        setBreakdownError("");
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
       }
-    },
-    [includeNext, loadBreakdown, merryId]
-  );
+
+      if (tasks.length) {
+        await Promise.all(tasks);
+      }
+    } catch (e: any) {
+      setDetail(null);
+      setDashboard(null);
+      setReadiness(null);
+      setNextTurn(null);
+      setDashboardError("");
+      setPayoutMetaError("");
+      setError(getApiErrorMessage(e) || getErrorMessage(e));
+    }
+  }, [loadDashboard, loadPayoutMeta, merryId]);
 
   const initialLoad = useCallback(async () => {
     try {
       setLoading(true);
-      await load(initialIncludeNext, false);
-      setIncludeNext(initialIncludeNext);
+      await load();
     } finally {
       setLoading(false);
     }
-  }, [initialIncludeNext, load]);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -338,107 +558,165 @@ export default function MerryDetailScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await load(includeNext, false);
+      await load();
     } finally {
       setRefreshing(false);
     }
-  }, [includeNext, load]);
+  }, [load]);
 
-  const onToggleIncludeNext = useCallback(
-    async (value: boolean) => {
-      if (!detail?.is_member) return;
-      try {
-        setToggling(true);
-        setIncludeNext(value);
-        await load(value, true);
-      } finally {
-        setToggling(false);
-      }
-    },
-    [detail?.is_member, load]
-  );
-
+  const isAdminUser = useMemo(() => getIsAdmin(user), [user]);
   const isMember = !!detail?.is_member;
   const joinStatus = detail?.my_join_request?.status || null;
   const canRequestJoin = !!detail?.can_request_join && !isMember;
+  const title = detail?.name || "Merry";
 
-  const rawSelectedAmount = useMemo(() => {
-    if (!isMember || !breakdown) return "0.00";
-    return includeNext ? breakdown.pay_with_next : breakdown.required_now;
-  }, [breakdown, includeNext, isMember]);
+  const contributionPerSeat = useMemo(() => {
+    return moneyNumber(detail?.contribution_amount);
+  }, [detail?.contribution_amount]);
+
+  const mySeatNumbers = useMemo<number[]>(() => {
+    const seats = (dashboard as any)?.seat_numbers;
+    return Array.isArray(seats)
+      ? seats.map((n) => Number(n)).filter(Boolean)
+      : [];
+  }, [dashboard]);
+
+  const mySeatCount = mySeatNumbers.length;
+  const memberPayAmount = useMemo(() => {
+    return contributionPerSeat * Math.max(1, mySeatCount || 0);
+  }, [contributionPerSeat, mySeatCount]);
 
   const walletBalance = useMemo(() => {
-    if (!isMember) return 0;
-    return Number(breakdown?.wallet_balance || 0) || 0;
-  }, [breakdown, isMember]);
+    return moneyNumber((dashboard as any)?.wallet_balance);
+  }, [dashboard]);
 
-  const payableAfterWallet = useMemo(() => {
-    if (!isMember || !breakdown) return 0;
+  const totals = useMemo(() => {
+    const source: any = (dashboard as any)?.totals || {};
+    return {
+      overdue: moneyNumber(source.overdue_total),
+      current: moneyNumber(source.current_total),
+      future: moneyNumber(source.future_total),
+    };
+  }, [dashboard]);
 
-    if (!includeNext && breakdown.net_required_now_after_wallet != null) {
-      const n = Number(breakdown.net_required_now_after_wallet || 0);
-      return Number.isFinite(n) ? Math.max(0, n) : 0;
-    }
+  const breakdownRows = useMemo<BreakdownRow[]>(() => {
+    const rows = (dashboard as any)?.overdue_rows || [];
+    return Array.isArray(rows) ? rows : [];
+  }, [dashboard]);
 
-    const gross = Number(rawSelectedAmount || 0);
-    if (!Number.isFinite(gross)) return 0;
-    return Math.max(0, gross - walletBalance);
-  }, [breakdown, includeNext, isMember, rawSelectedAmount, walletBalance]);
+  const penaltyTotal = useMemo(() => {
+    return breakdownRows.reduce(
+      (sum, row) => sum + moneyNumber(row.penalty_amount),
+      0
+    );
+  }, [breakdownRows]);
 
-  const canPaySelected = isMember && hasAmount(payableAfterWallet);
-  const groupedPreview = useMemo(
-    () => (isMember && breakdown?.items?.length ? breakdown.items : []),
-    [breakdown, isMember]
-  );
+  const overdueBaseTotal = useMemo(() => {
+    return breakdownRows.reduce(
+      (sum, row) => sum + moneyNumber(row.base_amount),
+      0
+    );
+  }, [breakdownRows]);
 
-  const title = breakdown?.merry_name || detail?.name || "Merry";
-  const seatCount = isMember
-    ? breakdown?.seat_count ?? 0
-    : detail?.members_count ?? 0;
-  const seatNumbers = isMember ? breakdown?.seat_numbers ?? [] : [];
-  const contributionPerSeat =
-    breakdown?.amount_per_seat || detail?.contribution_amount || "0.00";
+  const myDueNow = useMemo(() => {
+    return totals.overdue + totals.current;
+  }, [totals.current, totals.overdue]);
+
+  const totalPool = useMemo(() => {
+    return moneyNumber(nextTurn?.expected_amount ?? 0);
+  }, [nextTurn?.expected_amount]);
+
+  const totalPaid = useMemo(() => {
+    return moneyNumber(readiness?.paid_total ?? 0);
+  }, [readiness]);
+
+  const totalOutstanding = useMemo(() => {
+    return moneyNumber(readiness?.outstanding_total ?? 0);
+  }, [readiness]);
+
+  const readinessRows = useMemo<ReadinessRow[]>(() => {
+    const rows = (readiness as any)?.rows || [];
+    return Array.isArray(rows) ? rows : [];
+  }, [readiness]);
+
+  const unpaidRows = useMemo(() => {
+    return readinessRows.filter((row) => moneyNumber(row.outstanding) > 0);
+  }, [readinessRows]);
 
   const availableSeatText = useMemo(() => {
-    if (detail?.available_seats == null) return "Unlimited seats";
-    return `${detail.available_seats} seat${detail.available_seats === 1 ? "" : "s"} left`;
+    if (detail?.available_seats == null) return "Unlimited";
+    return `${detail.available_seats} left`;
   }, [detail?.available_seats]);
 
   const membershipLabel = useMemo(() => {
     if (isMember) return "Joined";
-    if (joinStatus === "PENDING") return "Join request pending";
+    if (joinStatus === "PENDING") return "Pending";
     if (joinStatus === "APPROVED") return "Approved";
-    if (joinStatus === "REJECTED") return "Request rejected";
-    if (canRequestJoin) return "Open to join";
+    if (joinStatus === "REJECTED") return "Rejected";
+    if (canRequestJoin) return "Open";
     if (detail?.is_open === false) return "Closed";
-    return "View merry";
+    return "View";
   }, [canRequestJoin, detail?.is_open, isMember, joinStatus]);
 
-  const nextContributionDate = useMemo(() => {
-    if (breakdown?.next_due_date) return breakdown.next_due_date;
-
-    const nextFutureItem = breakdown?.items?.find(
-      (item) =>
-        String(item.bucket || "").toLowerCase() === "future" && item.due_date
+  const canCreateNextPayout = useMemo(() => {
+    return !!(
+      isAdminUser &&
+      (readiness as any)?.can_admin_create_payout &&
+      readiness?.ready_for_payout &&
+      !(readiness as any)?.payout_already_exists
     );
+  }, [isAdminUser, readiness]);
 
-    return nextFutureItem?.due_date || null;
-  }, [breakdown]);
+  const currentTargetLabel = useMemo(() => {
+    if (!nextTurn?.username) return "—";
+    return `${nextTurn.username}${
+      nextTurn?.seat_no ? ` • Seat ${nextTurn.seat_no}` : ""
+    }`;
+  }, [nextTurn?.seat_no, nextTurn?.username]);
+
+  const currentPayoutDate = useMemo(() => {
+    return nextTurn?.due_date || (readiness as any)?.scheduled_date || null;
+  }, [nextTurn?.due_date, readiness]);
+
+  const walletMessage = useMemo(() => {
+    if (!isMember) return "";
+    return "Pay now adds to your merry wallet and is used automatically when due.";
+  }, [isMember]);
+
+  const memberHeadline = useMemo(() => {
+    if (!isMember) return fmtKES(contributionPerSeat);
+    return fmtKES(memberPayAmount);
+  }, [contributionPerSeat, isMember, memberPayAmount]);
+
+  const memberHeadlineLabel = useMemo(() => {
+    if (!isMember) return "Contribution per seat";
+    return "Pay now";
+  }, [isMember]);
 
   const goToDeposit = useCallback(() => {
+    const amount = String(memberPayAmount || 0);
+
     router.replace({
       pathname: "/(tabs)/payments/deposit" as any,
       params: {
         source: "merry",
+        purpose: "MERRY_CONTRIBUTION",
         merryId: String(merryId),
-        amount: String(payableAfterWallet || rawSelectedAmount || 0),
+        merry_id: String(merryId),
+        amount,
+        suggestedAmount: amount,
+        initial_amount: amount,
+        minimum_amount: amount,
         editableAmount: "true",
         returnTo: ROUTES.tabs.merry,
         backLabel: "Back to Merry",
         landingTitle: "Merry",
+        title: "Merry Contribution",
+        subtitle: title,
+        narration: `Merry contribution - ${title}`,
       },
     });
-  }, [merryId, payableAfterWallet, rawSelectedAmount]);
+  }, [memberPayAmount, merryId, title]);
 
   const openMembers = useCallback(() => {
     router.push({
@@ -446,6 +724,40 @@ export default function MerryDetailScreen() {
       params: { merryId: String(merryId), returnTo: ROUTES.tabs.merry },
     });
   }, [merryId]);
+
+  const handleCreateNextPayout = useCallback(async () => {
+    if (!merryId || !canCreateNextPayout) {
+      Alert.alert(
+        "Not ready",
+        (readiness as any)?.payout_already_exists
+          ? "A payout already exists for this turn."
+          : "This payout is not ready yet."
+      );
+      return;
+    }
+
+    try {
+      setCreatingNextPayout(true);
+
+      const res = await api.post(ENDPOINTS.merry.createNextPayout(merryId), {
+        notes: "Created from mobile app",
+      });
+
+      Alert.alert(
+        "Payout created",
+        res?.data?.message || "The next payout record was created successfully."
+      );
+
+      await load();
+    } catch (e: any) {
+      Alert.alert(
+        "Could not create payout",
+        getApiErrorMessage(e) || getErrorMessage(e)
+      );
+    } finally {
+      setCreatingNextPayout(false);
+    }
+  }, [canCreateNextPayout, load, merryId, readiness]);
 
   if (!merryId || Number.isNaN(merryId)) {
     return (
@@ -457,6 +769,16 @@ export default function MerryDetailScreen() {
             actionLabel="Go Back"
             onAction={backToMerryIndex}
           />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading && !detail) {
+    return (
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.silentLoadingWrap}>
+          <Text style={styles.silentLoadingText}>Loading merry…</Text>
         </View>
       </SafeAreaView>
     );
@@ -510,24 +832,18 @@ export default function MerryDetailScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.backgroundBlobTop} />
-        <View style={styles.backgroundBlobMiddle} />
-        <View style={styles.backgroundBlobBottom} />
-        <View style={styles.backgroundGlowOne} />
-        <View style={styles.backgroundGlowTwo} />
-
         <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="people-outline" size={22} color={WHITE} />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.brandWordmark}>
-                MERRY <Text style={styles.brandWordmarkGreen}>DETAILS</Text>
-              </Text>
-              <Text style={styles.brandSub}>Community sharing space</Text>
-            </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pageTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.pageSubTitle}>
+              {isMember
+                ? `${mySeatCount} seat${mySeatCount === 1 ? "" : "s"}${
+                    mySeatNumbers.length ? ` • ${mySeatNumbers.join(", ")}` : ""
+                  }`
+                : `${availableSeatText} • ${membershipLabel}`}
+            </Text>
           </View>
 
           <View style={styles.topBarActions}>
@@ -552,157 +868,72 @@ export default function MerryDetailScreen() {
         {detail ? (
           <>
             <Card style={styles.heroCard} variant="default">
-              <View style={styles.spaceGlowTop} />
-              <View style={styles.spaceGlowBottom} />
-
-              <View style={styles.heroTop}>
-                <View style={{ flex: 1, paddingRight: SPACING.md }}>
-                  <Text style={styles.heroEyebrow}>MERRY</Text>
-                  <Text style={styles.heroTitle}>{title}</Text>
-                  <Text style={styles.heroSubtitle}>
-                    {isMember
-                      ? `${seatCount} seat${seatCount === 1 ? "" : "s"}${
-                          seatNumbers.length ? ` • ${seatNumbers.join(", ")}` : ""
-                        }`
-                      : `${detail.payouts_per_period || 1} slot${
-                          Number(detail.payouts_per_period || 1) === 1 ? "" : "s"
-                        } per period • ${availableSeatText}`}
-                  </Text>
-                </View>
-
-                <View style={styles.heroIconWrap}>
-                  <Ionicons name="people-outline" size={22} color={MERRY_ICON} />
-                </View>
-              </View>
+              <Text style={styles.heroLabel}>{memberHeadlineLabel}</Text>
+              <Text style={styles.heroAmount}>{memberHeadline}</Text>
 
               {isMember ? (
                 <>
-                  <TouchableOpacity
-                    activeOpacity={0.92}
-                    onPress={canPaySelected ? goToDeposit : undefined}
-                    style={[
-                      styles.heroAmountBox,
-                      canPaySelected ? styles.heroAmountBoxPressable : null,
-                    ]}
-                  >
-                    <View style={styles.heroAmountTopRow}>
-                      <Text style={styles.heroAmountLabel}>
-                        {includeNext ? "Selected total" : "Required now"}
-                      </Text>
-
-                      {canPaySelected ? (
-                        <View style={styles.heroAmountAction}>
-                          <Text style={styles.heroAmountActionText}>Deposit</Text>
-                          <Ionicons
-                            name="chevron-forward"
-                            size={14}
-                            color={WHITE}
-                          />
-                        </View>
-                      ) : null}
-                    </View>
-
-                    <Text style={styles.heroAmountValue}>
-                      {fmtKES(rawSelectedAmount)}
-                    </Text>
-
-                    <View style={styles.heroMiniDivider} />
-
-                    <View style={styles.heroMiniRow}>
-                      <Text style={styles.heroMiniLabel}>Wallet balance</Text>
-                      <Text style={styles.heroMiniValue}>
-                        {fmtKES(walletBalance)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.heroMiniRow}>
-                      <Text style={[styles.heroMiniLabel, styles.heroMiniStrong]}>
-                        You pay now
-                      </Text>
-                      <Text style={[styles.heroMiniValue, styles.heroMiniStrong]}>
-                        {fmtKES(payableAfterWallet)}
-                      </Text>
-                    </View>
-
-                    {nextContributionDate ? (
-                      <View style={styles.heroMiniRow}>
-                        <Text style={styles.heroMiniLabel}>Next contribution</Text>
-                        <Text style={styles.heroMiniValue}>
-                          {nextContributionDate}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
-
-                  <View style={styles.heroActions}>
-                    <Button
-                      title={canPaySelected ? "Contribute" : "Covered by Wallet"}
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(tabs)/merry/contribute" as any,
-                          params: {
-                            merryId: String(merryId),
-                            returnTo: ROUTES.tabs.merry,
-                          },
-                        })
-                      }
-                      disabled={!canPaySelected}
-                      style={{ flex: 1 }}
-                    />
-                    <View style={{ width: SPACING.sm }} />
-                    <Button
-                      title="Contribution Records"
-                      variant="secondary"
-                      onPress={() =>
-                        router.push({
-                          pathname: ROUTES.tabs.merryPayments as any,
-                          params: {
-                            merryId: String(merryId),
-                            returnTo: ROUTES.tabs.merry,
-                          },
-                        })
-                      }
-                      style={{ flex: 1 }}
-                    />
-                  </View>
-
-                  <View style={{ height: SPACING.sm }} />
-
-                  <Button
-                    title="View Members"
-                    variant="secondary"
-                    onPress={openMembers}
-                  />
-                </>
-              ) : (
-                <View style={styles.heroAmountBox}>
-                  <Text style={styles.heroAmountLabel}>Contribution per seat</Text>
-                  <Text style={styles.heroAmountValue}>
-                    {fmtKES(detail.contribution_amount)}
+                  <Text style={styles.heroHint}>
+                    {mySeatCount} seat{mySeatCount === 1 ? "" : "s"} • {fmtKES(contributionPerSeat)} each
                   </Text>
 
-                  <View style={styles.heroMiniDivider} />
+                  <Text style={styles.heroHint}>{walletMessage}</Text>
 
-                  <View style={styles.heroMiniRow}>
-                    <Text style={styles.heroMiniLabel}>Status</Text>
-                    <Text style={styles.heroMiniValue}>{membershipLabel}</Text>
-                  </View>
+                  {walletBalance > 0 ? (
+                    <Text style={styles.heroHint}>Wallet: {fmtKES(walletBalance)}</Text>
+                  ) : null}
 
-                  <View style={styles.heroMiniRow}>
-                    <Text style={styles.heroMiniLabel}>Cycle duration</Text>
-                    <Text style={styles.heroMiniValue}>
-                      {detail.cycle_duration_weeks} week
-                      {Number(detail.cycle_duration_weeks) === 1 ? "" : "s"}
-                    </Text>
-                  </View>
-
-                  <View style={{ marginTop: SPACING.md }}>
-                    <Button
-                      title="View Members"
-                      variant="secondary"
+                  <View style={styles.heroActions}>
+                    <ActionButton
+                      title="Pay now"
+                      onPress={goToDeposit}
+                      variant="primary"
+                    />
+                    <View style={{ width: SPACING.sm }} />
+                    <ActionButton
+                      title="Members"
                       onPress={openMembers}
+                      variant="secondary"
                     />
                   </View>
+                </>
+              ) : (
+                <View style={{ marginTop: SPACING.md }}>
+                  {joinStatus === "PENDING" ? (
+                    <ActionButton
+                      title="Request pending"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/merry/join-request" as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                      variant="primary"
+                    />
+                  ) : canRequestJoin ? (
+                    <ActionButton
+                      title="Join merry"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/merry/join-request" as any,
+                          params: {
+                            merryId: String(merryId),
+                            returnTo: ROUTES.tabs.merry,
+                          },
+                        })
+                      }
+                      variant="primary"
+                    />
+                  ) : (
+                    <ActionButton
+                      title={detail.is_open === false ? "Merry closed" : "Details"}
+                      onPress={openMembers}
+                      variant="secondary"
+                    />
+                  )}
                 </View>
               )}
             </Card>
@@ -718,291 +949,204 @@ export default function MerryDetailScreen() {
               </Card>
             ) : null}
 
-            {breakdownError && isMember ? (
-              <View style={{ marginBottom: SPACING.md }}>
-                <InfoStrip
-                  icon="warning-outline"
-                  text={`Contribution summary is not available right now. ${breakdownError}`}
-                  tone="warning"
-                />
-              </View>
+            {dashboardError && isMember ? (
+              <Card style={styles.errorCard} variant="default">
+                <Text style={styles.errorText}>{dashboardError}</Text>
+              </Card>
+            ) : null}
+
+            {payoutMetaError ? (
+              <Card style={styles.errorCard} variant="default">
+                <Text style={styles.errorText}>{payoutMetaError}</Text>
+              </Card>
             ) : null}
 
             {isMember ? (
-              <>
-                <Section title="Summary">
-                  <View style={styles.summaryGrid}>
-                    <SummaryBox
-                      label="Overdue"
-                      value={fmtKES(breakdown?.overdue)}
-                      icon="warning-outline"
-                    />
-                    <View style={{ width: SPACING.sm }} />
-                    <SummaryBox
-                      label="Due now"
-                      value={fmtKES(breakdown?.current_due)}
-                      icon="calendar-outline"
-                    />
-                  </View>
+              <Section title="Current turn">
+                <Card style={styles.sectionCard} variant="default">
+                  <Text style={styles.turnTarget}>{currentTargetLabel}</Text>
+                  <Text style={styles.turnMeta}>
+                    Turn {nextTurn?.turn_no ?? "—"} • Cycle {(nextTurn as any)?.cycle_no ?? "—"}
+                  </Text>
+                  {currentPayoutDate ? (
+                    <Text style={styles.turnMeta}>
+                      Due date: {formatShortDueDate(String(currentPayoutDate)) || String(currentPayoutDate)}
+                    </Text>
+                  ) : null}
 
-                  <View style={{ height: SPACING.sm }} />
-
-                  <View style={styles.summaryGrid}>
-                    <SummaryBox
-                      label="Next due"
-                      value={fmtKES(breakdown?.next_due)}
-                      icon="arrow-forward-circle-outline"
+                  <View style={styles.summaryRow}>
+                    <SummaryStat
+                      label="Pay now"
+                      value={fmtKES(memberPayAmount)}
+                      icon="cash-outline"
                     />
-                    <View style={{ width: SPACING.sm }} />
-                    <SummaryBox
-                      label="Per seat"
-                      value={fmtKES(contributionPerSeat)}
-                      icon="grid-outline"
-                    />
-                  </View>
-
-                  <View style={{ height: SPACING.sm }} />
-
-                  <View style={styles.summaryGrid}>
-                    <SummaryBox
+                    <SummaryStat
                       label="Wallet"
                       value={fmtKES(walletBalance)}
                       icon="wallet-outline"
                     />
-                    <View style={{ width: SPACING.sm }} />
-                    <SummaryBox
-                      label="You pay now"
-                      value={fmtKES(payableAfterWallet)}
-                      icon="cash-outline"
+                  </View>
+
+                  <View style={styles.summaryRow}>
+                    <SummaryStat
+                      label="Per seat"
+                      value={fmtKES(contributionPerSeat)}
+                      icon="pricetag-outline"
+                    />
+                    <SummaryStat
+                      label="My seats"
+                      value={String(mySeatCount)}
+                      icon="albums-outline"
                     />
                   </View>
 
-                  {nextContributionDate ? (
-                    <View style={{ marginTop: SPACING.sm }}>
-                      <InfoStrip
-                        icon="time-outline"
-                        text={`Next contribution date: ${nextContributionDate}`}
+                  <View style={{ marginTop: SPACING.sm }}>
+                    {myDueNow > 0 ? (
+                      <InfoPill
+                        text={`Due now: ${fmtKES(myDueNow)}`}
+                        danger={myDueNow > 0}
                       />
-                    </View>
-                  ) : null}
-                </Section>
+                    ) : (
+                      <InfoPill text="No due right now. Pay now goes to wallet for future use." success />
+                    )}
+                  </View>
+                </Card>
+              </Section>
+            ) : null}
 
-                <Section title="Option">
-                  <Card style={styles.optionCard} variant="default">
-                    <View style={styles.optionTop}>
-                      <View style={{ flex: 1, paddingRight: SPACING.md }}>
-                        <Text style={styles.optionTitle}>Include next due</Text>
-                        <Text style={styles.optionText}>
-                          Add the next contribution to this summary.
-                        </Text>
-                      </View>
+            {isMember && breakdownRows.length ? (
+              <Section title="Overdue breakdown">
+                <Card style={styles.sectionCard} variant="default">
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => setShowBreakdown((v) => !v)}
+                    style={styles.toggleBtn}
+                  >
+                    <Text style={styles.toggleBtnText}>
+                      {showBreakdown ? "Hide breakdown" : "View breakdown"}
+                    </Text>
+                    <Ionicons
+                      name={showBreakdown ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color={WHITE}
+                    />
+                  </TouchableOpacity>
 
-                      <Switch
-                        value={includeNext}
-                        onValueChange={onToggleIncludeNext}
-                        disabled={toggling || !!breakdownError}
-                        thumbColor={COLORS.white}
-                        trackColor={{
-                          false: "rgba(255,255,255,0.18)",
-                          true: BRAND,
-                        }}
-                      />
-                    </View>
-
-                    {breakdown?.next_due_date ? (
-                      <Text style={styles.nextDueHint}>
-                        Next due date: {breakdown.next_due_date}
+                  {showBreakdown ? (
+                    <View style={{ marginTop: SPACING.md }}>
+                      <Text style={styles.sectionMiniText}>
+                        Base overdue: {fmtKES(overdueBaseTotal)}
+                        {penaltyTotal > 0
+                          ? ` • Penalty: ${fmtKES(penaltyTotal)}`
+                          : ""}
                       </Text>
-                    ) : null}
 
-                    <View style={styles.optionInfoBox}>
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={18}
-                        color={WHITE}
-                      />
-                      <Text style={styles.optionInfoText}>
-                        Your merry wallet is deducted first before new payment is
-                        needed.
-                      </Text>
-                    </View>
-                  </Card>
-                </Section>
-
-                <Section title="Included items">
-                  {!groupedPreview.length ? (
-                    <Card style={styles.emptyCard} variant="default">
-                      <EmptyState
-                        icon="receipt-outline"
-                        title={
-                          breakdownError
-                            ? "Contribution summary unavailable"
-                            : "Nothing open right now"
-                        }
-                        subtitle={
-                          breakdownError
-                            ? "Merry details are available, but the contribution summary could not be loaded."
-                            : "This merry has no payable items at the moment."
-                        }
-                      />
-                    </Card>
-                  ) : (
-                    <Card style={styles.listCard} variant="default">
-                      {groupedPreview.map((item, index) => (
-                        <View key={`due-${item.due_id}`}>
-                          <DueLine item={item} />
-                          {index < groupedPreview.length - 1 ? (
-                            <View style={styles.lineDivider} />
-                          ) : null}
-                        </View>
+                      {breakdownRows.map((row, idx) => (
+                        <BreakdownCard
+                          key={`${row.due_id ?? idx}-${row.seat_no ?? idx}`}
+                          row={row}
+                        />
                       ))}
-                    </Card>
-                  )}
-                </Section>
-              </>
-            ) : (
-              <Section title="Join">
-                <Card style={styles.ctaCard} variant="default">
-                  <Text style={styles.ctaTitle}>Join this merry</Text>
-                  <Text style={styles.ctaText}>
-                    Request seats and send your request to the admin for approval.
-                  </Text>
-
-                  <View style={{ height: SPACING.md }} />
-
-                  {joinStatus === "PENDING" ? (
-                    <Button
-                      title="Request Pending"
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(tabs)/merry/join-request" as any,
-                          params: {
-                            merryId: String(merryId),
-                            returnTo: ROUTES.tabs.merry,
-                          },
-                        })
-                      }
-                    />
-                  ) : canRequestJoin ? (
-                    <Button
-                      title="Join Merry"
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(tabs)/merry/join-request" as any,
-                          params: {
-                            merryId: String(merryId),
-                            returnTo: ROUTES.tabs.merry,
-                          },
-                        })
-                      }
-                    />
-                  ) : (
-                    <Button
-                      title={detail.is_open === false ? "Merry Closed" : "Unavailable"}
-                      disabled
-                      onPress={() => {}}
-                    />
-                  )}
-
-                  <View style={{ height: SPACING.sm }} />
-
-                  <Text style={styles.helperText}>
-                    Seats available: {availableSeatText}
-                  </Text>
-
-                  <Text style={styles.helperText}>
-                    Contribution: {fmtKES(detail.contribution_amount)}
-                  </Text>
-
-                  {joinStatus === "PENDING" ? (
-                    <View style={{ marginTop: SPACING.md }}>
-                      <InfoStrip
-                        icon="time-outline"
-                        text="Your join request has already been sent and is waiting for admin approval."
-                        tone="warning"
-                      />
-                    </View>
-                  ) : null}
-
-                  {joinStatus === "REJECTED" ? (
-                    <View style={{ marginTop: SPACING.md }}>
-                      <InfoStrip
-                        icon="close-circle-outline"
-                        text="Your previous join request was rejected. You can submit another request if joining is still allowed."
-                        tone="danger"
-                      />
                     </View>
                   ) : null}
                 </Card>
               </Section>
-            )}
+            ) : null}
 
-            <Section title="Details">
-              <Card style={styles.detailsCard} variant="default">
-                <DetailRow
-                  label="Contribution per seat"
-                  value={fmtKES(detail?.contribution_amount)}
-                />
-                <DetailRow label="Frequency" value={detail?.payout_frequency} />
-                <DetailRow
-                  label="Slots per period"
-                  value={detail?.payouts_per_period}
-                />
-                <DetailRow label="Next payout" value={detail?.next_payout_date} />
-                <DetailRow
-                  label="Cycle duration"
-                  value={`${detail?.cycle_duration_weeks ?? "—"} week${
-                    Number(detail?.cycle_duration_weeks ?? 0) === 1 ? "" : "s"
-                  }`}
-                />
-                <DetailRow label="Members" value={detail?.members_count} />
-                <DetailRow label="Seats" value={detail?.seats_count} />
-                {isMember ? (
-                  <>
-                    <DetailRow
-                      label="Wallet balance"
-                      value={fmtKES(walletBalance)}
+            {isAdminUser ? (
+              <Section title="Admin">
+                <Card style={styles.sectionCard} variant="default">
+                  <View style={styles.summaryRow}>
+                    <SummaryStat
+                      label="Expected"
+                      value={fmtKES(totalPool)}
+                      icon="cash-outline"
                     />
-                    <DetailRow
-                      label="Payable after wallet"
-                      value={fmtKES(payableAfterWallet)}
-                    />
-                    <DetailRow
-                      label="Next contribution date"
-                      value={nextContributionDate}
-                    />
-                  </>
-                ) : (
-                  <DetailRow label="Available seats" value={availableSeatText} />
-                )}
-
-                {!isMember &&
-                Array.isArray(detail.available_seat_numbers) &&
-                detail.available_seat_numbers.length > 0 ? (
-                  <View style={{ marginTop: SPACING.md }}>
-                    <InfoStrip
-                      icon="grid-outline"
-                      text={`Available seat numbers: ${detail.available_seat_numbers.join(", ")}`}
+                    <SummaryStat
+                      label="Paid"
+                      value={fmtKES(totalPaid)}
+                      icon="checkmark-done-outline"
                     />
                   </View>
-                ) : null}
 
-                <View style={{ marginTop: SPACING.md }}>
-                  <Button
-                    title="View Members"
-                    variant="secondary"
-                    onPress={openMembers}
-                  />
-                </View>
-              </Card>
-            </Section>
+                  <View style={styles.summaryRow}>
+                    <SummaryStat
+                      label="Outstanding"
+                      value={fmtKES(totalOutstanding)}
+                      icon="hourglass-outline"
+                    />
+                    <SummaryStat
+                      label="Next member"
+                      value={nextTurn?.username || "—"}
+                      icon="person-outline"
+                    />
+                  </View>
+
+                  <View style={{ marginTop: SPACING.sm }}>
+                    {readiness?.ready_for_payout ? (
+                      <InfoPill text="Payout is ready" success />
+                    ) : (
+                      <InfoPill
+                        text={`Payout is not ready • ${fmtKES(totalOutstanding)} still missing`}
+                      />
+                    )}
+                  </View>
+
+                  {unpaidRows.length ? (
+                    <View style={{ marginTop: SPACING.md }}>
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setShowAdminBreakdown((v) => !v)}
+                        style={styles.toggleBtn}
+                      >
+                        <Text style={styles.toggleBtnText}>
+                          {showAdminBreakdown
+                            ? "Hide unpaid members"
+                            : "View unpaid members"}
+                        </Text>
+                        <Ionicons
+                          name={showAdminBreakdown ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color={WHITE}
+                        />
+                      </TouchableOpacity>
+
+                      {showAdminBreakdown ? (
+                        <View style={{ marginTop: SPACING.md }}>
+                          {unpaidRows.map((row, idx) => (
+                            <AdminRowCard
+                              key={`${row.due_id ?? idx}-${row.user_id ?? idx}`}
+                              row={row}
+                            />
+                          ))}
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  <View style={{ marginTop: SPACING.md }}>
+                    <ActionButton
+                      title={
+                        creatingNextPayout
+                          ? "Creating..."
+                          : canCreateNextPayout
+                            ? "Create next payout"
+                            : "Not ready"
+                      }
+                      onPress={handleCreateNextPayout}
+                      variant="primary"
+                      disabled={!canCreateNextPayout || creatingNextPayout}
+                    />
+                  </View>
+                </Card>
+              </Section>
+            ) : null}
 
             <View style={styles.bottomActions}>
-              <Button
-                title="Back to Merry"
-                variant="secondary"
+              <ActionButton
+                title="Back"
                 onPress={backToMerryIndex}
-                style={{ flex: 1 }}
+                variant="secondary"
               />
             </View>
           </>
@@ -1020,15 +1164,7 @@ const styles = StyleSheet.create({
 
   content: {
     paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
-    position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: PAGE_BG,
+    paddingTop: SPACING.xs,
   },
 
   emptyWrap: {
@@ -1039,54 +1175,18 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 
-  backgroundBlobTop: {
-    position: "absolute",
-    top: -60,
-    right: -30,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(19, 195, 178, 0.10)",
+  silentLoadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: PAGE_BG,
   },
 
-  backgroundBlobMiddle: {
-    position: "absolute",
-    top: 260,
-    left: -80,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(52, 174, 213, 0.08)",
-  },
-
-  backgroundBlobBottom: {
-    position: "absolute",
-    bottom: 80,
-    right: -40,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: "rgba(112, 208, 115, 0.09)",
-  },
-
-  backgroundGlowOne: {
-    position: "absolute",
-    top: 100,
-    left: 40,
-    width: 6,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.45)",
-  },
-
-  backgroundGlowTwo: {
-    position: "absolute",
-    top: 180,
-    right: 60,
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
+  silentLoadingText: {
+    color: TEXT_SOFT,
+    fontSize: 14,
+    fontFamily: FONT.medium,
   },
 
   topBar: {
@@ -1098,39 +1198,16 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.xs,
   },
 
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-
-  logoBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: CARD_BG_STRONG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-  },
-
-  brandWordmark: {
+  pageTitle: {
     color: WHITE,
-    fontSize: 17,
+    fontSize: 22,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
   },
 
-  brandWordmarkGreen: {
-    color: "#74D16C",
-  },
-
-  brandSub: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 11,
-    marginTop: 2,
+  pageSubTitle: {
+    color: TEXT_SOFT,
+    fontSize: 12,
+    marginTop: 4,
     fontFamily: FONT.regular,
   },
 
@@ -1146,177 +1223,122 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: CARD_BG_STRONG,
+    backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: CARD_BORDER,
   },
 
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    backgroundColor: MERRY_CARD,
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    marginBottom: SPACING.lg,
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: MERRY_BORDER,
+    borderColor: CARD_BORDER,
+    borderRadius: 24,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
   },
 
-  spaceGlowTop: {
-    position: "absolute",
-    top: -18,
-    right: -10,
-    width: 108,
-    height: 108,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-
-  spaceGlowBottom: {
-    position: "absolute",
-    bottom: -26,
-    left: -10,
-    width: 130,
-    height: 80,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  heroTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  heroEyebrow: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 12,
-    fontFamily: FONT.bold,
-    letterSpacing: 1.2,
-    marginBottom: 10,
-  },
-
-  heroTitle: {
-    color: WHITE,
-    fontSize: 25,
-    lineHeight: 32,
-    fontFamily: FONT.bold,
-  },
-
-  heroSubtitle: {
-    color: TEXT_ON_DARK,
+  heroLabel: {
+    color: TEXT_SOFT,
     fontSize: 13,
-    lineHeight: 20,
+    fontFamily: FONT.medium,
+  },
+
+  heroAmount: {
+    color: WHITE,
+    fontSize: 32,
+    lineHeight: 38,
+    fontFamily: FONT.bold,
+    marginTop: 8,
+  },
+
+  heroHint: {
+    color: TEXT_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: FONT.regular,
     marginTop: 8,
   },
 
-  heroIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: MERRY_ICON_BG,
+  sectionCard: {
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  heroAmountBox: {
-    marginTop: SPACING.md,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: CARD_BORDER,
     borderRadius: 20,
     padding: SPACING.md,
+    ...SHADOW.card,
   },
 
-  heroAmountBoxPressable: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+  turnTarget: {
+    color: WHITE,
+    fontSize: 18,
+    fontFamily: FONT.bold,
   },
 
-  heroAmountTopRow: {
+  turnMeta: {
+    color: TEXT_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginTop: 6,
+  },
+
+  summaryRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     gap: SPACING.sm,
-  },
-
-  heroAmountLabel: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  heroAmountAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: BRAND,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  heroAmountActionText: {
-    color: WHITE,
-    fontSize: 11,
-    fontFamily: FONT.bold,
-  },
-
-  heroAmountValue: {
-    color: WHITE,
-    fontSize: 28,
-    lineHeight: 34,
-    fontFamily: FONT.bold,
-    marginTop: 12,
-  },
-
-  heroMiniDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    marginVertical: 12,
-  },
-
-  heroMiniRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-    marginTop: 8,
-  },
-
-  heroMiniLabel: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-    flex: 1,
-  },
-
-  heroMiniValue: {
-    color: WHITE,
-    fontSize: 12,
-    fontFamily: FONT.bold,
-    textAlign: "right",
-    flexShrink: 1,
-  },
-
-  heroMiniStrong: {
-    color: WHITE,
-    fontFamily: FONT.bold,
-  },
-
-  heroActions: {
-    flexDirection: "row",
-    alignItems: "center",
     marginTop: SPACING.md,
+  },
+
+  summaryStat: {
+    flex: 1,
+    minHeight: 96,
+    padding: SPACING.md,
+    borderRadius: 18,
+    backgroundColor: CARD_BG_2,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  summaryStatIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(236,251,255,0.90)",
+    marginBottom: 8,
+  },
+
+  summaryStatLabel: {
+    color: TEXT_SOFT,
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  summaryStatValue: {
+    color: WHITE,
+    fontSize: 17,
+    lineHeight: 22,
+    fontFamily: FONT.bold,
+    marginTop: 6,
+  },
+
+  infoPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+  },
+
+  infoPillText: {
+    fontSize: 12,
+    fontFamily: FONT.medium,
   },
 
   errorCard: {
     marginBottom: SPACING.md,
     padding: SPACING.md,
     borderRadius: 20,
-    backgroundColor: DANGER_BG,
+    backgroundColor: "rgba(239,68,68,0.18)",
     borderWidth: 1,
     borderColor: "rgba(239,68,68,0.20)",
     flexDirection: "row",
@@ -1332,245 +1354,141 @@ const styles = StyleSheet.create({
     fontFamily: FONT.regular,
   },
 
-  summaryGrid: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-
-  summaryBox: {
-    flex: 1,
-    backgroundColor: CARD_BG,
+  toggleBtn: {
+    minHeight: 46,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-    minHeight: 116,
-  },
-
-  summaryIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(236,251,255,0.88)",
-    marginBottom: 10,
+    justifyContent: "space-between",
   },
 
-  summaryLabel: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  summaryValue: {
+  toggleBtnText: {
     color: WHITE,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 13,
+    fontFamily: FONT.medium,
+  },
+
+  sectionMiniText: {
+    color: TEXT_SOFT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginBottom: 4,
+  },
+
+  breakdownCard: {
+    marginTop: SPACING.sm,
+    padding: SPACING.md,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+
+  breakdownTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  breakdownSeat: {
+    flex: 1,
+    color: WHITE,
+    fontSize: 13,
     fontFamily: FONT.bold,
+  },
+
+  breakdownMeta: {
+    color: TEXT_FAINT,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
     marginTop: 6,
   },
 
-  optionCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-  },
-
-  optionTop: {
+  breakdownMoneyRow: {
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  optionTitle: {
-    color: WHITE,
-    fontSize: 15,
-    fontFamily: FONT.bold,
-  },
-
-  optionText: {
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    marginTop: 4,
-  },
-
-  nextDueHint: {
-    marginTop: SPACING.sm,
-    color: TEXT_ON_DARK,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  optionInfoBox: {
-    marginTop: SPACING.md,
-    padding: SPACING.sm,
-    borderRadius: 16,
-    backgroundColor: SOFT_WHITE,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-  },
-
-  optionInfoText: {
-    flex: 1,
-    color: TEXT_ON_DARK,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  listCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-  },
-
-  emptyCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-  },
-
-  dueLine: {
-    flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: SPACING.sm,
-    paddingVertical: 6,
+    gap: 12,
+    marginTop: 8,
   },
 
-  dueLineTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-
-  dueLineTitle: {
-    color: WHITE,
-    fontSize: 13,
-    fontFamily: FONT.bold,
-  },
-
-  dueLineSub: {
-    color: TEXT_ON_DARK_SOFT,
+  breakdownMoneyLabel: {
+    color: TEXT_SOFT,
     fontSize: 12,
-    lineHeight: 18,
     fontFamily: FONT.regular,
-    marginTop: 4,
   },
 
-  dueLineAmount: {
+  breakdownMoneyValue: {
     color: WHITE,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: FONT.bold,
-    textAlign: "right",
   },
 
-  dueBadge: {
+  statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
   },
 
-  dueBadgeText: {
+  statusBadgeText: {
     fontSize: 11,
     fontFamily: FONT.bold,
   },
 
-  lineDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginVertical: 10,
-  },
-
-  ctaCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-  },
-
-  ctaTitle: {
-    color: WHITE,
-    fontSize: 16,
-    fontFamily: FONT.bold,
-  },
-
-  ctaText: {
-    marginTop: 6,
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  helperText: {
-    color: TEXT_ON_DARK,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-  },
-
-  detailsCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: 20,
-    padding: SPACING.md,
-  },
-
-  kvRow: {
+  heroActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: SPACING.md,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    marginTop: SPACING.md,
   },
 
-  kvLabel: {
+  actionBtn: {
     flex: 1,
-    color: TEXT_ON_DARK_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
+    minHeight: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
   },
 
-  kvValue: {
-    flexShrink: 1,
-    textAlign: "right",
-    color: WHITE,
-    fontSize: 12,
+  actionBtnPrimary: {
+    backgroundColor: PRIMARY_BTN,
+    borderColor: PRIMARY_BTN,
+  },
+
+  actionBtnSecondary: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+
+  actionBtnDisabled: {
+    opacity: 0.55,
+  },
+
+  actionBtnText: {
+    fontSize: 14,
     fontFamily: FONT.bold,
   },
 
-  infoStrip: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
+  actionBtnTextPrimary: {
+    color: WHITE,
   },
 
-  infoStripText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+  actionBtnTextSecondary: {
+    color: WHITE,
+  },
+
+  actionBtnTextDisabled: {
+    color: "rgba(255,255,255,0.75)",
   },
 
   bottomActions: {
