@@ -17,7 +17,6 @@ import {
 
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { FONT, SHADOW, SPACING } from "@/constants/theme";
@@ -82,8 +81,8 @@ const PAGE_BG = "#062C49";
 const BRAND = "#0C6A80";
 const PRIMARY_BTN = "#197D71";
 const WHITE = "#FFFFFF";
-const TEXT_SOFT = "rgba(255,255,255,0.74)";
-const TEXT_FAINT = "rgba(255,255,255,0.62)";
+const TEXT_SOFT = "rgba(255,255,255,0.82)";
+const TEXT_FAINT = "rgba(255,255,255,0.70)";
 const CARD_BG = "rgba(255,255,255,0.08)";
 const CARD_BG_2 = "rgba(255,255,255,0.06)";
 const CARD_BORDER = "rgba(255,255,255,0.09)";
@@ -158,6 +157,21 @@ function getStatusColors(status?: string | null) {
     text: WARNING_TEXT,
     label: s || "Pending",
   };
+}
+
+function SectionBlock({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.sectionWrap}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {children}
+    </View>
+  );
 }
 
 function SummaryStat({
@@ -678,20 +692,29 @@ export default function MerryDetailScreen() {
     return nextTurn?.due_date || (readiness as any)?.scheduled_date || null;
   }, [nextTurn?.due_date, readiness]);
 
-  const walletMessage = useMemo(() => {
-    if (!isMember) return "";
-    return "Pay now adds to your merry wallet and is used automatically when due.";
-  }, [isMember]);
-
   const memberHeadline = useMemo(() => {
-    if (!isMember) return fmtKES(contributionPerSeat);
     return fmtKES(memberPayAmount);
-  }, [contributionPerSeat, isMember, memberPayAmount]);
+  }, [memberPayAmount]);
 
   const memberHeadlineLabel = useMemo(() => {
-    if (!isMember) return "Contribution per seat";
-    return "Pay now";
+    return isMember ? "Contribute now" : "Contribution per seat";
   }, [isMember]);
+
+  const heroMessage = useMemo(() => {
+    if (!isMember) {
+      return `${availableSeatText} • ${membershipLabel}`;
+    }
+
+    if (myDueNow > 0) {
+      return "You have something pending right now.";
+    }
+
+    if (walletBalance > 0) {
+      return "Your wallet will help cover upcoming contributions.";
+    }
+
+    return "You can still contribute for later.";
+  }, [availableSeatText, isMember, membershipLabel, myDueNow, walletBalance]);
 
   const goToDeposit = useCallback(() => {
     const amount = String(memberPayAmount || 0);
@@ -774,16 +797,6 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (loading && !detail) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.silentLoadingWrap}>
-          <Text style={styles.silentLoadingText}>Loading merry…</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   if (!user && !loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
@@ -832,44 +845,46 @@ export default function MerryDetailScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.topBar}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.pageTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={styles.pageSubTitle}>
-              {isMember
-                ? `${mySeatCount} seat${mySeatCount === 1 ? "" : "s"}${
-                    mySeatNumbers.length ? ` • ${mySeatNumbers.join(", ")}` : ""
-                  }`
-                : `${availableSeatText} • ${membershipLabel}`}
-            </Text>
-          </View>
-
-          <View style={styles.topBarActions}>
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={onRefresh}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="refresh-outline" size={18} color={WHITE} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={backToMerryIndex}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {detail ? (
           <>
+            <View style={styles.topBar}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pageTitle} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text style={styles.pageSubTitle}>
+                  {isMember
+                    ? `${mySeatCount} seat${mySeatCount === 1 ? "" : "s"}${
+                        mySeatNumbers.length ? ` • ${mySeatNumbers.join(", ")}` : ""
+                      }`
+                    : `${availableSeatText} • ${membershipLabel}`}
+                </Text>
+              </View>
+
+              <View style={styles.topBarActions}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={onRefresh}
+                  style={styles.iconBtn}
+                >
+                  <Ionicons name="refresh-outline" size={18} color={WHITE} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={backToMerryIndex}
+                  style={styles.iconBtn}
+                >
+                  <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <Card style={styles.heroCard} variant="default">
               <Text style={styles.heroLabel}>{memberHeadlineLabel}</Text>
-              <Text style={styles.heroAmount}>{memberHeadline}</Text>
+              <Text style={styles.heroAmount}>
+                {isMember ? memberHeadline : fmtKES(contributionPerSeat)}
+              </Text>
 
               {isMember ? (
                 <>
@@ -877,7 +892,7 @@ export default function MerryDetailScreen() {
                     {mySeatCount} seat{mySeatCount === 1 ? "" : "s"} • {fmtKES(contributionPerSeat)} each
                   </Text>
 
-                  <Text style={styles.heroHint}>{walletMessage}</Text>
+                  <Text style={styles.heroHint}>{heroMessage}</Text>
 
                   {walletBalance > 0 ? (
                     <Text style={styles.heroHint}>Wallet: {fmtKES(walletBalance)}</Text>
@@ -962,7 +977,7 @@ export default function MerryDetailScreen() {
             ) : null}
 
             {isMember ? (
-              <Section title="Current turn">
+              <SectionBlock title="Current turn">
                 <Card style={styles.sectionCard} variant="default">
                   <Text style={styles.turnTarget}>{currentTargetLabel}</Text>
                   <Text style={styles.turnMeta}>
@@ -1007,15 +1022,15 @@ export default function MerryDetailScreen() {
                         danger={myDueNow > 0}
                       />
                     ) : (
-                      <InfoPill text="No due right now. Pay now goes to wallet for future use." success />
+                      <InfoPill text="You can still contribute for later." success />
                     )}
                   </View>
                 </Card>
-              </Section>
+              </SectionBlock>
             ) : null}
 
             {isMember && breakdownRows.length ? (
-              <Section title="Overdue breakdown">
+              <SectionBlock title="Overdue breakdown">
                 <Card style={styles.sectionCard} variant="default">
                   <TouchableOpacity
                     activeOpacity={0.9}
@@ -1050,11 +1065,11 @@ export default function MerryDetailScreen() {
                     </View>
                   ) : null}
                 </Card>
-              </Section>
+              </SectionBlock>
             ) : null}
 
             {isAdminUser ? (
-              <Section title="Admin">
+              <SectionBlock title="Admin">
                 <Card style={styles.sectionCard} variant="default">
                   <View style={styles.summaryRow}>
                     <SummaryStat
@@ -1139,7 +1154,7 @@ export default function MerryDetailScreen() {
                     />
                   </View>
                 </Card>
-              </Section>
+              </SectionBlock>
             ) : null}
 
             <View style={styles.bottomActions}>
@@ -1175,20 +1190,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 
-  silentLoadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: PAGE_BG,
-  },
-
-  silentLoadingText: {
-    color: TEXT_SOFT,
-    fontSize: 14,
-    fontFamily: FONT.medium,
-  },
-
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1200,15 +1201,15 @@ const styles = StyleSheet.create({
 
   pageTitle: {
     color: WHITE,
-    fontSize: 22,
+    fontSize: 24,
     fontFamily: FONT.bold,
   },
 
   pageSubTitle: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    marginTop: 4,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    marginTop: 5,
+    fontFamily: FONT.medium,
   },
 
   topBarActions: {
@@ -1240,24 +1241,36 @@ const styles = StyleSheet.create({
 
   heroLabel: {
     color: TEXT_SOFT,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT.medium,
   },
 
   heroAmount: {
     color: WHITE,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 36,
+    lineHeight: 42,
     fontFamily: FONT.bold,
     marginTop: 8,
   },
 
   heroHint: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
     marginTop: 8,
+  },
+
+  sectionWrap: {
+    marginBottom: SPACING.md,
+  },
+
+  sectionTitle: {
+    color: WHITE,
+    fontSize: 19,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    marginBottom: SPACING.sm,
   },
 
   sectionCard: {
@@ -1271,15 +1284,15 @@ const styles = StyleSheet.create({
 
   turnTarget: {
     color: WHITE,
-    fontSize: 18,
+    fontSize: 20,
     fontFamily: FONT.bold,
   },
 
   turnMeta: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
     marginTop: 6,
   },
 
@@ -1311,14 +1324,14 @@ const styles = StyleSheet.create({
 
   summaryStatLabel: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    fontFamily: FONT.medium,
   },
 
   summaryStatValue: {
     color: WHITE,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 19,
+    lineHeight: 24,
     fontFamily: FONT.bold,
     marginTop: 6,
   },
@@ -1330,8 +1343,8 @@ const styles = StyleSheet.create({
   },
 
   infoPillText: {
-    fontSize: 12,
-    fontFamily: FONT.medium,
+    fontSize: 13,
+    fontFamily: FONT.bold,
   },
 
   errorCard: {
@@ -1349,9 +1362,9 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     color: WHITE,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
   },
 
   toggleBtn: {
@@ -1369,15 +1382,15 @@ const styles = StyleSheet.create({
 
   toggleBtnText: {
     color: WHITE,
-    fontSize: 13,
-    fontFamily: FONT.medium,
+    fontSize: 14,
+    fontFamily: FONT.bold,
   },
 
   sectionMiniText: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
     marginBottom: 4,
   },
 
@@ -1400,15 +1413,15 @@ const styles = StyleSheet.create({
   breakdownSeat: {
     flex: 1,
     color: WHITE,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: FONT.bold,
   },
 
   breakdownMeta: {
     color: TEXT_FAINT,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: FONT.medium,
     marginTop: 6,
   },
 
@@ -1422,13 +1435,13 @@ const styles = StyleSheet.create({
 
   breakdownMoneyLabel: {
     color: TEXT_SOFT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
+    fontSize: 13,
+    fontFamily: FONT.medium,
   },
 
   breakdownMoneyValue: {
     color: WHITE,
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: FONT.bold,
   },
 
@@ -1439,7 +1452,7 @@ const styles = StyleSheet.create({
   },
 
   statusBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: FONT.bold,
   },
 
@@ -1475,7 +1488,7 @@ const styles = StyleSheet.create({
   },
 
   actionBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: FONT.bold,
   },
 

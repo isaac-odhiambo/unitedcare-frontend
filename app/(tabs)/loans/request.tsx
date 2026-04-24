@@ -40,36 +40,36 @@ type SpaceTone = "savings" | "merry" | "groups" | "support";
 function getSpaceTonePalette(tone: SpaceTone) {
   const map = {
     savings: {
-      card: "rgba(29, 196, 182, 0.22)",
-      border: "rgba(129, 244, 231, 0.15)",
-      iconBg: "rgba(220, 255, 250, 0.75)",
-      icon: "#0B6A80",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
+      card: "rgba(29, 196, 182, 0.14)",
+      border: "rgba(129, 244, 231, 0.12)",
+      iconBg: "rgba(220, 255, 250, 0.18)",
+      icon: "#E8FFFB",
+      chip: "rgba(255,255,255,0.10)",
+      amountBg: "rgba(255,255,255,0.08)",
     },
     merry: {
-      card: "rgba(98, 192, 98, 0.23)",
-      border: "rgba(194, 255, 188, 0.16)",
-      iconBg: "rgba(236, 255, 235, 0.76)",
-      icon: "#379B4A",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
+      card: "rgba(98, 192, 98, 0.14)",
+      border: "rgba(194, 255, 188, 0.12)",
+      iconBg: "rgba(236, 255, 235, 0.18)",
+      icon: "#ECFFEA",
+      chip: "rgba(255,255,255,0.10)",
+      amountBg: "rgba(255,255,255,0.08)",
     },
     groups: {
-      card: "rgba(49, 180, 217, 0.22)",
-      border: "rgba(189, 244, 255, 0.15)",
-      iconBg: "rgba(236, 251, 255, 0.76)",
-      icon: "#0A6E8A",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
+      card: "rgba(49, 180, 217, 0.14)",
+      border: "rgba(189, 244, 255, 0.12)",
+      iconBg: "rgba(236, 251, 255, 0.18)",
+      icon: "#EAF9FF",
+      chip: "rgba(255,255,255,0.10)",
+      amountBg: "rgba(255,255,255,0.08)",
     },
     support: {
-      card: "rgba(52, 198, 191, 0.22)",
-      border: "rgba(195, 255, 250, 0.16)",
-      iconBg: "rgba(236, 255, 252, 0.76)",
-      icon: "#148C84",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
+      card: "rgba(52, 198, 191, 0.14)",
+      border: "rgba(195, 255, 250, 0.12)",
+      iconBg: "rgba(236, 255, 252, 0.18)",
+      icon: "#E9FFFC",
+      chip: "rgba(255,255,255,0.10)",
+      amountBg: "rgba(255,255,255,0.08)",
     },
   };
 
@@ -78,40 +78,17 @@ function getSpaceTonePalette(tone: SpaceTone) {
 
 const UI = {
   page: "#062C49",
-
   text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.88)",
-  textMuted: "rgba(255,255,255,0.72)",
-
+  textSoft: "rgba(255,255,255,0.92)",
+  textMuted: "rgba(255,255,255,0.78)",
   mint: "#8CF0C7",
   aqua: "#0CC0B7",
-  careGreen: "#197D71",
-
-  glass: "rgba(255,255,255,0.10)",
-  glassStrong: "rgba(255,255,255,0.14)",
-  border: "rgba(255,255,255,0.12)",
-
-  supportCard: "rgba(52, 198, 191, 0.22)",
-  supportBorder: "rgba(195, 255, 250, 0.16)",
-  supportIconBg: "rgba(236, 255, 252, 0.76)",
-  supportIcon: "#148C84",
-
-  successCard: "rgba(98, 192, 98, 0.23)",
-  successBorder: "rgba(194, 255, 188, 0.16)",
-  successIconBg: "rgba(236, 255, 235, 0.76)",
-  successIcon: "#379B4A",
-
-  warningCard: "rgba(255, 204, 102, 0.16)",
-  warningBorder: "rgba(255, 220, 140, 0.18)",
-  warningIconBg: "rgba(255, 247, 224, 0.88)",
-  warningIcon: "#B7791F",
-
-  infoCard: "rgba(49, 180, 217, 0.22)",
-  infoBorder: "rgba(189, 244, 255, 0.15)",
-  infoIconBg: "rgba(236, 251, 255, 0.76)",
-  infoIcon: "#0A6E8A",
-
-  dangerCard: "rgba(220,53,69,0.18)",
+  glass: "rgba(255,255,255,0.07)",
+  glassStrong: "rgba(255,255,255,0.10)",
+  border: "rgba(255,255,255,0.10)",
+  dangerCard: "rgba(220,53,69,0.16)",
+  successText: "#8CF0C7",
+  warningText: "#FFD27D",
 };
 
 function formatKes(value?: string | number | null) {
@@ -138,41 +115,15 @@ function normalizeApiMessage(message: string) {
 
   const lower = message.toLowerCase();
 
-  if (lower.includes("active loan")) {
-    return "You already have an active support request. Finish it first before starting another one.";
-  }
-
-  if (lower.includes("already received your merry turn")) {
-    return "You cannot start a new support request because your merry turn has already been received.";
-  }
-
-  if (lower.includes("merry turn")) {
-    return "Your current merry status does not allow a new support request right now.";
-  }
-
-  if (lower.includes("principal")) {
-    return "Please enter a valid support amount greater than zero.";
-  }
-
-  if (lower.includes("term_weeks")) {
-    return "Please enter a repayment period of at least 1 week.";
-  }
-
-  if (lower.includes("their own guarantor")) {
-    return "You cannot choose yourself as a supporting member.";
-  }
-
-  if (lower.includes("guarantor") && lower.includes("not found")) {
-    return "One selected member could not be found. Refresh the list and choose again.";
-  }
-
-  if (lower.includes("not eligible") && lower.includes("guarantor")) {
-    return "One selected member is not currently available to support this request. Please choose another one.";
-  }
-
-  if (lower.includes("insufficient security")) {
-    return "This request may still need more support. You can reduce the amount or add supporting members.";
-  }
+  if (lower.includes("active loan")) return "You already have an active request.";
+  if (lower.includes("already received your merry turn")) return "You cannot start a new request after your merry turn.";
+  if (lower.includes("merry turn")) return "Your merry status does not allow a new request right now.";
+  if (lower.includes("principal")) return "Enter a valid amount above zero.";
+  if (lower.includes("term_weeks")) return "Enter at least 1 week.";
+  if (lower.includes("their own guarantor")) return "You cannot add yourself.";
+  if (lower.includes("guarantor") && lower.includes("not found")) return "One selected person could not be found.";
+  if (lower.includes("not eligible") && lower.includes("guarantor")) return "One selected person is not available right now.";
+  if (lower.includes("insufficient security")) return "This request still needs more cover.";
 
   return message;
 }
@@ -181,62 +132,17 @@ function SummaryCard({
   title,
   amount,
   subtitle,
-  tone,
 }: {
   title: string;
   amount: string;
   subtitle: string;
-  tone: "support" | "success" | "warning" | "info";
 }) {
-  const palette = {
-    support: {
-      card: UI.supportCard,
-      border: UI.supportBorder,
-      iconBg: UI.supportIconBg,
-      icon: UI.supportIcon,
-      iconName: "wallet-outline" as const,
-    },
-    success: {
-      card: UI.successCard,
-      border: UI.successBorder,
-      iconBg: UI.successIconBg,
-      icon: UI.successIcon,
-      iconName: "checkmark-circle-outline" as const,
-    },
-    warning: {
-      card: UI.warningCard,
-      border: UI.warningBorder,
-      iconBg: UI.warningIconBg,
-      icon: UI.warningIcon,
-      iconName: "alert-circle-outline" as const,
-    },
-    info: {
-      card: UI.infoCard,
-      border: UI.infoBorder,
-      iconBg: UI.infoIconBg,
-      icon: UI.infoIcon,
-      iconName: "information-circle-outline" as const,
-    },
-  }[tone];
-
   return (
-    <View
-      style={[
-        styles.summaryCard,
-        {
-          backgroundColor: palette.card,
-          borderColor: palette.border,
-        },
-      ]}
-    >
+    <View style={styles.summaryCard}>
       <View style={styles.summaryTopRow}>
-        <View style={[styles.summaryIconWrap, { backgroundColor: palette.iconBg }]}>
-          <Ionicons name={palette.iconName} size={18} color={palette.icon} />
-        </View>
+        <Text style={styles.summaryTitle}>{title}</Text>
         <Text style={styles.summaryAmount}>{amount}</Text>
       </View>
-
-      <Text style={styles.summaryTitle}>{title}</Text>
       <Text style={styles.summarySubtitle}>{subtitle}</Text>
     </View>
   );
@@ -277,7 +183,7 @@ function SelectedChip({
         onPress={onRemove}
         style={styles.chipClose}
       >
-        <Ionicons name="close" size={14} color="#FFFFFF" />
+        <Ionicons name="close" size={12} color="#FFFFFF" />
       </TouchableOpacity>
     </View>
   );
@@ -302,23 +208,23 @@ function MemberRow({
         <View style={[styles.memberAvatar, selected && styles.memberAvatarSelected]}>
           <Ionicons
             name={selected ? "checkmark" : "person-outline"}
-            size={16}
-            color={selected ? UI.page : "#FFFFFF"}
+            size={14}
+            color="#FFFFFF"
           />
         </View>
 
         <View style={{ flex: 1 }}>
           <Text style={styles.memberName} numberOfLines={1}>
-            {item.full_name}
+            {item.full_name || "Member"}
           </Text>
           <Text style={styles.memberMeta}>
-            {selected ? "Selected for this request" : "Tap to add as supporting member"}
+            {selected ? "Added" : "Tap to add"}
           </Text>
         </View>
       </View>
 
       <View style={selected ? styles.selectedBadge : styles.addBadge}>
-        <Text style={styles.badgeLabel}>{selected ? "Selected" : "Add"}</Text>
+        <Text style={styles.badgeLabel}>{selected ? "Added" : "Add"}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -340,6 +246,7 @@ export default function RequestLoanScreen() {
   const [memberSearch, setMemberSearch] = useState("");
   const [memberCandidates, setMemberCandidates] = useState<GuarantorCandidate[]>([]);
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [showGuarantorPicker, setShowGuarantorPicker] = useState(false);
 
   const [loadingPage, setLoadingPage] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -354,14 +261,6 @@ export default function RequestLoanScreen() {
   const isEligible = eligibility ? Boolean(eligibility.eligible) : true;
   const eligibilityReason = normalizeApiMessage(eligibility?.reason || "");
   const blockedReason = !isEligible ? eligibilityReason : "";
-  const fullySecured = Boolean(securityPreview?.fully_secured);
-
-  const showMemberSupportSection =
-    hasValidAmount &&
-    isEligible &&
-    !hasActiveLoan &&
-    Boolean(securityPreview) &&
-    toNumber(securityPreview?.shortfall) > 0;
 
   const formState = useMemo(() => {
     return buildLoanRequestPayload({
@@ -374,13 +273,70 @@ export default function RequestLoanScreen() {
 
   const amountLabel = useMemo(() => formatKes(principal || 0), [principal]);
 
+  const totalRepaymentAmount = useMemo(() => {
+    const p = Number(principal || 0);
+    const weeks = Number(termWeeks || 0);
+
+    if (!Number.isFinite(p) || p <= 0) return "KES 0";
+    if (!Number.isFinite(weeks) || weeks <= 0) return amountLabel;
+
+    const annualRate = 0.12;
+    const total = p + p * annualRate * (weeks / 52);
+    return formatKes(total);
+  }, [principal, termWeeks, amountLabel]);
+
+  const previewGuarantors = useMemo(() => {
+    const rows = (securityPreview as any)?.guarantors;
+    return Array.isArray(rows) ? rows : [];
+  }, [securityPreview]);
+
+  const fullySecured = Boolean(securityPreview?.fully_secured);
+  const showGuarantorSection = hasValidAmount && isEligible && !hasActiveLoan;
+  const showBreakdown = Boolean(securityPreview) && hasValidAmount && !checkingSecurity;
+
   const selectedNamesById = useMemo(() => {
     const map = new Map<number, string>();
     memberCandidates.forEach((item) => {
-      map.set(item.id, item.full_name);
+      map.set(item.id, item.full_name || "Member");
     });
+
+    previewGuarantors.forEach((item: any) => {
+      const id = Number(item?.guarantor_id);
+      const name = String(item?.guarantor_name || `Member #${id}`);
+      if (Number.isFinite(id) && id > 0) {
+        map.set(id, name);
+      }
+    });
+
     return map;
-  }, [memberCandidates]);
+  }, [memberCandidates, previewGuarantors]);
+
+  const selectedGuarantorNames = useMemo(() => {
+    return selectedMemberIds.map((id) => selectedNamesById.get(id) || `Member #${id}`);
+  }, [selectedMemberIds, selectedNamesById]);
+
+  const guarantorCoverById = useMemo(() => {
+    const map = new Map<number, string>();
+
+    previewGuarantors.forEach((item: any) => {
+      const id = Number(item?.guarantor_id);
+      const used = item?.used_security ?? 0;
+      if (Number.isFinite(id) && id > 0) {
+        map.set(id, formatKes(used));
+      }
+    });
+
+    return map;
+  }, [previewGuarantors]);
+
+  const suggestionText = useMemo(() => {
+    if (!hasValidAmount) return "Enter amount to continue.";
+    if (!isEligible) return blockedReason || "Request unavailable.";
+    if (checkingSecurity) return "Checking cover.";
+    if (fullySecured) return "Cover complete.";
+    if (securityPreview) return "Add more or reduce amount.";
+    return "Fill in the details.";
+  }, [hasValidAmount, isEligible, blockedReason, checkingSecurity, fullySecured, securityPreview]);
 
   const loadEligibility = async () => {
     try {
@@ -458,7 +414,7 @@ export default function RequestLoanScreen() {
   useEffect(() => {
     let active = true;
 
-    if (!showMemberSupportSection) {
+    if (!showGuarantorSection || !showGuarantorPicker) {
       setMemberCandidates([]);
       return;
     }
@@ -482,13 +438,13 @@ export default function RequestLoanScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [memberSearch, showMemberSupportSection]);
+  }, [memberSearch, showGuarantorSection, showGuarantorPicker]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
       await loadEligibility();
-      if (showMemberSupportSection) {
+      if (showGuarantorSection && showGuarantorPicker) {
         await loadMembers(memberSearch);
       }
     } finally {
@@ -526,27 +482,54 @@ export default function RequestLoanScreen() {
     router.replace("/(tabs)/loans" as any);
   };
 
-  const submit = async () => {
+  const buildSubmissionSummary = () => {
+    const guarantorText =
+      selectedGuarantorNames.length > 0
+        ? selectedGuarantorNames
+            .map((name, index) => {
+              const id = selectedMemberIds[index];
+              const cover = guarantorCoverById.get(id) || "KES 0";
+              return `${index + 1}. ${name} — ${cover}`;
+            })
+            .join("\n")
+        : "None";
+
+    const currentCover = securityPreview
+      ? formatKes(securityPreview.secured_total)
+      : "Not checked";
+
+    const shortfall = securityPreview
+      ? formatKes(securityPreview.shortfall)
+      : "Not checked";
+
+    const noteText = memberNote.trim() || "None";
+
+    return (
+      `Amount\n${amountLabel}\n\n` +
+      `Repayment\n${totalRepaymentAmount}\n\n` +
+      `Period\n${termWeeks || "0"} weeks\n\n` +
+      `Cover\n${currentCover}\n\n` +
+      `Shortfall\n${shortfall}\n\n` +
+      `Added\n${selectedMemberIds.length}\n${guarantorText}\n\n` +
+      `Note\n${noteText}`
+    );
+  };
+
+  const performSubmit = async () => {
     try {
       if (hasActiveLoan) {
-        Alert.alert(
-          "Support request",
-          "You already have an active support request. Finish it first before starting another one."
-        );
+        Alert.alert("Request", "You already have an active request.");
         return;
       }
 
       if (!isEligible) {
-        Alert.alert(
-          "Support request",
-          blockedReason || "You are not eligible to submit a support request right now."
-        );
+        Alert.alert("Request", blockedReason || "You are not eligible right now.");
         return;
       }
 
       if (!formState.canSubmit || !formState.payload) {
         Alert.alert(
-          "Support request",
+          "Request",
           normalizeApiMessage(formState.error || "Please check your details.")
         );
         return;
@@ -559,7 +542,7 @@ export default function RequestLoanScreen() {
 
       Alert.alert(
         "Request sent",
-        res?.message || "Your support request was sent successfully and is now waiting for review.",
+        res?.message || "Your request was sent successfully.",
         [
           {
             text: "OK",
@@ -572,66 +555,75 @@ export default function RequestLoanScreen() {
         getApiErrorMessage(e) || getErrorMessage(e)
       );
       setError(msg);
-      Alert.alert("Support request", msg);
+      Alert.alert("Request", msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const submit = async () => {
+    if (checkingSecurity) {
+      Alert.alert("Request", "Please wait while cover is being checked.");
+      return;
+    }
+
+    Alert.alert(
+      "Confirm request",
+      buildSubmissionSummary(),
+      [
+        { text: "Edit", style: "cancel" },
+        { text: "Submit", onPress: performSubmit },
+      ]
+    );
+  };
+
   const summaryState = useMemo(() => {
     if (!hasValidAmount) {
       return {
-        title: "Enter support amount",
+        title: "Enter amount",
         amount: amountLabel,
-        subtitle: "Start with the amount you need and your repayment period.",
-        tone: "info" as const,
+        subtitle: "Add amount and period.",
       };
     }
 
     if (!isEligible) {
       return {
-        title: "Support request unavailable",
+        title: "Unavailable",
         amount: amountLabel,
-        subtitle:
-          blockedReason || "You are not eligible to start a new support request right now.",
-        tone: "warning" as const,
+        subtitle: blockedReason || "You cannot start a new request right now.",
       };
     }
 
     if (checkingSecurity) {
       return {
-        title: "Checking your current support position",
+        title: "Checking",
         amount: amountLabel,
-        subtitle: "We are reviewing your current coverage now.",
-        tone: "info" as const,
+        subtitle: "Please wait.",
       };
     }
 
-    if (securityPreview?.fully_secured) {
+    if (fullySecured) {
       return {
-        title: "Strong support position",
-        amount: formatKes(securityPreview.secured_total),
-        subtitle: "Your current coverage looks complete for this request.",
-        tone: "success" as const,
+        title: "Ready",
+        amount: formatKes(securityPreview?.secured_total),
+        subtitle: "Cover complete.",
       };
     }
 
     if (securityPreview) {
       return {
-        title: "You can improve this request",
+        title: "More cover",
         amount: formatKes(securityPreview.shortfall),
-        subtitle: "You can still send the request, but adding supporting members may improve approval.",
-        tone: "warning" as const,
+        subtitle: "Add more or reduce amount.",
       };
     }
 
     return {
-      title: "Support summary",
+      title: "Summary",
       amount: amountLabel,
-      subtitle: "Enter your details to continue.",
-      tone: "support" as const,
+      subtitle: "Fill in the details.",
     };
-  }, [hasValidAmount, checkingSecurity, securityPreview, amountLabel, isEligible, blockedReason]);
+  }, [hasValidAmount, isEligible, blockedReason, checkingSecurity, fullySecured, securityPreview, amountLabel]);
 
   if (loadingPage) {
     return (
@@ -644,33 +636,26 @@ export default function RequestLoanScreen() {
       <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <View style={styles.loadingWrap}>
           <View style={styles.blockCard}>
-            <View
-              style={[
-                styles.blockIconWrap,
-                {
-                  backgroundColor: hasActiveLoan
-                    ? UI.warningIconBg
-                    : UI.infoIconBg,
-                },
-              ]}
-            >
+            <View style={styles.blockIconWrap}>
               <Ionicons
                 name={hasActiveLoan ? "time-outline" : "information-circle-outline"}
                 size={18}
-                color={hasActiveLoan ? UI.warningIcon : UI.infoIcon}
+                color="#FFFFFF"
               />
             </View>
+
             <Text style={styles.blockTitle}>
-              {hasActiveLoan ? "Support already active" : "Support request unavailable"}
+              {hasActiveLoan ? "Request active" : "Unavailable"}
             </Text>
+
             <Text style={styles.blockText}>
               {hasActiveLoan
-                ? "You already have an active support request. Finish it first before starting another one."
-                : blockedReason || "You are not eligible to start a support request right now."}
+                ? "You already have an active request."
+                : blockedReason || "You cannot start a request right now."}
             </Text>
 
             <View style={{ marginTop: SPACING.md, width: "100%" }}>
-              <Button title="Back to support" onPress={goBack} />
+              <Button title="Back" onPress={goBack} />
             </View>
           </View>
         </View>
@@ -689,7 +674,7 @@ export default function RequestLoanScreen() {
           style={styles.page}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: Math.max(insets.bottom + 32, 48) },
+            { paddingBottom: Math.max(insets.bottom + 24, 40) },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -703,12 +688,6 @@ export default function RequestLoanScreen() {
             />
           }
         >
-          <View style={styles.backgroundBlobTop} />
-          <View style={styles.backgroundBlobMiddle} />
-          <View style={styles.backgroundBlobBottom} />
-          <View style={styles.backgroundGlowOne} />
-          <View style={styles.backgroundGlowTwo} />
-
           <View
             style={[
               styles.heroCard,
@@ -718,10 +697,6 @@ export default function RequestLoanScreen() {
               },
             ]}
           >
-            <View style={styles.heroOrbOne} />
-            <View style={styles.heroOrbTwo} />
-            <View style={styles.heroOrbThree} />
-
             <View style={styles.heroTopRow}>
               <TouchableOpacity
                 activeOpacity={0.9}
@@ -732,17 +707,16 @@ export default function RequestLoanScreen() {
               </TouchableOpacity>
 
               <View style={styles.heroBadge}>
-                <Ionicons name="heart-outline" size={14} color="#FFFFFF" />
+                <Ionicons name="heart-outline" size={13} color="#FFFFFF" />
                 <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
               </View>
             </View>
 
             <View style={styles.heroHeader}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.heroTitle}>Ask for support</Text>
                 <Text style={styles.heroSubtitle}>
-                  Enter the amount you need, choose a repayment period, and add supporting members if needed.
-                  We will show your current position clearly before you send the request.
+                  Savings, merry, and groups are checked first.
                 </Text>
               </View>
 
@@ -752,7 +726,7 @@ export default function RequestLoanScreen() {
                   { backgroundColor: palette.iconBg },
                 ]}
               >
-                <Ionicons name="create-outline" size={22} color={palette.icon} />
+                <Ionicons name="wallet-outline" size={18} color={palette.icon} />
               </View>
             </View>
 
@@ -763,7 +737,7 @@ export default function RequestLoanScreen() {
                   { backgroundColor: palette.amountBg },
                 ]}
               >
-                <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
+                <Ionicons name="cash-outline" size={13} color="#FFFFFF" />
                 <Text style={styles.heroMiniText}>{amountLabel}</Text>
               </View>
 
@@ -773,10 +747,20 @@ export default function RequestLoanScreen() {
                   { backgroundColor: palette.amountBg },
                 ]}
               >
-                <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+                <Ionicons name="calendar-outline" size={13} color="#FFFFFF" />
                 <Text style={styles.heroMiniText}>
-                  {termWeeks ? `${termWeeks} weeks` : "Repayment period"}
+                  {termWeeks ? `${termWeeks} weeks` : "Period"}
                 </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.heroMiniPill,
+                  { backgroundColor: palette.amountBg },
+                ]}
+              >
+                <Ionicons name="receipt-outline" size={13} color="#FFFFFF" />
+                <Text style={styles.heroMiniText}>{totalRepaymentAmount}</Text>
               </View>
             </View>
           </View>
@@ -788,126 +772,133 @@ export default function RequestLoanScreen() {
             </View>
           ) : null}
 
-          <SectionCard
-            title="Request details"
-            subtitle="Fill in the amount, repayment period, and optional note."
-          >
-            <Input
-              label="Amount"
-              value={principal}
-              onChangeText={setPrincipal}
-              placeholder="e.g. 5000"
-              keyboardType="decimal-pad"
-            />
+          <SectionCard title="Details" subtitle="Amount, period, and note.">
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>Amount</Text>
+              <Input
+                value={principal}
+                onChangeText={setPrincipal}
+                placeholder="e.g. 5000"
+                keyboardType="decimal-pad"
+              />
+            </View>
 
-            <Input
-              label="Repayment period (weeks)"
-              value={termWeeks}
-              onChangeText={setTermWeeks}
-              placeholder="e.g. 12"
-              keyboardType="number-pad"
-            />
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>Period</Text>
+              <Input
+                value={termWeeks}
+                onChangeText={setTermWeeks}
+                placeholder="e.g. 12"
+                keyboardType="number-pad"
+              />
+            </View>
 
-            <Input
-              label="Short note (optional)"
-              value={memberNote}
-              onChangeText={setMemberNote}
-              placeholder="Tell the team what this support is for"
-              multiline
-            />
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>Note</Text>
+              <Input
+                value={memberNote}
+                onChangeText={setMemberNote}
+                placeholder="Optional"
+                multiline
+              />
+            </View>
+          </SectionCard>
+
+          <SectionCard title="Guide" subtitle={suggestionText}>
+            <View style={styles.breakdownList}>
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Amount</Text>
+                <Text style={styles.breakdownValue}>{amountLabel}</Text>
+              </View>
+
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Repayment</Text>
+                <Text style={styles.breakdownValue}>{totalRepaymentAmount}</Text>
+              </View>
+
+              {showBreakdown ? (
+                <>
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Savings</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(securityPreview?.borrower_savings)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Merry</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(securityPreview?.borrower_merry)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Groups</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(securityPreview?.borrower_group)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Added cover</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(securityPreview?.guarantor_total)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Shortfall</Text>
+                    <Text
+                      style={[
+                        styles.breakdownValue,
+                        fullySecured ? styles.successText : styles.warningText,
+                      ]}
+                    >
+                      {formatKes(securityPreview?.shortfall)}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+            </View>
           </SectionCard>
 
           <SummaryCard
             title={summaryState.title}
             amount={summaryState.amount}
             subtitle={summaryState.subtitle}
-            tone={summaryState.tone}
           />
 
-          {securityPreview && hasValidAmount && !checkingSecurity ? (
-            <View style={styles.metricsWrap}>
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Request amount</Text>
-                <Text style={styles.metricValue}>{amountLabel}</Text>
+          {previewGuarantors.length > 0 ? (
+            <SectionCard title="Added people" subtitle="Current cover">
+              <View style={styles.memberList}>
+                {previewGuarantors.map((item: any) => (
+                  <View key={String(item?.guarantor_id)} style={styles.coverRow}>
+                    <Text style={styles.coverName}>
+                      {String(item?.guarantor_name || "Member")}
+                    </Text>
+                    <Text style={styles.coverAmount}>
+                      {formatKes(item?.used_security || 0)}
+                    </Text>
+                  </View>
+                ))}
               </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Covered now</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.secured_total)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Still needed</Text>
-                <Text
-                  style={[
-                    styles.metricValue,
-                    fullySecured ? styles.successText : styles.warningText,
-                  ]}
-                >
-                  {formatKes(securityPreview.shortfall)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Savings</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.borrower_savings)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Merry</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.borrower_merry)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Groups</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.borrower_group)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Your total cover</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.borrower_total)}
-                </Text>
-              </View>
-
-              <View style={styles.metricTile}>
-                <Text style={styles.metricLabel}>Support from members</Text>
-                <Text style={styles.metricValue}>
-                  {formatKes(securityPreview.guarantor_total)}
-                </Text>
-              </View>
-            </View>
+            </SectionCard>
           ) : null}
 
-          {showMemberSupportSection ? (
+          {showGuarantorSection ? (
             <SectionCard
-              title="Add supporting members"
-              subtitle="Search active approved members and tap to add them to this request."
+              title="Add people"
+              subtitle={fullySecured ? "Cover complete. Add more if you want." : "Add one or more."}
             >
-              <Input
-                label="Search member"
-                value={memberSearch}
-                onChangeText={setMemberSearch}
-                placeholder="Type a member name"
-              />
-
               {selectedMemberIds.length > 0 ? (
                 <>
                   <View style={styles.selectedHeader}>
                     <Text style={styles.selectedHeaderText}>
-                      Selected members ({selectedMemberIds.length})
+                      Added ({selectedMemberIds.length})
                     </Text>
 
                     <TouchableOpacity activeOpacity={0.9} onPress={clearSelectedMembers}>
-                      <Text style={styles.clearText}>Clear all</Text>
+                      <Text style={styles.clearText}>Clear</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -922,48 +913,72 @@ export default function RequestLoanScreen() {
                   </View>
                 </>
               ) : (
-                <Text style={styles.helperText}>
-                  No supporting members selected yet. You can still submit without them, but adding support may improve approval.
-                </Text>
+                <Text style={styles.helperText}>None added yet.</Text>
               )}
 
-              {loadingMembers ? (
-                <View style={styles.inlineInfoCard}>
-                  <Ionicons name="search-outline" size={16} color={UI.textSoft} />
-                  <Text style={styles.inlineInfoText}>Searching members...</Text>
-                </View>
-              ) : memberCandidates.length === 0 ? (
-                <View style={styles.emptyWrapBox}>
-                  <EmptyState
-                    icon="people-outline"
-                    title="No members found"
-                    subtitle="Try a different name or clear the search."
+              <View style={styles.guarantorActionsRow}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => setShowGuarantorPicker((prev) => !prev)}
+                  style={styles.addAnotherButton}
+                >
+                  <Ionicons
+                    name={showGuarantorPicker ? "chevron-up-outline" : "add-outline"}
+                    size={16}
+                    color="#FFFFFF"
                   />
-                </View>
-              ) : (
-                <View style={styles.memberList}>
-                  {memberCandidates.map((item) => {
-                    const selected = selectedMemberIds.includes(item.id);
+                  <Text style={styles.addAnotherButtonText}>
+                    {showGuarantorPicker ? "Hide list" : "Add person"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                    return (
-                      <MemberRow
-                        key={item.id}
-                        item={item}
-                        selected={selected}
-                        onPress={() => toggleMember(item.id)}
+              {showGuarantorPicker ? (
+                <>
+                  <View style={styles.inputWrap}>
+                    <Text style={styles.inputLabel}>Search</Text>
+                    <Input
+                      value={memberSearch}
+                      onChangeText={setMemberSearch}
+                      placeholder="Type a name"
+                    />
+                  </View>
+
+                  {loadingMembers ? (
+                    <View style={styles.inlineInfoCard}>
+                      <Ionicons name="search-outline" size={16} color="#FFFFFF" />
+                      <Text style={styles.inlineInfoText}>Searching...</Text>
+                    </View>
+                  ) : memberCandidates.length === 0 ? (
+                    <View style={styles.emptyWrapBox}>
+                      <EmptyState
+                        icon="people-outline"
+                        title="No one found"
+                        subtitle="Try another name."
                       />
-                    );
-                  })}
-                </View>
-              )}
+                    </View>
+                  ) : (
+                    <View style={styles.memberList}>
+                      {memberCandidates.map((item) => {
+                        const selected = selectedMemberIds.includes(item.id);
+
+                        return (
+                          <MemberRow
+                            key={item.id}
+                            item={item}
+                            selected={selected}
+                            onPress={() => toggleMember(item.id)}
+                          />
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
+              ) : null}
             </SectionCard>
           ) : null}
 
           <View style={styles.actionCard}>
-            <Text style={styles.actionHint}>
-              When you send this request, the backend will review it and place it in the pending review flow.
-            </Text>
-
             <Button
               title={submitting ? "Sending..." : "Submit request"}
               onPress={submit}
@@ -998,7 +1013,7 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: SPACING.md,
+    padding: 12,
   },
 
   loadingWrap: {
@@ -1009,170 +1024,87 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
   },
 
-  backgroundBlobTop: {
-    position: "absolute",
-    top: -100,
-    right: -40,
-    width: 230,
-    height: 230,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
-  },
-
-  backgroundBlobMiddle: {
-    position: "absolute",
-    top: 250,
-    left: -70,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-
-  backgroundBlobBottom: {
-    position: "absolute",
-    bottom: -100,
-    right: -30,
-    width: 210,
-    height: 210,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  backgroundGlowOne: {
-    position: "absolute",
-    top: 110,
-    right: 20,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: "rgba(12,192,183,0.10)",
-  },
-
-  backgroundGlowTwo: {
-    position: "absolute",
-    bottom: 140,
-    left: 10,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: "rgba(140,240,199,0.08)",
-  },
-
   heroCard: {
-    position: "relative",
-    overflow: "hidden",
-    borderRadius: 26,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 20,
-    marginBottom: SPACING.md,
-  },
-
-  heroOrbOne: {
-    position: "absolute",
-    top: -26,
-    right: -16,
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.10)",
-  },
-
-  heroOrbTwo: {
-    position: "absolute",
-    bottom: -24,
-    left: -18,
-    width: 100,
-    height: 100,
-    borderRadius: 999,
-    backgroundColor: "rgba(236,251,255,0.10)",
-  },
-
-  heroOrbThree: {
-    position: "absolute",
-    top: 74,
-    right: 40,
-    width: 70,
-    height: 70,
-    borderRadius: 999,
-    backgroundColor: "rgba(12,192,183,0.10)",
+    padding: 12,
+    marginBottom: 10,
   },
 
   heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
+    gap: 8,
+    marginBottom: 10,
   },
 
   backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
   },
 
   heroBadge: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   heroBadgeText: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
 
   heroHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
   },
 
   heroIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
 
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 23,
-    lineHeight: 29,
+    fontSize: 18,
+    lineHeight: 22,
     fontFamily: FONT.bold,
   },
 
   heroSubtitle: {
-    marginTop: 8,
+    marginTop: 4,
     color: UI.textSoft,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 12,
+    lineHeight: 17,
     fontFamily: FONT.regular,
-    maxWidth: "96%",
   },
 
   heroMiniWrap: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
+    gap: 8,
+    marginTop: 10,
     flexWrap: "wrap",
   },
 
   heroMiniPill: {
-    minHeight: 36,
+    minHeight: 30,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -1180,36 +1112,36 @@ const styles = StyleSheet.create({
 
   heroMiniText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT.bold,
   },
 
   errorCard: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     backgroundColor: UI.dangerCard,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: UI.border,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: SPACING.md,
+    gap: 8,
+    marginBottom: 10,
   },
 
   errorText: {
     flex: 1,
     color: "#FFFFFF",
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     fontFamily: FONT.regular,
   },
 
   blockCard: {
     width: "100%",
     maxWidth: 420,
-    borderRadius: 22,
-    padding: SPACING.lg,
+    borderRadius: 18,
+    padding: SPACING.md,
     backgroundColor: UI.glassStrong,
     borderWidth: 1,
     borderColor: UI.border,
@@ -1217,137 +1149,140 @@ const styles = StyleSheet.create({
   },
 
   blockIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   blockTitle: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: FONT.bold,
     marginBottom: 6,
   },
 
   blockText: {
     color: UI.textSoft,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     fontFamily: FONT.regular,
     textAlign: "center",
   },
 
   sectionCard: {
-    borderRadius: 22,
-    padding: SPACING.md,
+    borderRadius: 16,
+    padding: 12,
     backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
-    marginBottom: SPACING.md,
+    marginBottom: 10,
   },
 
   sectionTitle: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: FONT.bold,
-    marginBottom: 4,
+    marginBottom: 3,
   },
 
   sectionSubtitle: {
     color: UI.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     fontFamily: FONT.regular,
-    marginBottom: SPACING.sm,
+    marginBottom: 8,
+  },
+
+  inputWrap: {
+    marginBottom: 10,
+  },
+
+  inputLabel: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.bold,
+    marginBottom: 6,
   },
 
   summaryCard: {
-    borderRadius: 22,
-    padding: SPACING.md,
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: UI.glassStrong,
     borderWidth: 1,
-    marginBottom: SPACING.md,
+    borderColor: UI.border,
+    marginBottom: 10,
   },
 
   summaryTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 6,
   },
 
-  summaryIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
+  summaryTitle: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontFamily: FONT.bold,
   },
 
   summaryAmount: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontFamily: FONT.bold,
-  },
-
-  summaryTitle: {
-    color: "#FFFFFF",
     fontSize: 15,
     fontFamily: FONT.bold,
-    marginBottom: 4,
   },
 
   summarySubtitle: {
     color: UI.textSoft,
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     fontFamily: FONT.regular,
   },
 
-  metricsWrap: {
+  breakdownList: {
+    gap: 8,
+  },
+
+  breakdownRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    minHeight: 26,
   },
 
-  metricTile: {
-    width: "48%",
-    minHeight: 84,
-    borderRadius: 18,
-    padding: SPACING.md,
-    backgroundColor: UI.glassStrong,
-    borderWidth: 1,
-    borderColor: UI.border,
-    justifyContent: "center",
-  },
-
-  metricLabel: {
-    color: UI.textMuted,
-    fontSize: 11,
+  breakdownLabel: {
+    flex: 1,
+    color: UI.textSoft,
+    fontSize: 12,
     fontFamily: FONT.regular,
-    marginBottom: 6,
   },
 
-  metricValue: {
+  breakdownValue: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 12,
     fontFamily: FONT.bold,
+    textAlign: "right",
   },
 
   helperText: {
-    marginTop: 6,
-    color: UI.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
+    marginTop: 4,
+    color: UI.textSoft,
+    fontSize: 11,
+    lineHeight: 16,
     fontFamily: FONT.regular,
   },
 
   selectedHeader: {
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.xs,
+    marginTop: 8,
+    marginBottom: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1355,30 +1290,30 @@ const styles = StyleSheet.create({
 
   selectedHeaderText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: FONT.bold,
   },
 
   clearText: {
     color: UI.mint,
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT.bold,
   },
 
   chipsWrap: {
-    marginTop: SPACING.sm,
+    marginTop: 6,
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    gap: 8,
+    marginBottom: 6,
   },
 
   chip: {
     maxWidth: "100%",
     borderRadius: 999,
-    paddingLeft: 12,
-    paddingRight: 8,
-    paddingVertical: 8,
+    paddingLeft: 10,
+    paddingRight: 6,
+    paddingVertical: 6,
     backgroundColor: "rgba(140,240,199,0.16)",
     borderWidth: 1,
     borderColor: "rgba(140,240,199,0.18)",
@@ -1389,51 +1324,51 @@ const styles = StyleSheet.create({
 
   chipText: {
     color: "#FFFFFF",
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT.regular,
     maxWidth: 180,
   },
 
   chipClose: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.12)",
   },
 
   inlineInfoCard: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: UI.border,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: SPACING.sm,
+    marginTop: 8,
   },
 
   inlineInfoText: {
-    color: UI.textSoft,
-    fontSize: 12,
+    color: "#FFFFFF",
+    fontSize: 11,
     fontFamily: FONT.regular,
   },
 
   emptyWrapBox: {
-    marginTop: SPACING.sm,
+    marginTop: 8,
   },
 
   memberList: {
-    marginTop: SPACING.sm,
+    marginTop: 8,
   },
 
   memberRow: {
-    marginBottom: SPACING.sm,
-    borderRadius: 18,
-    padding: SPACING.md,
+    marginBottom: 8,
+    borderRadius: 14,
+    padding: 10,
     backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
@@ -1443,96 +1378,142 @@ const styles = StyleSheet.create({
   },
 
   memberRowSelected: {
-    backgroundColor: "rgba(140,240,199,0.16)",
-    borderColor: "rgba(140,240,199,0.22)",
+    backgroundColor: "rgba(140,240,199,0.14)",
+    borderColor: "rgba(140,240,199,0.20)",
   },
 
   memberLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
 
   memberAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: UI.border,
   },
 
   memberAvatarSelected: {
-    backgroundColor: UI.mint,
-    borderColor: "rgba(140,240,199,0.26)",
+    backgroundColor: "rgba(140,240,199,0.18)",
+    borderColor: "rgba(140,240,199,0.24)",
   },
 
   memberName: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: FONT.bold,
     marginBottom: 2,
   },
 
   memberMeta: {
-    color: UI.textMuted,
-    fontSize: 12,
+    color: UI.textSoft,
+    fontSize: 11,
     fontFamily: FONT.regular,
   },
 
   addBadge: {
-    minWidth: 54,
-    height: 28,
-    borderRadius: 14,
+    minWidth: 48,
+    height: 24,
+    borderRadius: 12,
     paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.12)",
-    marginLeft: 12,
+    marginLeft: 10,
   },
 
   selectedBadge: {
-    minWidth: 72,
-    height: 28,
-    borderRadius: 14,
+    minWidth: 54,
+    height: 24,
+    borderRadius: 12,
     paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(140,240,199,0.22)",
-    marginLeft: 12,
+    backgroundColor: "rgba(140,240,199,0.18)",
+    marginLeft: 10,
   },
 
   badgeLabel: {
     color: "#FFFFFF",
-    fontSize: 11,
+    fontSize: 10,
+    fontFamily: FONT.bold,
+  },
+
+  coverRow: {
+    minHeight: 30,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: UI.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    gap: 10,
+  },
+
+  coverName: {
+    flex: 1,
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: FONT.regular,
+  },
+
+  coverAmount: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: FONT.bold,
+    textAlign: "right",
+  },
+
+  guarantorActionsRow: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+
+  addAnotherButton: {
+    minHeight: 38,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: UI.border,
+  },
+
+  addAnotherButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
     fontFamily: FONT.bold,
   },
 
   actionCard: {
-    borderRadius: 22,
-    padding: SPACING.md,
+    borderRadius: 16,
+    padding: 12,
     backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
-    marginBottom: SPACING.md,
-  },
-
-  actionHint: {
-    color: UI.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.regular,
-    marginBottom: SPACING.sm,
+    marginBottom: 10,
   },
 
   successText: {
-    color: UI.mint,
+    color: UI.successText,
   },
 
   warningText: {
-    color: "#FFD27D",
+    color: UI.warningText,
   },
 });

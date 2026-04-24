@@ -22,12 +22,18 @@ import EmptyState from "@/components/ui/EmptyState";
 
 import { ROUTES } from "@/constants/routes";
 import { FONT, RADIUS, SHADOW, SPACING } from "@/constants/theme";
-import { getApiErrorMessage, money, requestWithdrawal } from "@/services/payments";
+import { getApiErrorMessage as getPaymentsApiErrorMessage, money, requestWithdrawal } from "@/services/payments";
 import { getMe } from "@/services/profile";
+import {
+  canShowWithdrawAction,
+  getMySavingsAccount,
+  getApiErrorMessage as getSavingsApiErrorMessage,
+  SavingsAccount,
+} from "@/services/savings";
 import { getSessionUser, saveSessionUser } from "@/services/session";
 
-const SOURCES = ["SAVINGS", "MERRY", "GROUP"] as const;
-type WithdrawalSource = (typeof SOURCES)[number];
+const SOURCE = "SAVINGS" as const;
+type WithdrawalSource = typeof SOURCE;
 type SpaceTone = "savings" | "merry" | "groups" | "support";
 type NoticeTone = "primary" | "success" | "warning" | "info";
 
@@ -41,6 +47,7 @@ const TEXT_ON_DARK_SOFT = "rgba(255,255,255,0.76)";
 const TEXT_ON_DARK_MUTED = "rgba(255,255,255,0.58)";
 const INPUT_BG = "#0A2234";
 const INPUT_BORDER = "rgba(255,255,255,0.12)";
+const DEFAULT_TRANSACTION_FEE = 0;
 
 function getSpaceTonePalette(tone: SpaceTone) {
   const map = {
@@ -134,36 +141,27 @@ function isValidPhone(p: string) {
   return /^(07|01)\d{8}$/.test(p);
 }
 
-function normalizeSource(value?: string): WithdrawalSource {
-  const raw = String(value || "").trim().toUpperCase();
-  if (raw === "SAVINGS" || raw === "MERRY" || raw === "GROUP") return raw;
-  return "SAVINGS";
+function toFiniteNumber(value: unknown) {
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
 }
 
-function sourceLabel(value: WithdrawalSource) {
-  switch (value) {
-    case "SAVINGS":
-      return "Savings";
-    case "MERRY":
-      return "Merry";
-    case "GROUP":
-      return "Group";
-    default:
-      return value;
-  }
+function toMoneyInput(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-function sourceTone(value: WithdrawalSource): SpaceTone {
-  switch (value) {
-    case "SAVINGS":
-      return "savings";
-    case "MERRY":
-      return "merry";
-    case "GROUP":
-      return "groups";
-    default:
-      return "support";
-  }
+function clampAmountInput(raw: string, maxAllowed: number) {
+  const sanitized = sanitizeAmount(raw);
+  if (!sanitized) return "";
+  const numeric = toFiniteNumber(sanitized);
+  if (numeric <= 0) return sanitized;
+  if (maxAllowed <= 0) return "";
+  const capped = Math.min(numeric, maxAllowed);
+  return toMoneyInput(capped);
 }
 
 function QuickLink({
@@ -191,15 +189,11 @@ function NoticeBanner({
   icon,
   title,
   text,
-  buttonLabel,
-  onPress,
 }: {
   tone: NoticeTone;
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   text: string;
-  buttonLabel?: string;
-  onPress?: () => void;
 }) {
   const palette = getOverviewTonePalette(tone);
 
@@ -217,12 +211,6 @@ function NoticeBanner({
           <Text style={styles.noticeText}>{text}</Text>
         </View>
       </View>
-
-      {buttonLabel && onPress ? (
-        <View style={{ marginTop: SPACING.sm }}>
-          <Button title={buttonLabel} variant="secondary" onPress={onPress} />
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -231,12 +219,15 @@ export default function RequestWithdrawalScreen() {
   const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams<{
-    source?: string;
     amount?: string;
     phone?: string;
+    fee?: string;
+    transactionFee?: string;
+    transaction_fee?: string;
   }>();
 
   const [user, setUser] = useState<any>(null);
+  const [savingsAccount, setSavingsAccount] = useState<SavingsAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -246,39 +237,105 @@ export default function RequestWithdrawalScreen() {
   const [amount, setAmount] = useState(
     typeof params.amount === "string" ? sanitizeAmount(params.amount) : ""
   );
-  const [source, setSource] = useState<WithdrawalSource>(
-    normalizeSource(typeof params.source === "string" ? params.source : undefined)
-  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const allowed = true;
-
   const normalizedPhone = useMemo(() => normalizePhone(phone), [phone]);
   const phoneOk = useMemo(() => isValidPhone(normalizedPhone), [normalizedPhone]);
-  const amountOk = useMemo(() => Number(amount) > 0, [amount]);
 
-  const canSubmit = allowed && phoneOk && amountOk && !submitting;
-  const activePalette = getSpaceTonePalette(sourceTone(source));
+  const transactionFee = useMemo(() => {
+    const candidates = [
+      params.transactionFee,
+      params.transaction_fee,
+      params.fee,
+      (user as any)?.withdrawal_fee,
+      (user as any)?.transaction_fee,
+      (savingsAccount as any)?.withdrawal_fee,
+    ];
+
+    for (const candidate of candidates) {
+      const value = toFiniteNumber(candidate);
+      if (value >= 0) return value;
+    }
+
+    return DEFAULT_TRANSACTION_FEE;
+  }, [
+    params.fee,
+    params.transactionFee,
+    params.transaction_fee,
+    savingsAccount,
+    user,
+  ]);
+
+  const availableBalance = useMemo(() => {
+    return toFiniteNumber(savingsAccount?.available_balance);
+  }, [savingsAccount]);
+
+  const maxWithdrawable = useMemo(() => {
+    return Math.max(0, availableBalance - transactionFee);
+  }, [availableBalance, transactionFee]);
+
+  const amountNumber = useMemo(() => toFiniteNumber(amount), [amount]);
+  const amountOk = useMemo(() => amountNumber > 0, [amountNumber]);
+  const totalDebit = useMemo(() => amountNumber + transactionFee, [amountNumber, transactionFee]);
+
+  const withdrawAllowed = useMemo(() => {
+    return canShowWithdrawAction(savingsAccount);
+  }, [savingsAccount]);
+
+  const hasEnoughBalance = useMemo(() => {
+    return totalDebit > 0 && totalDebit <= availableBalance;
+  }, [availableBalance, totalDebit]);
+
+  const canSubmit =
+    withdrawAllowed &&
+    phoneOk &&
+    amountOk &&
+    hasEnoughBalance &&
+    !submitting &&
+    availableBalance > 0;
+
+  const activePalette = getSpaceTonePalette("savings");
+
+  const handleAmountChange = useCallback(
+    (value: string) => {
+      setAmount(clampAmountInput(value, maxWithdrawable));
+    },
+    [maxWithdrawable]
+  );
 
   const load = useCallback(async () => {
     try {
       setError("");
 
-      const [session, me] = await Promise.all([getSessionUser(), getMe()]);
+      const [session, me, savings] = await Promise.all([
+        getSessionUser(),
+        getMe(),
+        getMySavingsAccount(),
+      ]);
+
       const merged = { ...(session || {}), ...(me || {}) };
 
       setUser(merged);
+      setSavingsAccount(savings || null);
       await saveSessionUser(merged);
 
       if (!phone) {
         setPhone(normalizePhone(merged?.phone || ""));
       }
+
+      const nextMax = Math.max(
+        0,
+        toFiniteNumber(savings?.available_balance) - transactionFee
+      );
+      setAmount((prev) => clampAmountInput(prev, nextMax));
     } catch (e: any) {
-      setError(getApiErrorMessage(e));
+      setError(
+        getSavingsApiErrorMessage(e) || getPaymentsApiErrorMessage(e)
+      );
     }
-  }, [phone]);
+  }, [phone, transactionFee]);
 
   useFocusEffect(
     useCallback(() => {
@@ -302,7 +359,19 @@ export default function RequestWithdrawalScreen() {
     }
   }, [load]);
 
+  React.useEffect(() => {
+    setAmount((prev) => clampAmountInput(prev, maxWithdrawable));
+  }, [maxWithdrawable]);
+
   const handleSubmit = useCallback(async () => {
+    if (!withdrawAllowed) {
+      Alert.alert(
+        "Community wallet",
+        "Savings withdrawal is not available right now."
+      );
+      return;
+    }
+
     if (!phoneOk) {
       Alert.alert("Community wallet", "Enter a valid Kenyan phone number.");
       return;
@@ -313,14 +382,27 @@ export default function RequestWithdrawalScreen() {
       return;
     }
 
+    if (availableBalance <= 0) {
+      Alert.alert("Community wallet", "You do not have enough available savings balance.");
+      return;
+    }
+
+    if (totalDebit > availableBalance) {
+      Alert.alert(
+        "Community wallet",
+        "The amount plus transaction fee is more than your available savings balance."
+      );
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError("");
 
       const res = await requestWithdrawal({
         phone: normalizedPhone,
-        amount,
-        source,
+        amount: toMoneyInput(amountNumber),
+        source: SOURCE,
       });
 
       Alert.alert(
@@ -335,13 +417,21 @@ export default function RequestWithdrawalScreen() {
         ]
       );
     } catch (e: any) {
-      const message = getApiErrorMessage(e);
+      const message = getPaymentsApiErrorMessage(e);
       setError(message);
       Alert.alert("Community wallet", message);
     } finally {
       setSubmitting(false);
     }
-  }, [amount, amountOk, normalizedPhone, phoneOk, source]);
+  }, [
+    amountNumber,
+    amountOk,
+    availableBalance,
+    normalizedPhone,
+    phoneOk,
+    totalDebit,
+    withdrawAllowed,
+  ]);
 
   if (!loading && !user) {
     return (
@@ -352,6 +442,21 @@ export default function RequestWithdrawalScreen() {
             subtitle="Log in to continue"
             actionLabel="Log in"
             onAction={() => router.replace(ROUTES.auth.login as any)}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!loading && !savingsAccount) {
+    return (
+      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
+        <View style={styles.page}>
+          <EmptyState
+            title="Savings wallet not found"
+            subtitle="Your savings wallet could not be loaded right now."
+            actionLabel="Back to payments"
+            onAction={() => router.replace(ROUTES.tabs.payments as any)}
           />
         </View>
       </SafeAreaView>
@@ -411,13 +516,13 @@ export default function RequestWithdrawalScreen() {
               ]}
             >
               <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
-              <Text style={styles.heroBadgeText}>Community wallet</Text>
+              <Text style={styles.heroBadgeText}>Savings wallet</Text>
             </View>
           </View>
 
-          <Text style={styles.heroTitle}>Request money from your community wallet</Text>
+          <Text style={styles.heroTitle}>Request withdrawal from savings</Text>
           <Text style={styles.heroSubtitle}>
-            Choose where the money should come from, add your phone number, and enter the amount.
+            Withdraw only from your savings wallet using your available savings balance.
           </Text>
 
           <View style={styles.heroSummaryRow}>
@@ -428,7 +533,7 @@ export default function RequestWithdrawalScreen() {
               ]}
             >
               <Text style={styles.heroSummaryLabel}>From</Text>
-              <Text style={styles.heroSummaryValue}>{sourceLabel(source)}</Text>
+              <Text style={styles.heroSummaryValue}>Savings</Text>
             </View>
 
             <View
@@ -438,10 +543,28 @@ export default function RequestWithdrawalScreen() {
               ]}
             >
               <Text style={styles.heroSummaryLabel}>Amount</Text>
-              <Text style={styles.heroSummaryValue}>{money(Number(amount || 0))}</Text>
+              <Text style={styles.heroSummaryValue}>{money(amountNumber)}</Text>
             </View>
           </View>
         </View>
+
+        <NoticeBanner
+          tone="info"
+          icon="wallet-outline"
+          title="Available savings balance"
+          text={`Available: ${money(availableBalance)} • Fee: ${money(
+            transactionFee
+          )} • Maximum withdrawable: ${money(maxWithdrawable)}`}
+        />
+
+        {!withdrawAllowed ? (
+          <NoticeBanner
+            tone="warning"
+            icon="lock-closed-outline"
+            title="Withdrawal not available"
+            text="Your savings wallet is currently not available for withdrawal."
+          />
+        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -482,7 +605,7 @@ export default function RequestWithdrawalScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.sectionTitle}>Your request</Text>
               <Text style={styles.sectionSubtitle}>
-                Add your phone number, amount, and where you want the money to come from.
+                Add your phone number and amount. Withdrawals are processed from savings only.
               </Text>
             </View>
           </View>
@@ -501,43 +624,23 @@ export default function RequestWithdrawalScreen() {
           <Text style={styles.label}>Amount</Text>
           <TextInput
             value={amount}
-            onChangeText={(v) => setAmount(sanitizeAmount(v))}
+            onChangeText={handleAmountChange}
             style={styles.input}
             placeholder="e.g. 1500"
             placeholderTextColor="rgba(255,255,255,0.45)"
             keyboardType="numeric"
           />
 
-          <Text style={styles.label}>Choose where it comes from</Text>
-          <View style={styles.sources}>
-            {SOURCES.map((s) => {
-              const active = source === s;
-              const palette = getSpaceTonePalette(sourceTone(s));
+          <Text style={styles.helperText}>
+            You can enter up to {money(maxWithdrawable)} after the transaction fee.
+          </Text>
 
-              return (
-                <TouchableOpacity
-                  key={s}
-                  onPress={() => setSource(s)}
-                  activeOpacity={0.88}
-                  style={[
-                    styles.source,
-                    {
-                      backgroundColor: active ? palette.card : INPUT_BG,
-                      borderColor: active ? palette.border : INPUT_BORDER,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sourceText,
-                      active && styles.sourceTextActive,
-                    ]}
-                  >
-                    {sourceLabel(s)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={styles.fixedSourceBox}>
+            <Text style={styles.fixedSourceLabel}>Withdrawal source</Text>
+            <View style={styles.fixedSourceChip}>
+              <Ionicons name="wallet-outline" size={16} color="#0A6E8A" />
+              <Text style={styles.fixedSourceChipText}>Savings only</Text>
+            </View>
           </View>
 
           <View style={styles.amountBox}>
@@ -545,14 +648,33 @@ export default function RequestWithdrawalScreen() {
               <Text style={styles.amountLabel}>Summary</Text>
               <View style={styles.amountChip}>
                 <Ionicons name="checkmark-circle-outline" size={14} color="#0A6E8A" />
-                <Text style={styles.amountChipText}>Ready</Text>
+                <Text style={styles.amountChipText}>
+                  {hasEnoughBalance && withdrawAllowed ? "Ready" : "Check amount"}
+                </Text>
               </View>
             </View>
 
-            <Text style={styles.amountValue}>{money(Number(amount || 0))}</Text>
+            <Text style={styles.amountValue}>{money(amountNumber)}</Text>
             <Text style={styles.amountMeta}>
-              From: {sourceLabel(source)} • Phone: {normalizedPhone || "Not added"}
+              From: Savings • Phone: {normalizedPhone || "Not added"}
             </Text>
+
+            <View style={styles.summaryLines}>
+              <View style={styles.summaryLine}>
+                <Text style={styles.summaryLineLabel}>Available savings balance</Text>
+                <Text style={styles.summaryLineValue}>{money(availableBalance)}</Text>
+              </View>
+
+              <View style={styles.summaryLine}>
+                <Text style={styles.summaryLineLabel}>Transaction fee</Text>
+                <Text style={styles.summaryLineValue}>{money(transactionFee)}</Text>
+              </View>
+
+              <View style={styles.summaryLine}>
+                <Text style={styles.summaryLineLabel}>Total deduction</Text>
+                <Text style={styles.summaryLineValue}>{money(totalDebit)}</Text>
+              </View>
+            </View>
           </View>
 
           <Button
@@ -886,39 +1008,54 @@ const styles = StyleSheet.create({
     borderColor: INPUT_BORDER,
     borderRadius: RADIUS.md,
     paddingHorizontal: 16,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
     backgroundColor: INPUT_BG,
     color: WHITE,
     fontFamily: FONT.bold,
     fontSize: 16,
   },
 
-  sources: {
-    flexDirection: "row",
-    gap: SPACING.sm as any,
+  helperText: {
     marginBottom: SPACING.md,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    color: TEXT_ON_DARK_SOFT,
   },
 
-  source: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    borderWidth: 1,
+  fixedSourceBox: {
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
     borderRadius: RADIUS.md,
-    alignItems: "center",
-    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    backgroundColor: INPUT_BG,
   },
 
-  sourceText: {
+  fixedSourceLabel: {
+    marginBottom: 8,
     fontSize: 12,
     lineHeight: 16,
-    fontFamily: FONT.medium,
-    color: TEXT_ON_DARK,
+    fontFamily: FONT.regular,
+    color: TEXT_ON_DARK_SOFT,
   },
 
-  sourceTextActive: {
-    color: WHITE,
+  fixedSourceChip: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(236, 251, 255, 0.86)",
+  },
+
+  fixedSourceChipText: {
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.bold,
+    color: "#0A6E8A",
   },
 
   amountBox: {
@@ -975,6 +1112,33 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontFamily: FONT.regular,
     color: TEXT_ON_DARK_SOFT,
+  },
+
+  summaryLines: {
+    marginTop: SPACING.md,
+    gap: 8,
+  },
+
+  summaryLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  summaryLineLabel: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.regular,
+    color: TEXT_ON_DARK_SOFT,
+  },
+
+  summaryLineValue: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: FONT.bold,
+    color: WHITE,
   },
 
   linksWrap: {

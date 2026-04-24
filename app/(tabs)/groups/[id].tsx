@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   RefreshControl,
@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,16 +21,12 @@ import {
   createGroupJoinRequest,
   getApiErrorMessage,
   getGroup,
-  getMyGroupContributions,
   getMyGroupSavingsSummary,
   Group,
-  GroupContribution,
   listGroupMemberships,
   listMyGroupJoinRequests,
   MyGroupSavingsRow,
 } from "@/services/groups";
-
-/* ----------------------------------------------- */
 
 const PAGE_BG = "#062C49";
 const CARD_BG = "rgba(255,255,255,0.08)";
@@ -39,7 +35,6 @@ const CARD_BORDER = "rgba(255,255,255,0.10)";
 const WHITE = "#FFFFFF";
 const SOFT_TEXT = "rgba(255,255,255,0.75)";
 const SOFT_TEXT_2 = "rgba(255,255,255,0.84)";
-const HERO_GREEN = "#74D16C";
 
 function formatKes(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -48,13 +43,6 @@ function formatKes(value?: string | number | null) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
-}
-
-function fmtDate(s?: string | null) {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return String(s);
-  return d.toLocaleDateString();
 }
 
 function getJoinPolicyLabel(value?: string | null) {
@@ -77,6 +65,27 @@ function getJoinActionLabel(joinPolicy: string) {
   if (joinPolicy === "OPEN") return "Join this space";
   if (joinPolicy === "APPROVAL") return "Request to join";
   return "Space closed";
+}
+
+function groupSupportsDependants(group?: Group | null) {
+  const type = String(group?.group_type || "").toUpperCase().trim();
+  return type === "WELFARE" || type === "BURIAL";
+}
+
+function toSafeAmount(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? String(n) : "";
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  if (typeof value === "string") {
+    const n = Number(String(value).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  return 0;
 }
 
 function SectionTitle({ title }: { title: string }) {
@@ -120,46 +129,6 @@ function GlassButton({
   );
 }
 
-function InfoCard({
-  title,
-  text,
-  icon,
-  success = false,
-  action,
-}: {
-  title: string;
-  text: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  success?: boolean;
-  action?: React.ReactNode;
-}) {
-  return (
-    <View style={styles.infoCard}>
-      <View style={styles.infoTop}>
-        <View
-          style={[
-            styles.infoIconWrap,
-            success ? styles.infoIconWrapSuccess : styles.infoIconWrapWarning,
-          ]}
-        >
-          <Ionicons
-            name={icon}
-            size={18}
-            color={success ? "#379B4A" : "#0C6A80"}
-          />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.infoTitle}>{title}</Text>
-          <Text style={styles.infoText}>{text}</Text>
-        </View>
-      </View>
-
-      {action ? <View style={{ marginTop: SPACING.md }}>{action}</View> : null}
-    </View>
-  );
-}
-
 function SummaryTile({
   label,
   value,
@@ -180,116 +149,205 @@ function SummaryTile({
   );
 }
 
+function ActionLinkCard({
+  title,
+  buttonLabel,
+  icon,
+  onPress,
+  disabled,
+}: {
+  title: string;
+  buttonLabel: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={[styles.linkCard, disabled ? styles.linkCardDisabled : null]}>
+      <View style={styles.linkCardLeft}>
+        <View style={styles.linkIconWrap}>
+          <Ionicons name={icon} size={18} color="#0C6A80" />
+        </View>
+
+        <Text style={styles.linkCardTitle}>{title}</Text>
+      </View>
+
+      <GlassButton
+        title={buttonLabel}
+        onPress={onPress}
+        disabled={disabled}
+        leftIcon={
+          <Ionicons name="arrow-forward-outline" size={18} color={WHITE} />
+        }
+      />
+    </View>
+  );
+}
+
+function getNumericRouteParam(value: unknown): number | null {
+  if (Array.isArray(value)) {
+    const first = value[0];
+    const n = Number(first);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export default function GroupDetailScreen() {
   const params = useLocalSearchParams();
-  const groupId = Number(params.id);
+
+  const routeGroupId = useMemo(() => {
+    return (
+      getNumericRouteParam(params.id) ??
+      getNumericRouteParam(params.groupId) ??
+      getNumericRouteParam(params.group_id)
+    );
+  }, [params.groupId, params.group_id, params.id]);
 
   const [group, setGroup] = useState<Group | null>(null);
-  const [rows, setRows] = useState<GroupContribution[]>([]);
   const [joined, setJoined] = useState(false);
   const [pending, setPending] = useState(false);
   const [mySummary, setMySummary] = useState<MyGroupSavingsRow | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [error, setError] = useState("");
+
+  const isMountedRef = useRef(false);
+  const isLoadingRef = useRef(false);
+  const isContributingRef = useRef(false);
+
+  const safeSetState = useCallback((cb: () => void) => {
+    if (isMountedRef.current) cb();
+  }, []);
 
   const goBackToGroups = useCallback(() => {
     router.replace(ROUTES.tabs.groups as any);
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const [
-        groupRes,
-        contributions,
-        memberships,
-        joinRequests,
-        mySavingsSummary,
-      ] = await Promise.all([
-        getGroup(groupId),
-        getMyGroupContributions(groupId),
-        listGroupMemberships(),
-        listMyGroupJoinRequests(),
-        getMyGroupSavingsSummary(),
-      ]);
+  const load = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (isLoadingRef.current) return;
 
-      const safeRows = Array.isArray(contributions) ? contributions : [];
-      const safeMemberships = Array.isArray(memberships) ? memberships : [];
-      const safeJoinRequests = Array.isArray(joinRequests) ? joinRequests : [];
-      const safeSummary = Array.isArray(mySavingsSummary) ? mySavingsSummary : [];
+      const groupId = routeGroupId;
 
-      const isMember = safeMemberships.some((m: any) => {
-        const id =
-          m?.group_id ?? (typeof m?.group === "number" ? m.group : m?.group?.id);
-        return Number(id) === groupId;
-      });
+      if (!groupId) {
+        safeSetState(() => {
+          setLoading(false);
+          setHasBootstrapped(true);
+          setError("This community space could not be opened.");
+        });
+        return;
+      }
 
-      const hasPendingRequest = safeJoinRequests.some((r: any) => {
-        const id =
-          r?.group_id ?? (typeof r?.group === "number" ? r.group : r?.group?.id);
-        const status = String(r?.status || "").toUpperCase().trim();
-        return Number(id) === groupId && status === "PENDING";
-      });
+      isLoadingRef.current = true;
 
-      const currentGroupSummary =
-        safeSummary.find((item: any) => {
-          const id = item?.group?.id ?? item?.group_id ?? item?.group;
-          return Number(id) === groupId;
-        }) || null;
+      try {
+        if (!options?.silent) {
+          safeSetState(() => {
+            setError("");
+          });
+        }
 
-      setGroup(groupRes);
-      setRows(safeRows);
-      setJoined(isMember || !!currentGroupSummary || safeRows.length > 0);
-      setPending(hasPendingRequest);
-      setMySummary(currentGroupSummary);
-    } catch (e: any) {
-      Alert.alert("Community space", getApiErrorMessage(e));
-    }
-  }, [groupId]);
+        safeSetState(() => {
+          setLoading(true);
+        });
+
+        const [groupRes, memberships, joinRequests, mySavingsSummary] =
+          await Promise.all([
+            getGroup(groupId),
+            listGroupMemberships(),
+            listMyGroupJoinRequests(),
+            getMyGroupSavingsSummary(),
+          ]);
+
+        const safeMemberships = Array.isArray(memberships) ? memberships : [];
+        const safeJoinRequests = Array.isArray(joinRequests) ? joinRequests : [];
+        const safeSummary = Array.isArray(mySavingsSummary) ? mySavingsSummary : [];
+
+        const isMember = safeMemberships.some((m: any) => {
+          const id =
+            m?.group_id ??
+            (typeof m?.group === "number" ? m.group : m?.group?.id);
+          return Number(id) === groupId && !!m?.is_active;
+        });
+
+        const hasPendingRequest = safeJoinRequests.some((r: any) => {
+          const id =
+            r?.group_id ??
+            (typeof r?.group === "number" ? r.group : r?.group?.id);
+          const status = String(r?.status || "").toUpperCase().trim();
+          return Number(id) === groupId && status === "PENDING";
+        });
+
+        const currentGroupSummary =
+          safeSummary.find((item: any) => {
+            const id = item?.group?.id ?? item?.group_id ?? item?.group;
+            return Number(id) === groupId;
+          }) || null;
+
+        safeSetState(() => {
+          setGroup(groupRes);
+          setJoined(isMember || !!currentGroupSummary);
+          setPending(hasPendingRequest);
+          setMySummary(currentGroupSummary);
+          setError("");
+        });
+      } catch (e: any) {
+        safeSetState(() => {
+          setError(getApiErrorMessage(e) || "Unable to open this community space.");
+        });
+      } finally {
+        isLoadingRef.current = false;
+        safeSetState(() => {
+          setLoading(false);
+          setHasBootstrapped(true);
+        });
+      }
+    },
+    [routeGroupId, safeSetState]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-
-      const run = async () => {
-        if (!mounted) return;
-        setLoading(true);
-        await load();
-        if (mounted) {
-          setLoading(false);
-          setHasBootstrapped(true);
-        }
-      };
-
-      run();
+      isMountedRef.current = true;
+      load({ silent: true });
 
       return () => {
-        mounted = false;
+        isMountedRef.current = false;
       };
     }, [load])
   );
 
-  const onRefresh = async () => {
-    try {
+  const onRefresh = useCallback(async () => {
+    safeSetState(() => {
       setRefreshing(true);
-      await load();
+    });
+
+    try {
+      await load({ silent: true });
     } finally {
-      setRefreshing(false);
+      safeSetState(() => {
+        setRefreshing(false);
+      });
     }
-  };
+  }, [load, safeSetState]);
 
   const joinPolicy = String(group?.join_policy || "").toUpperCase().trim();
-
   const isClosed = joinPolicy === "CLOSED";
   const isOpen = joinPolicy === "OPEN";
   const isApproval = joinPolicy === "APPROVAL";
-
   const joinLabel = getJoinActionLabel(joinPolicy);
+  const canManageDependants = joined && groupSupportsDependants(group);
+  const navigationLocked = !hasBootstrapped || loading || !routeGroupId;
 
-  const handleJoin = () => {
-    if (!group) return;
+  const handleJoin = useCallback(() => {
+    const groupId = routeGroupId;
+    if (!group || !groupId) return;
 
     if (isClosed) {
       Alert.alert(
@@ -324,7 +382,7 @@ export default function GroupDetailScreen() {
                     : "Your join request has been sent.")
               );
 
-              await load();
+              await load({ silent: true });
             } catch (e: any) {
               Alert.alert("Community space", getApiErrorMessage(e));
             } finally {
@@ -334,11 +392,129 @@ export default function GroupDetailScreen() {
         },
       ]
     );
-  };
+  }, [group, isClosed, isOpen, load, routeGroupId]);
 
-  const headerSubtitle = useMemo(() => {
-    return `${getGroupTypeLabel(group)} • ${getJoinPolicyLabel(group?.join_policy)}`;
-  }, [group]);
+  const handleContribute = useCallback(async () => {
+    if (!routeGroupId || !group || isContributingRef.current) return;
+
+    isContributingRef.current = true;
+
+    try {
+      const groupName = String(group?.name || "Community space").trim();
+      const groupCode = String((group as any)?.payment_code || "")
+        .trim()
+        .toUpperCase();
+
+      console.log("GROUP_DETAIL_CONTRIBUTE_START", {
+        routeGroupId,
+        groupName,
+        rawPaymentCode: (group as any)?.payment_code,
+        groupCode,
+        contributionAmount: (group as any)?.contribution_amount,
+      });
+
+      if (!groupCode) {
+        console.log("GROUP_DETAIL_CONTRIBUTE_BLOCKED", {
+          reason: "Missing group payment code",
+          routeGroupId,
+          group,
+        });
+
+        Alert.alert(
+          "Contribution unavailable",
+          "This community space does not have a payment code yet."
+        );
+        return;
+      }
+
+      const memberships = await listGroupMemberships();
+
+      console.log("GROUP_DETAIL_MEMBERSHIPS_LOADED", {
+        count: Array.isArray(memberships) ? memberships.length : 0,
+        memberships,
+      });
+
+      const membership = Array.isArray(memberships)
+        ? memberships.find((item: any) => {
+            const membershipGroupId =
+              Number(
+                item?.group_id ??
+                  (typeof item?.group === "number" ? item.group : item?.group?.id)
+              ) || 0;
+
+            return membershipGroupId === routeGroupId && !!item?.is_active;
+          })
+        : null;
+
+      console.log("GROUP_DETAIL_MATCHED_MEMBERSHIP", {
+        routeGroupId,
+        membership,
+      });
+
+      const targetUserId =
+        toNumber((membership as any)?.user_id) ||
+        toNumber((membership as any)?.user?.id) ||
+        toNumber((membership as any)?.member_user_id);
+
+      console.log("GROUP_DETAIL_TARGET_USER_RESOLVED", {
+        targetUserId,
+        fromUserId: (membership as any)?.user_id,
+        fromNestedUserId: (membership as any)?.user?.id,
+        fromMemberUserId: (membership as any)?.member_user_id,
+      });
+
+      if (targetUserId <= 0) {
+        console.log("GROUP_DETAIL_CONTRIBUTE_BLOCKED", {
+          reason: "Could not resolve target user id",
+          routeGroupId,
+          membership,
+        });
+
+        Alert.alert(
+          "Contribution unavailable",
+          "We could not prepare your payment right now."
+        );
+        return;
+      }
+
+      const finalReference = `${groupCode}${targetUserId}`;
+      const narration = groupName
+        ? `${groupName} contribution`
+        : "Community contribution";
+
+      const payload = {
+        title: groupName || "Community Contribution",
+        source: "group",
+        purpose: "GROUP_CONTRIBUTION",
+        reference: finalReference,
+        groupCode,
+        groupName,
+        userId: String(targetUserId),
+        narration,
+        amount: toSafeAmount((group as any)?.contribution_amount),
+        groupId: String(routeGroupId),
+        group_id: String(routeGroupId),
+        editableAmount: "true",
+        returnTo: ROUTES.dynamic.groupDetail(routeGroupId),
+      };
+
+      console.log("GROUP_DETAIL_CONTRIBUTE_PAYLOAD", payload);
+
+      router.push({
+        pathname: ROUTES.tabs.paymentsDeposit as any,
+        params: payload,
+      });
+    } catch (error) {
+      console.log("GROUP_DETAIL_CONTRIBUTE_ERROR", error);
+
+      Alert.alert(
+        "Contribution unavailable",
+        "We could not prepare your payment right now."
+      );
+    } finally {
+      isContributingRef.current = false;
+    }
+  }, [group, routeGroupId]);
 
   const badgeInfo = useMemo(() => {
     if (joined) {
@@ -384,14 +560,17 @@ export default function GroupDetailScreen() {
   const reservedShare = mySummary?.my_share?.reserved_share ?? "0";
   const availableShare = mySummary?.my_share?.available_share ?? "0";
 
-  if (!group || !Number.isFinite(groupId)) {
+  const shouldShowNotAvailable =
+    hasBootstrapped && !loading && (!routeGroupId || !group);
+
+  if (shouldShowNotAvailable) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.centerWrap}>
           <EmptyState
             icon="people-outline"
             title="Space not available"
-            subtitle="This community space could not be opened."
+            subtitle={error || "This community space could not be opened."}
             actionLabel="Back to spaces"
             onAction={goBackToGroups}
           />
@@ -422,48 +601,28 @@ export default function GroupDetailScreen() {
         <View style={styles.backgroundGlowTwo} />
 
         <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="people-outline" size={20} color={WHITE} />
-            </View>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={goBackToGroups}
+            style={styles.backPill}
+          >
+            <Ionicons name="arrow-back-outline" size={16} color={WHITE} />
+            <Text style={styles.backPillText}>Back</Text>
+          </TouchableOpacity>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.brandWordmark}>
-                GROUP <Text style={styles.brandWordmarkGreen}>DETAILS</Text>
-              </Text>
-              <Text style={styles.brandSub}>Community space overview</Text>
-            </View>
-          </View>
-
-          <View style={styles.topBarActions}>
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={onRefresh}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="refresh-outline" size={18} color={WHITE} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={goBackToGroups}
-              style={styles.iconBtn}
-            >
-              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={onRefresh}
+            style={styles.iconBtn}
+            disabled={!routeGroupId}
+          >
+            <Ionicons name="refresh-outline" size={18} color={WHITE} />
+          </TouchableOpacity>
         </View>
-
-        {!hasBootstrapped || loading ? (
-          <View style={styles.inlineLoader}>
-            <Ionicons name="sync-outline" size={18} color="#8CF0C7" />
-          </View>
-        ) : null}
 
         <View style={styles.hero}>
           <View style={styles.heroGlowPrimary} />
           <View style={styles.heroGlowAccent} />
-          <View style={styles.heroGlowThird} />
 
           <View style={styles.heroTopRow}>
             <View style={styles.heroIconWrap}>
@@ -477,56 +636,41 @@ export default function GroupDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.heroTag}>COMMUNITY SPACE</Text>
-          <Text style={styles.title}>{group.name}</Text>
-          <Text style={styles.sub}>{headerSubtitle}</Text>
+          <Text style={styles.title}>{group?.name || "Community space"}</Text>
+          <Text style={styles.sub}>
+            {group?.member_count ?? 0} members • {getContributionLabel(group)}
+          </Text>
 
-          <View style={styles.heroMetaRow}>
-            <View style={styles.heroMetaPill}>
-              <Ionicons name="people-outline" size={14} color={WHITE} />
-              <Text style={styles.heroMetaText}>
-                {group.member_count ?? "—"} member
-                {Number(group.member_count || 0) === 1 ? "" : "s"}
-              </Text>
-            </View>
-
-            <View style={styles.heroMetaPill}>
-              <Ionicons name="wallet-outline" size={14} color={WHITE} />
-              <Text style={styles.heroMetaText}>
-                {getContributionLabel(group)}
-              </Text>
-            </View>
+          <View style={styles.heroTypeRow}>
+            <Text style={styles.heroTypeText}>{getGroupTypeLabel(group)}</Text>
+            <Text style={styles.heroTypeDot}>•</Text>
+            <Text style={styles.heroTypeText}>
+              {getJoinPolicyLabel(group?.join_policy)}
+            </Text>
           </View>
+
+          {!!group?.description ? (
+            <Text style={styles.heroDescription}>{group.description}</Text>
+          ) : null}
         </View>
 
-        {!joined && !pending ? (
+        {error && group ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>{error}</Text>
+          </View>
+        ) : null}
+
+        {!joined && !pending && group ? (
           <View style={styles.joinCard}>
-            <View style={styles.joinCardTop}>
-              <View style={styles.joinIconWrap}>
-                <Ionicons
-                  name={isOpen ? "person-add-outline" : "git-pull-request-outline"}
-                  size={18}
-                  color="#0C6A80"
-                />
-              </View>
+            <Text style={styles.joinCardTitle}>
+              {isOpen ? "Join this space" : "Request to join"}
+            </Text>
 
-              <View style={{ flex: 1 }}>
-                <Text style={styles.joinCardTitle}>
-                  {isOpen ? "Join this community space" : "Request to join"}
-                </Text>
-                <Text style={styles.joinCardText}>
-                  {isOpen
-                    ? "Become part of this shared space and start taking part."
-                    : "Send a request and wait for review before joining."}
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ marginTop: SPACING.md }}>
+            <View style={{ marginTop: SPACING.sm }}>
               <GlassButton
                 title={joining ? "Please wait..." : joinLabel}
                 onPress={handleJoin}
-                disabled={joining || isClosed}
+                disabled={joining || isClosed || navigationLocked}
                 primary
               />
             </View>
@@ -534,35 +678,29 @@ export default function GroupDetailScreen() {
         ) : null}
 
         {pending ? (
-          <InfoCard
-            title="Request sent"
-            text="Your request is waiting for review. You will be able to take part once it is approved."
-            icon="time-outline"
-          />
+          <View style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Request sent</Text>
+          </View>
         ) : null}
 
-        {joined ? (
+        {joined && group ? (
           <>
-            <InfoCard
-              title="You are part of this space"
-              text="You can contribute and follow your activity in this community space."
-              icon="checkmark-circle-outline"
-              success
-              action={
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>You are active here</Text>
+              <View style={{ marginTop: SPACING.md }}>
                 <GlassButton
                   title="Contribute"
-                  onPress={() =>
-                    router.push(ROUTES.dynamic.groupContribute(groupId) as any)
-                  }
+                  onPress={handleContribute}
+                  disabled={navigationLocked}
                   primary
                   leftIcon={
                     <Ionicons name="cash-outline" size={18} color="#0C6A80" />
                   }
                 />
-              }
-            />
+              </View>
+            </View>
 
-            <SectionTitle title="My balance in this space" />
+            <SectionTitle title="My balance" />
             <View style={styles.summaryGrid}>
               <SummaryTile
                 label="Total contributed"
@@ -575,107 +713,80 @@ export default function GroupDetailScreen() {
                 icon="lock-closed-outline"
               />
               <SummaryTile
-                label="Available balance"
+                label="Available"
                 value={formatKes(availableShare)}
                 icon="card-outline"
               />
             </View>
+
+            <ActionLinkCard
+              title="Group activity"
+              buttonLabel="View activity"
+              icon="time-outline"
+              disabled={navigationLocked}
+              onPress={() => {
+                if (!routeGroupId) return;
+
+                router.push({
+                  pathname: "/(tabs)/groups/history" as any,
+                  params: {
+                    id: String(routeGroupId),
+                    groupId: String(routeGroupId),
+                    group_id: String(routeGroupId),
+                    title: String(group?.name || "Community space"),
+                    group_name: String(group?.name || "Community space"),
+                  },
+                });
+              }}
+            />
+
+            <ActionLinkCard
+              title="Group members"
+              buttonLabel="View members"
+              icon="people-outline"
+              disabled={navigationLocked}
+              onPress={() => {
+                if (!routeGroupId) return;
+                router.push({
+                  pathname: "/(tabs)/groups/memberships" as any,
+                  params: {
+                    groupId: String(routeGroupId),
+                    group_id: String(routeGroupId),
+                    group_name: group.name,
+                  },
+                });
+              }}
+            />
+
+            {canManageDependants ? (
+              <ActionLinkCard
+                title="Dependants"
+                buttonLabel="Manage dependants"
+                icon="people-circle-outline"
+                disabled={navigationLocked}
+                onPress={() => {
+                  if (!routeGroupId) return;
+                  router.push({
+                    pathname: "/(tabs)/groups/dependants" as any,
+                    params: {
+                      groupId: String(routeGroupId),
+                      group_id: String(routeGroupId),
+                      group_name: group.name,
+                    },
+                  });
+                }}
+              />
+            ) : null}
           </>
         ) : null}
 
-        <SectionTitle title="Activity" />
-        {rows.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <EmptyState
-              icon="time-outline"
-              title="No activity yet"
-              subtitle={
-                joined
-                  ? "Your contributions will appear here."
-                  : "Activity will appear here once you become part of this space."
-              }
-            />
-          </View>
-        ) : (
-          rows.map((r, i) => (
-            <View key={i} style={styles.row}>
-              <View style={styles.rowLeft}>
-                <View style={styles.rowIconWrap}>
-                  <Ionicons name="cash-outline" size={16} color="#0A6E8A" />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.amount}>{formatKes(r.amount)}</Text>
-                  <Text style={styles.meta}>{fmtDate(r.created_at)}</Text>
-                  {!!r.reference ? (
-                    <Text style={styles.metaSmall}>Ref: {r.reference}</Text>
-                  ) : null}
-                </View>
-              </View>
-            </View>
-          ))
-        )}
-
-        <SectionTitle title="About this space" />
-        <View style={styles.about}>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Type</Text>
-            <Text style={styles.aboutValue}>{getGroupTypeLabel(group)}</Text>
-          </View>
-
-          <View style={styles.aboutDivider} />
-
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Join policy</Text>
-            <Text style={styles.aboutValue}>
-              {getJoinPolicyLabel(group.join_policy)}
-            </Text>
-          </View>
-
-          <View style={styles.aboutDivider} />
-
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Members</Text>
-            <Text style={styles.aboutValue}>{group.member_count ?? "—"}</Text>
-          </View>
-
-          <View style={styles.aboutDivider} />
-
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Contribution</Text>
-            <Text style={styles.aboutValue}>{getContributionLabel(group)}</Text>
-          </View>
-
-          <View style={styles.aboutDivider} />
-
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Created</Text>
-            <Text style={styles.aboutValue}>{fmtDate(group.created_at)}</Text>
-          </View>
-
-          {group.description ? (
-            <>
-              <View style={styles.aboutDivider} />
-              <View>
-                <Text style={styles.aboutLabel}>Description</Text>
-                <Text style={styles.descriptionText}>{group.description}</Text>
-              </View>
-            </>
-          ) : null}
-        </View>
-
         <View style={styles.bottomActions}>
-          <GlassButton
-            title="Back to Groups"
-            onPress={goBackToGroups}
-          />
+          <GlassButton title="Back to Groups" onPress={goBackToGroups} />
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-/* ----------------------------------------------- */
 
 const styles = StyleSheet.create({
   safe: {
@@ -694,24 +805,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
 
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: PAGE_BG,
-  },
-
   centerWrap: {
     flex: 1,
     justifyContent: "center",
     padding: SPACING.lg,
     backgroundColor: PAGE_BG,
-  },
-
-  inlineLoader: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: SPACING.md,
   },
 
   backgroundBlobTop: {
@@ -768,51 +866,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: SPACING.sm,
     marginBottom: SPACING.md,
     paddingTop: SPACING.xs,
   },
 
-  brandRow: {
+  backPill: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-
-  logoBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    gap: 8,
     backgroundColor: CARD_BG_STRONG,
     borderWidth: 1,
     borderColor: CARD_BORDER,
   },
 
-  brandWordmark: {
+  backPillText: {
     color: WHITE,
-    fontSize: 16,
+    fontSize: 13,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
-  },
-
-  brandWordmarkGreen: {
-    color: HERO_GREEN,
-  },
-
-  brandSub: {
-    color: SOFT_TEXT,
-    fontSize: 11,
-    marginTop: 2,
-    fontFamily: FONT.regular,
-  },
-
-  topBarActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
   },
 
   iconBtn: {
@@ -857,16 +930,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(236,251,255,0.08)",
   },
 
-  heroGlowThird: {
-    position: "absolute",
-    right: 30,
-    bottom: -16,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "rgba(12,192,183,0.08)",
-  },
-
   heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -896,18 +959,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  heroTag: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    color: "#DFFFE8",
-    fontSize: 11,
-    fontFamily: FONT.bold,
-    marginBottom: 12,
-  },
-
   title: {
     color: WHITE,
     fontSize: 24,
@@ -917,34 +968,37 @@ const styles = StyleSheet.create({
   sub: {
     color: SOFT_TEXT_2,
     marginTop: 8,
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    fontFamily: FONT.medium,
   },
 
-  heroMetaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-
-  heroMetaPill: {
+  heroTypeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: CARD_BG_STRONG,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    flexWrap: "wrap",
+    marginTop: 10,
   },
 
-  heroMetaText: {
-    color: WHITE,
-    fontSize: 11,
+  heroTypeText: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontFamily: FONT.medium,
+  },
+
+  heroTypeDot: {
+    color: "rgba(255,255,255,0.55)",
+    marginHorizontal: 8,
+    fontSize: 12,
     fontFamily: FONT.bold,
+  },
+
+  heroDescription: {
+    marginTop: 14,
+    color: WHITE,
+    fontSize: 15,
+    lineHeight: 24,
+    fontFamily: FONT.medium,
   },
 
   sectionTitle: {
@@ -1005,33 +1059,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  joinCardTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  joinIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.88)",
-    marginRight: 12,
-  },
-
   joinCardTitle: {
     color: WHITE,
     fontSize: 16,
     fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  joinCardText: {
-    color: SOFT_TEXT_2,
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
   },
 
   infoCard: {
@@ -1043,41 +1074,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  infoTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  infoIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-    backgroundColor: "rgba(255,255,255,0.82)",
-  },
-
-  infoIconWrapSuccess: {
-    backgroundColor: "rgba(255,255,255,0.90)",
-  },
-
-  infoIconWrapWarning: {
-    backgroundColor: "rgba(255,255,255,0.82)",
-  },
-
   infoTitle: {
     color: WHITE,
     fontSize: 15,
     fontFamily: FONT.bold,
-    marginBottom: 4,
-  },
-
-  infoText: {
-    color: SOFT_TEXT_2,
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
   },
 
   summaryGrid: {
@@ -1120,7 +1120,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT.bold,
   },
 
-  emptyCard: {
+  linkCard: {
     backgroundColor: CARD_BG,
     borderRadius: 24,
     padding: SPACING.lg,
@@ -1129,92 +1129,31 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  row: {
-    backgroundColor: CARD_BG,
-    borderRadius: 22,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    marginBottom: 10,
+  linkCardDisabled: {
+    opacity: 0.75,
   },
 
-  rowLeft: {
+  linkCardLeft: {
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: SPACING.md,
   },
 
-  rowIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  linkIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.90)",
+    backgroundColor: "rgba(255,255,255,0.88)",
     marginRight: 12,
   },
 
-  amount: {
+  linkCardTitle: {
     color: WHITE,
     fontSize: 15,
     fontFamily: FONT.bold,
-  },
-
-  meta: {
-    marginTop: 4,
-    color: SOFT_TEXT,
-    fontSize: 12,
-    fontFamily: FONT.regular,
-  },
-
-  metaSmall: {
-    marginTop: 3,
-    color: "rgba(255,255,255,0.66)",
-    fontSize: 11,
-    fontFamily: FONT.regular,
-  },
-
-  about: {
-    backgroundColor: CARD_BG,
-    borderRadius: 24,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-  },
-
-  aboutRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  aboutLabel: {
-    color: SOFT_TEXT,
-    fontSize: 13,
-    fontFamily: FONT.medium,
     flex: 1,
-    marginRight: 12,
-  },
-
-  aboutValue: {
-    color: WHITE,
-    fontSize: 13,
-    fontFamily: FONT.bold,
-    flex: 1,
-    textAlign: "right",
-  },
-
-  aboutDivider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    marginVertical: 14,
-  },
-
-  descriptionText: {
-    marginTop: 8,
-    color: SOFT_TEXT_2,
-    fontSize: 13,
-    lineHeight: 21,
-    fontFamily: FONT.regular,
   },
 
   bottomActions: {

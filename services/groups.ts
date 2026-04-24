@@ -30,6 +30,7 @@ export type GroupJoinPolicy = "OPEN" | "APPROVAL" | "CLOSED" | string;
 export type Group = {
   id: number;
   name: string;
+  payment_code?: string;
   group_type?: GroupType;
   group_type_display?: string;
   description?: string;
@@ -421,7 +422,7 @@ export async function getMyGroupSavingsSummary(): Promise<MyGroupSavingsRow[]> {
 
 /**
  * Keep this for manual/admin/testing use.
- * Real money collection should go through centralized payments.
+ * Real money payments should go through centralized payments.
  */
 export async function postGroupContribution(
   payload: PostGroupContributionPayload
@@ -450,13 +451,99 @@ export async function getAllGroupContributions(
 }
 
 /* =========================================================
+   Group Dependants
+========================================================= */
+
+export type GroupDependant = {
+  id: number;
+  membership: number;
+  group_id?: number;
+  group_name?: string;
+  user_id?: number;
+  user_name?: string;
+  name: string;
+  relationship: "SPOUSE" | "CHILD" | "SIBLING" | "PARENT" | "OTHER" | string;
+  relationship_display?: string;
+  date_of_birth?: string | null;
+  note?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/**
+ * List dependants (optionally per group)
+ */
+export async function listGroupDependants(params?: {
+  group_id?: number;
+}): Promise<GroupDependant[]> {
+  const res = await api.get(ENDPOINTS.groups.dependants, {
+    params,
+  });
+  return asArray<GroupDependant>(res.data);
+}
+
+/**
+ * Add dependant
+ */
+export async function addGroupDependant(payload: {
+  membership: number;
+  name: string;
+  relationship: string;
+  date_of_birth?: string;
+  note?: string;
+}): Promise<GroupDependant> {
+  const res = await api.post(ENDPOINTS.groups.dependants, payload);
+  return asObject<GroupDependant>(res.data, {} as GroupDependant);
+}
+
+/**
+ * Update dependant
+ */
+export async function updateGroupDependant(
+  dependantId: number,
+  payload: Partial<{
+    name: string;
+    relationship: string;
+    date_of_birth: string;
+    note: string;
+  }>
+): Promise<GroupDependant> {
+  const res = await api.patch(
+    `${ENDPOINTS.groups.dependants}${dependantId}/`,
+    payload
+  );
+  return asObject<GroupDependant>(res.data, {} as GroupDependant);
+}
+
+/**
+ * Remove dependant (soft delete)
+ */
+export async function removeGroupDependant(
+  dependantId: number
+): Promise<{ message: string }> {
+  const res = await api.delete(
+    `${ENDPOINTS.groups.dependants}${dependantId}/`
+  );
+  return asObject(res.data, { message: "Dependant removed." });
+}
+
+/* =========================================================
    Friendly Error Message
 ========================================================= */
 
 export function getApiErrorMessage(error: any): string {
   const data = error?.response?.data;
 
-  if (!data) return "Something went wrong.";
+  if (!error?.response) {
+    if (error?.code === "ECONNABORTED") {
+      return "Request timed out. Please try again.";
+    }
+    return (
+      error?.message || "Network error. Check your connection and try again."
+    );
+  }
+
   if (typeof data === "string") return data;
   if (typeof data?.detail === "string") return data.detail;
   if (typeof data?.message === "string") return data.message;
@@ -473,6 +560,14 @@ export function getApiErrorMessage(error: any): string {
       return `${firstKey}: ${firstValue}`;
     }
   }
+
+  const status = error?.response?.status;
+  if (status === 400) return "Invalid request. Please check your input.";
+  if (status === 401) return "Session expired. Please login again.";
+  if (status === 403) return "Access denied.";
+  if (status === 404) return "Endpoint not found.";
+  if (status === 405) return "Method not allowed.";
+  if (status && status >= 500) return "Server error. Please try again later.";
 
   return "Request failed.";
 }

@@ -33,6 +33,20 @@ import {
 
 type ProfileUser = Partial<MeResponse> & Partial<SessionUser>;
 
+function isActiveMember(user: ProfileUser | null): boolean {
+  if (!user) return false;
+
+  const role = String(user?.role || "")
+    .trim()
+    .toLowerCase();
+
+  const status = String(user?.status || "")
+    .trim()
+    .toLowerCase();
+
+  return role === "member" && status === "active";
+}
+
 export default function ProfileHome() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<ProfileUser | null>(null);
@@ -120,11 +134,26 @@ export default function ProfileHome() {
 
   const isAdmin = useMemo(() => isAdminUser(user), [user]);
   const approved = useMemo(() => isApprovedUser(user), [user]);
+  const activeMember = useMemo(() => isActiveMember(user), [user]);
 
-  const loanAllowed = useMemo(() => canRequestLoan(user), [user]);
-  const groupAllowed = useMemo(() => canJoinGroup(user), [user]);
-  const merryAllowed = useMemo(() => canJoinMerry(user), [user]);
-  const withdrawAllowed = useMemo(() => canWithdraw(user), [user]);
+  const loanAllowed = useMemo(() => {
+    if (activeMember) return true;
+    return canRequestLoan(user);
+  }, [activeMember, user]);
+
+  const groupAllowed = useMemo(() => {
+    if (activeMember) return true;
+    return canJoinGroup(user);
+  }, [activeMember, user]);
+
+  const merryAllowed = useMemo(() => {
+    return canJoinMerry(user);
+  }, [user]);
+
+  const withdrawAllowed = useMemo(() => {
+    if (activeMember) return true;
+    return canWithdraw(user);
+  }, [activeMember, user]);
 
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [

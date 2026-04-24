@@ -32,15 +32,19 @@ type LoanUser = Partial<MeResponse> & Partial<SessionUser>;
 const UI = {
   page: "#062C49",
   text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.90)",
-  textMuted: "rgba(255,255,255,0.72)",
-  supportCard: "rgba(52, 198, 191, 0.18)",
-  supportBorder: "rgba(195, 255, 250, 0.14)",
+  textSoft: "rgba(255,255,255,0.88)",
+  textMuted: "rgba(255,255,255,0.70)",
+  supportCard: "rgba(255,255,255,0.07)",
+  supportBorder: "rgba(255,255,255,0.10)",
   glass: "rgba(255,255,255,0.08)",
   glassSoft: "rgba(255,255,255,0.06)",
   border: "rgba(255,255,255,0.10)",
   whiteButton: "#FFFFFF",
-  whiteButtonText: "#197D71",
+  whiteButtonText: "#0C6A80",
+  greenButton: "#197D71",
+  greenButtonText: "#FFFFFF",
+  iconChipBg: "rgba(236,255,252,0.76)",
+  iconChipColor: "#148C84",
 };
 
 const ACTIVE_SUPPORT_STATUSES = [
@@ -205,13 +209,13 @@ function openLoanDeposit(loan?: Loan | null, amount?: number) {
   router.push({
     pathname: "/(tabs)/payments/deposit" as any,
     params: {
-      title: "Support Payment",
+      title: "Community Support Payment",
       source: "loan",
       purpose: "LOAN_REPAYMENT",
       loanId: String(loanId),
       borrowerUserId: String(borrowerUserId),
       reference: `LOAN${borrowerUserId}`,
-      narration: `Loan repayment for borrower #${borrowerUserId} (Loan #${loanId})`,
+      narration: `Community support repayment for member #${borrowerUserId} (Support #${loanId})`,
       amount: payAmount > 0 ? String(payAmount) : "",
       editableAmount: "true",
       returnTo: ROUTES.dynamic.loanDetail(loanId),
@@ -219,7 +223,22 @@ function openLoanDeposit(loan?: Loan | null, amount?: number) {
   });
 }
 
-function QuickAction({
+function MetricChip({
+  icon,
+  label,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+}) {
+  return (
+    <View style={styles.metricChip}>
+      <Ionicons name={icon} size={14} color="#FFFFFF" />
+      <Text style={styles.metricChipText}>{label}</Text>
+    </View>
+  );
+}
+
+function ActionCard({
   icon,
   label,
   onPress,
@@ -229,11 +248,11 @@ function QuickAction({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.quickAction}>
-      <View style={styles.quickIconWrap}>
-        <Ionicons name={icon} size={18} color={UI.text} />
+    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.actionCard}>
+      <View style={styles.actionIconWrap}>
+        <Ionicons name={icon} size={20} color={UI.iconChipColor} />
       </View>
-      <Text style={styles.quickLabel}>{label}</Text>
+      <Text style={styles.actionLabel}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -364,7 +383,21 @@ export default function LoansIndexScreen() {
   if (!hasBootstrapped && loading) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <View style={styles.page} />
+        <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+          <View style={styles.backgroundBlobTop} />
+          <View style={styles.backgroundBlobMiddle} />
+          <View style={styles.backgroundBlobBottom} />
+          <View style={styles.backgroundGlowOne} />
+          <View style={styles.backgroundGlowTwo} />
+
+          <View style={styles.skeletonHero} />
+          <View style={styles.skeletonCard} />
+          <View style={styles.skeletonRow}>
+            <View style={styles.skeletonSmallCard} />
+            <View style={styles.skeletonSmallCard} />
+            <View style={styles.skeletonSmallCard} />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -399,18 +432,43 @@ export default function LoansIndexScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.blobTopRight} />
-        <View style={styles.blobMidLeft} />
-        <View style={styles.blobBottomRight} />
-        <View style={styles.glowOne} />
-        <View style={styles.glowTwo} />
+        <View style={styles.backgroundBlobTop} />
+        <View style={styles.backgroundBlobMiddle} />
+        <View style={styles.backgroundBlobBottom} />
+        <View style={styles.backgroundGlowOne} />
+        <View style={styles.backgroundGlowTwo} />
 
-        <Text style={styles.pageTitle}>SUPPORT</Text>
-        <Text style={styles.pageSub}>
-          {hasSupport
-            ? "Open your support or make a payment."
-            : "Ask for support when you need it."}
-        </Text>
+        <View style={styles.heroCard}>
+          <View style={styles.heroOrbOne} />
+          <View style={styles.heroOrbTwo} />
+          <View style={styles.heroOrbThree} />
+
+          <Text style={styles.heroTag}>COMMUNITY SUPPORT</Text>
+          <Text style={styles.heroTitle}>
+            {hasSupport ? "Stay on track with your support" : "Community support when needed"}
+          </Text>
+          <Text style={styles.heroCaption}>
+            {hasSupport
+              ? "See your balance, open your support details, and make your next contribution with ease."
+              : "Start a support request and continue the journey with your community."}
+          </Text>
+
+          {hasSupport ? (
+            <View style={styles.heroMetaRow}>
+              <View style={styles.heroPill}>
+                <Ionicons name="ellipse" size={8} color="#DFFFE8" />
+                <Text style={styles.heroPillText}>
+                  {getStatusLabel(primaryLoan?.status)}
+                </Text>
+              </View>
+
+              <View style={styles.heroPill}>
+                <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
+                <Text style={styles.heroPillText}>{fmtKES(balanceAmount)}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
 
         {error ? (
           <TouchableOpacity
@@ -418,7 +476,9 @@ export default function LoansIndexScreen() {
             onPress={onRefresh}
             style={styles.errorCard}
           >
-            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+            <View style={styles.errorIconWrap}>
+              <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
+            </View>
             <Text style={styles.errorText}>{error}</Text>
             <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
           </TouchableOpacity>
@@ -427,7 +487,18 @@ export default function LoansIndexScreen() {
         {hasSupport ? (
           <>
             <View style={styles.mainCard}>
-              <View style={styles.topRow}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderLeft}>
+                  <View style={styles.cardIconWrap}>
+                    <Ionicons name="heart-outline" size={22} color={UI.iconChipColor} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>My community support</Text>
+                    <Text style={styles.cardSubtitle}>Your remaining balance</Text>
+                  </View>
+                </View>
+
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
                     {getStatusLabel(primaryLoan?.status).toUpperCase()}
@@ -435,84 +506,114 @@ export default function LoansIndexScreen() {
                 </View>
               </View>
 
-              <Text style={styles.mainTitle}>My support</Text>
               <Text style={styles.mainAmount}>{fmtKES(balanceAmount)}</Text>
-              <Text style={styles.mainSub}>Amount left</Text>
 
-              <View style={styles.metaRow}>
-                <View style={styles.metaChip}>
-                  <Ionicons name="cash-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.metaChipText}>
-                    Received: {fmtKES(primaryLoan?.principal)}
-                  </Text>
-                </View>
-
+              <View style={styles.metricsRow}>
+                <MetricChip
+                  icon="cash-outline"
+                  label={`Support received ${fmtKES(primaryLoan?.principal)}`}
+                />
                 {canPay && currentStepAmount > 0 ? (
-                  <View style={styles.metaChip}>
-                    <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
-                    <Text style={styles.metaChipText}>
-                      This week: {fmtKES(currentStepAmount)}
-                    </Text>
-                  </View>
+                  <MetricChip
+                    icon="calendar-outline"
+                    label={`This round ${fmtKES(currentStepAmount)}`}
+                  />
                 ) : null}
               </View>
 
-              <View style={styles.primaryActionWrap}>
+              <View style={styles.primaryButtonsRow}>
                 <TouchableOpacity
                   activeOpacity={0.92}
                   onPress={() => openLoanDetail(primaryLoan)}
-                  style={styles.primaryAction}
+                  style={[styles.primaryButton, styles.primaryButtonLight]}
                 >
-                  <Text style={styles.primaryActionText}>Open Support Details</Text>
+                  <Ionicons name="eye-outline" size={18} color={UI.whiteButtonText} />
+                  <Text style={[styles.primaryButtonText, styles.primaryButtonTextLight]}>
+                    View Support Details
+                  </Text>
                 </TouchableOpacity>
+
+                {canPay ? (
+                  <TouchableOpacity
+                    activeOpacity={0.92}
+                    onPress={() => openLoanDeposit(primaryLoan)}
+                    style={[styles.primaryButton, styles.primaryButtonGreen]}
+                  >
+                    <Ionicons name="card-outline" size={18} color={UI.greenButtonText} />
+                    <Text style={[styles.primaryButtonText, styles.primaryButtonTextGreen]}>
+                      Contribute
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
 
             {canPay ? (
-              <View style={styles.quickGrid}>
-                <QuickAction
-                  icon="flash-outline"
-                  label="Pay Full Support"
-                  onPress={() => openLoanDeposit(primaryLoan, balanceAmount)}
-                />
-                <QuickAction
-                  icon="calendar-outline"
-                  label="Pay This Week"
-                  onPress={() =>
-                    openLoanDeposit(
-                      primaryLoan,
-                      currentStepAmount > 0 ? currentStepAmount : undefined
-                    )
-                  }
-                />
-                <QuickAction
-                  icon="create-outline"
-                  label="Pay My Amount"
-                  onPress={() => openLoanDeposit(primaryLoan)}
-                />
-              </View>
+              <>
+                <Text style={styles.sectionTitle}>Choose how to contribute</Text>
+
+                <View style={styles.actionsGrid}>
+                  <ActionCard
+                    icon="flash-outline"
+                    label="Clear Full Balance"
+                    onPress={() => openLoanDeposit(primaryLoan, balanceAmount)}
+                  />
+                  <ActionCard
+                    icon="calendar-outline"
+                    label="Contribute This Round"
+                    onPress={() =>
+                      openLoanDeposit(
+                        primaryLoan,
+                        currentStepAmount > 0 ? currentStepAmount : undefined
+                      )
+                    }
+                  />
+                  <ActionCard
+                    icon="create-outline"
+                    label="Choose My Amount"
+                    onPress={() => openLoanDeposit(primaryLoan)}
+                  />
+                </View>
+              </>
             ) : null}
           </>
         ) : (
           <View style={styles.mainCard}>
-            <Text style={styles.mainTitle}>No active support</Text>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <View style={styles.cardIconWrap}>
+                  <Ionicons name="heart-outline" size={22} color={UI.iconChipColor} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>No active community support</Text>
+                  <Text style={styles.cardSubtitle}>
+                    You do not have an open support record at the moment
+                  </Text>
+                </View>
+              </View>
+            </View>
+
             <Text style={styles.emptySub}>
-              Start a support request and the request screen will guide the rest.
+              Start a support request and continue with the next simple step.
             </Text>
 
-            <View style={styles.primaryActionWrap}>
+            <View style={styles.singleButtonWrap}>
               <TouchableOpacity
                 activeOpacity={0.92}
                 onPress={() => router.push(ROUTES.tabs.loansRequest as any)}
-                style={styles.primaryAction}
+                style={[styles.primaryButton, styles.primaryButtonGreen, styles.fullWidthButton]}
               >
-                <Text style={styles.primaryActionText}>Ask for Support</Text>
+                <Ionicons name="add-circle-outline" size={18} color={UI.greenButtonText} />
+                <Text style={[styles.primaryButtonText, styles.primaryButtonTextGreen]}>
+                  Request Community Support
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        <View style={{ height: 22 }} />
+        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -539,9 +640,9 @@ const styles = StyleSheet.create({
     backgroundColor: UI.page,
   },
 
-  blobTopRight: {
+  backgroundBlobTop: {
     position: "absolute",
-    top: -110,
+    top: -120,
     right: -55,
     width: 240,
     height: 240,
@@ -549,9 +650,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
   },
 
-  blobMidLeft: {
+  backgroundBlobMiddle: {
     position: "absolute",
-    top: 260,
+    top: 250,
     left: -70,
     width: 210,
     height: 210,
@@ -559,9 +660,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.035)",
   },
 
-  blobBottomRight: {
+  backgroundBlobBottom: {
     position: "absolute",
-    bottom: -110,
+    bottom: -120,
     right: -35,
     width: 220,
     height: 220,
@@ -569,17 +670,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
   },
 
-  glowOne: {
+  backgroundGlowOne: {
     position: "absolute",
-    top: 130,
-    right: 15,
+    top: 120,
+    right: 10,
     width: 170,
     height: 170,
     borderRadius: 85,
     backgroundColor: "rgba(12,192,183,0.08)",
   },
 
-  glowTwo: {
+  backgroundGlowTwo: {
     position: "absolute",
     bottom: 140,
     left: 8,
@@ -589,23 +690,99 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(140,240,199,0.06)",
   },
 
-  pageTitle: {
-    color: UI.text,
-    fontSize: 22,
+  heroCard: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: SPACING.md,
+    backgroundColor: "rgba(52, 198, 191, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(195, 255, 250, 0.12)",
+  },
+
+  heroOrbOne: {
+    position: "absolute",
+    top: -24,
+    right: -12,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+
+  heroOrbTwo: {
+    position: "absolute",
+    bottom: -18,
+    right: 42,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  heroOrbThree: {
+    position: "absolute",
+    top: 42,
+    right: 78,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+
+  heroTag: {
+    color: "#DFFFE8",
+    fontSize: 11,
+    letterSpacing: 0.8,
     fontFamily: FONT.bold,
     marginBottom: 6,
   },
 
-  pageSub: {
-    color: UI.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
+  heroTitle: {
+    color: UI.text,
+    fontSize: 20,
+    lineHeight: 26,
+    fontFamily: FONT.bold,
+    marginBottom: 6,
+  },
+
+  heroCaption: {
+    color: UI.textSoft,
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: FONT.regular,
-    marginBottom: SPACING.lg,
+    marginBottom: 12,
+    maxWidth: "94%",
+  },
+
+  heroMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  heroPill: {
+    minHeight: 30,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+
+  heroPillText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontFamily: FONT.medium,
   },
 
   errorCard: {
-    minHeight: 56,
+    minHeight: 58,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 14,
@@ -616,6 +793,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     marginBottom: SPACING.lg,
+  },
+
+  errorIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   errorText: {
@@ -630,23 +816,58 @@ const styles = StyleSheet.create({
     backgroundColor: UI.supportCard,
     borderColor: UI.supportBorder,
     borderWidth: 1,
-    borderRadius: 26,
-    padding: 20,
+    borderRadius: 22,
+    padding: 18,
   },
 
-  topRow: {
+  cardHeader: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    marginBottom: 12,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 16,
+  },
+
+  cardHeaderLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  cardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: UI.iconChipBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cardTitle: {
+    color: UI.text,
+    fontSize: 19,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
+    marginBottom: 2,
+  },
+
+  cardSubtitle: {
+    color: UI.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: FONT.regular,
   },
 
   badge: {
-    minHeight: 28,
+    minHeight: 30,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     backgroundColor: "rgba(255,255,255,0.14)",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   badgeText: {
@@ -656,45 +877,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
 
-  mainTitle: {
-    color: UI.text,
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: FONT.bold,
-    marginBottom: 8,
-  },
-
   mainAmount: {
     color: UI.text,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 32,
+    lineHeight: 38,
     fontFamily: FONT.bold,
+    marginBottom: 12,
   },
 
-  mainSub: {
-    color: UI.textSoft,
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
-    marginTop: 6,
-  },
-
-  emptySub: {
-    color: UI.textSoft,
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
-    marginTop: 4,
-  },
-
-  metaRow: {
+  metricsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
-    marginTop: SPACING.md,
   },
 
-  metaChip: {
+  metricChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -706,64 +903,141 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  metaChipText: {
+  metricChipText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontFamily: FONT.bold,
   },
 
-  primaryActionWrap: {
-    marginTop: SPACING.lg,
+  primaryButtonsRow: {
+    marginTop: SPACING.md,
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
   },
 
-  primaryAction: {
-    minHeight: 52,
-    borderRadius: 16,
-    backgroundColor: UI.whiteButton,
+  primaryButton: {
+    minHeight: 48,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    gap: 8,
   },
 
-  primaryActionText: {
-    color: UI.whiteButtonText,
+  primaryButtonLight: {
+    backgroundColor: UI.whiteButton,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    flex: 1,
+    minWidth: 160,
+  },
+
+  primaryButtonGreen: {
+    backgroundColor: UI.greenButton,
+    borderWidth: 1,
+    borderColor: UI.greenButton,
+    minWidth: 108,
+  },
+
+  primaryButtonText: {
     fontSize: 15,
     fontFamily: FONT.bold,
   },
 
-  quickGrid: {
+  primaryButtonTextLight: {
+    color: UI.whiteButtonText,
+  },
+
+  primaryButtonTextGreen: {
+    color: UI.greenButtonText,
+  },
+
+  fullWidthButton: {
+    width: "100%",
+  },
+
+  sectionTitle: {
+    color: UI.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontFamily: FONT.bold,
     marginTop: SPACING.md,
+    marginBottom: 10,
+  },
+
+  actionsGrid: {
     flexDirection: "row",
     gap: 10,
   },
 
-  quickAction: {
+  actionCard: {
     flex: 1,
     backgroundColor: UI.glassSoft,
     borderWidth: 1,
     borderColor: UI.border,
-    borderRadius: 18,
-    paddingVertical: 16,
+    borderRadius: 16,
+    paddingVertical: 14,
     paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 100,
   },
 
-  quickIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(255,255,255,0.10)",
+  actionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: UI.iconChipBg,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
 
-  quickLabel: {
+  actionLabel: {
     color: "#FFFFFF",
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: FONT.bold,
     textAlign: "center",
+  },
+
+  emptySub: {
+    color: UI.textSoft,
+    fontSize: 14,
+    lineHeight: 21,
+    fontFamily: FONT.regular,
+    marginTop: 4,
+  },
+
+  singleButtonWrap: {
+    marginTop: SPACING.lg,
+  },
+
+  skeletonHero: {
+    height: 140,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginBottom: SPACING.md,
+  },
+
+  skeletonCard: {
+    height: 200,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    marginBottom: SPACING.md,
+  },
+
+  skeletonRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  skeletonSmallCard: {
+    flex: 1,
+    height: 100,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
 });

@@ -195,6 +195,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="groups/history" options={{ href: null }} />
       <Tabs.Screen name="groups/join-requests" options={{ href: null }} />
       <Tabs.Screen name="groups/memberships" options={{ href: null }} />
+      <Tabs.Screen name="groups/dependants" options={{ href: null }} />
       <Tabs.Screen
         name="groups/admin-join-requests"
         options={{ href: null }}

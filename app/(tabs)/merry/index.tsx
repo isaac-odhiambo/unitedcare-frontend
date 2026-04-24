@@ -61,9 +61,9 @@ function hasAmount(value?: string | number | null) {
 function getFrequencyLabel(item: AvailableMerryRow) {
   const freq = String(item.payout_frequency || "").toUpperCase();
 
-  if (freq === "DAILY") return "Daily payout";
-  if (freq === "MONTHLY") return "Monthly payout";
-  return "Weekly payout";
+  if (freq === "DAILY") return "Daily";
+  if (freq === "MONTHLY") return "Monthly";
+  return "Weekly";
 }
 
 function getJoinStatusText(item: AvailableMerryRow) {
@@ -145,13 +145,14 @@ function MyMerryCard({
   );
 
   const showOverdueState = overdueTotal > 0 && !fullyCoveredByWallet;
+  const nextAmount = moneyNumber(item.next_total);
 
   const badgeLabel = fullyCoveredByWallet
-    ? "Use wallet"
+    ? "Covered"
     : showOverdueState
-      ? "Overdue"
+      ? "Pending"
       : currentTotal > 0
-        ? "Due now"
+        ? "Pay now"
         : "Up to date";
 
   const badgeStyle = fullyCoveredByWallet
@@ -170,31 +171,35 @@ function MyMerryCard({
         ? styles.badgeTextAccent
         : styles.badgeTextSuccess;
 
-  const primaryTitle = "Details";
+  const primaryTitle = remainingAfterWallet > 0 ? "Pay now" : "View details";
 
   const onPrimaryPress = () => {
+    if (remainingAfterWallet > 0) {
+      onContribute(item);
+      return;
+    }
     onOpenDetail(item);
   };
 
-  const overdueBreakdownText =
-    overdueRows.length > 0
-      ? overdueRows
-          .slice(0, 2)
-          .map((row) => {
-            const dueDate = (row as any)?.due_date;
-            const turnNo = (row as any)?.turn_no;
-            const outstanding = (row as any)?.outstanding;
+  let panelLabel = "";
+  let panelValue = "";
 
-            const label = dueDate
-              ? formatShortDueDate(dueDate)
-              : turnNo
-                ? `Turn ${turnNo}`
-                : "Due";
-
-            return `${label}: ${fmtKES(outstanding)}`;
-          })
-          .join(" • ")
-      : "";
+  if (remainingAfterWallet > 0) {
+    panelLabel = "You need to contribute";
+    panelValue = fmtKES(remainingAfterWallet);
+  } else if (fullyCoveredByWallet) {
+    panelLabel = "You're covered";
+    panelValue = "Wallet will handle it";
+  } else if (item.next_due_date) {
+    panelLabel = "Next contribution";
+    panelValue = formatShortDueDate(item.next_due_date);
+  } else if (nextAmount > 0) {
+    panelLabel = "Next contribution";
+    panelValue = fmtKES(item.next_total);
+  } else {
+    panelLabel = "You're all good";
+    panelValue = "No action needed";
+  }
 
   return (
     <Card style={styles.merryCard} variant="default">
@@ -222,72 +227,56 @@ function MyMerryCard({
       </View>
 
       <View style={styles.amountPanel}>
-        <Text style={styles.amountPanelLabel}>
-          {remainingAfterWallet > 0 ? "Pay now" : "Amount left"}
-        </Text>
+        <Text style={styles.amountPanelLabel}>{panelLabel}</Text>
         <Text
           style={styles.amountPanelValue}
           numberOfLines={1}
           adjustsFontSizeToFit
         >
-          {fmtKES(remainingAfterWallet)}
+          {panelValue}
         </Text>
       </View>
 
-      <View style={styles.walletRow}>
-        <Ionicons name="wallet-outline" size={14} color={ACCENT_TEXT} />
-        <Text style={styles.walletText}>
-          Wallet balance: {fmtKES(item.wallet_balance)}
-        </Text>
-      </View>
-
-      {fullyCoveredByWallet ? (
-        <Text style={[styles.helperTextStrong, { color: SUCCESS_TEXT }]}>
-          Wallet can pay this.
-        </Text>
+      {walletBalance > 0 ? (
+        <View style={styles.walletRow}>
+          <Ionicons name="wallet-outline" size={14} color={ACCENT_TEXT} />
+          <Text style={styles.walletText}>
+            Wallet balance: {fmtKES(item.wallet_balance)}
+          </Text>
+        </View>
       ) : null}
 
-      {partiallyCoveredByWallet ? (
+      {remainingAfterWallet > 0 ? (
         <Text style={styles.helperTextStrong}>
-          Wallet: {fmtKES(walletBalance)} • Left: {fmtKES(remainingAfterWallet)}
+          You have something pending to contribute.
         </Text>
       ) : null}
 
       {showOverdueState ? (
-        <Text style={styles.helperTextStrong}>
+        <Text style={styles.helperText}>
           {overdueCount} missed contribution
           {overdueCount === 1 ? "" : "s"}
           {maxDaysOverdue > 0
-            ? ` • ${maxDaysOverdue} day${maxDaysOverdue === 1 ? "" : "s"} overdue`
+            ? ` • ${maxDaysOverdue} day${maxDaysOverdue === 1 ? "" : "s"} late`
             : ""}
         </Text>
       ) : null}
 
-      {showOverdueState ? (
+      {partiallyCoveredByWallet && remainingAfterWallet > 0 ? (
         <Text style={styles.helperText}>
-          Overdue total: {fmtKES(item.overdue_total)}
+          Wallet has already reduced what you need to pay.
         </Text>
       ) : null}
 
-      {currentTotal > 0 && overdueTotal <= 0 && !fullyCoveredByWallet ? (
-        <Text style={styles.helperText}>
-          Due now: {fmtKES(item.current_total)}
-        </Text>
-      ) : null}
-
-      {showOverdueState && overdueBreakdownText ? (
-        <Text style={styles.helperText}>{overdueBreakdownText}</Text>
-      ) : null}
-
-      {hasPenalty ? (
+      {hasPenalty && remainingAfterWallet > 0 ? (
         <Text style={[styles.helperText, { color: WARNING_TEXT }]}>
-          Includes penalties
+          This amount includes any late charges.
         </Text>
       ) : null}
 
       {!hasAmount(item.total_due_now) && hasAmount(item.next_total) ? (
         <Text style={styles.helperText}>
-          Next due
+          Next contribution
           {item.next_due_date
             ? ` on ${formatShortDueDate(item.next_due_date)}`
             : ""}{" "}
@@ -300,18 +289,7 @@ function MyMerryCard({
       ) : null}
 
       <View style={styles.cardActions}>
-        <Button
-          title={primaryTitle}
-          variant="secondary"
-          onPress={onPrimaryPress}
-          style={{ flex: 1 }}
-        />
-        <View style={{ width: SPACING.sm }} />
-        <Button
-          title={remainingAfterWallet > 0 ? "Pay now" : "Contribute"}
-          onPress={() => onContribute(item)}
-          style={{ flex: 1 }}
-        />
+        <Button title={primaryTitle} onPress={onPrimaryPress} style={{ flex: 1 }} />
       </View>
     </Card>
   );
@@ -507,38 +485,6 @@ export default function MerryIndexScreen() {
     [summary]
   );
 
-  const totalPenaltyNow = useMemo(() => {
-    const items = Array.isArray(summary?.items) ? summary.items : [];
-
-    return items.reduce((sum, item) => {
-      const rows = Array.isArray((item as any)?.breakdown)
-        ? (item as any).breakdown
-        : [];
-
-      const penaltyForItem = rows.reduce((rowSum: number, row: any) => {
-        return rowSum + moneyNumber(row?.penalty_amount);
-      }, 0);
-
-      return sum + penaltyForItem;
-    }, 0);
-  }, [summary]);
-
-  const totalCurrentNow = useMemo(() => {
-    const items = Array.isArray(summary?.items) ? summary.items : [];
-    return items.reduce(
-      (sum, item) => sum + moneyNumber((item as any)?.current_total),
-      0
-    );
-  }, [summary]);
-
-  const totalOverdueNow = useMemo(() => {
-    const items = Array.isArray(summary?.items) ? summary.items : [];
-    return items.reduce(
-      (sum, item) => sum + moneyNumber((item as any)?.overdue_total),
-      0
-    );
-  }, [summary]);
-
   const totalWalletBalance = useMemo(() => {
     return moneyNumber(summary?.wallet_balance);
   }, [summary]);
@@ -548,18 +494,37 @@ export default function MerryIndexScreen() {
   }, [totalRequiredNow, totalWalletBalance]);
 
   const onPayAllMerryNow = useCallback(() => {
-    if (!user?.id || remainingAfterWallet <= 0) return;
+    if (!user?.id) return;
+
+    if (remainingAfterWallet > 0) {
+      router.push({
+        pathname: "/(tabs)/payments/deposit" as any,
+        params: {
+          amount: String(remainingAfterWallet),
+          purpose: "MERRY_CONTRIBUTION",
+          reference: `mus${user.id}`,
+          title: "Pay merry due",
+          subtitle: "Combined merry contribution",
+          source: "merry_index_total",
+          scope: "all",
+          returnTo: ROUTES.tabs.merry,
+          backLabel: "Back to Merry",
+          landingTitle: "Merry",
+        },
+      });
+      return;
+    }
 
     router.push({
       pathname: "/(tabs)/payments/deposit" as any,
       params: {
-        amount: String(remainingAfterWallet),
+        amount: "",
         purpose: "MERRY_CONTRIBUTION",
         reference: `mus${user.id}`,
-        title: "Pay merry due",
-        subtitle: "Combined merry due",
+        title: "Contribute to merry",
+        subtitle: "You can still contribute for later",
         source: "merry_index_total",
-        scope: "all",
+        scope: "extra",
         returnTo: ROUTES.tabs.merry,
         backLabel: "Back to Merry",
         landingTitle: "Merry",
@@ -668,52 +633,37 @@ export default function MerryIndexScreen() {
         </View>
 
         <View style={styles.heroShell}>
-          <Text style={styles.heroEyebrow}>Amount left</Text>
-          <Text style={styles.heroAmount}>{fmtKES(remainingAfterWallet)}</Text>
+          <Text style={styles.heroEyebrow}>Your contribution</Text>
+          <Text style={styles.heroAmount}>
+            {remainingAfterWallet > 0 ? fmtKES(remainingAfterWallet) : "All set"}
+          </Text>
 
-          {totalWalletBalance > 0 ? (
+          {remainingAfterWallet > 0 ? (
             <Text style={styles.heroSubText}>
-              Wallet: {fmtKES(totalWalletBalance)}
+              You have pending contributions.
             </Text>
-          ) : null}
-
-          {totalOverdueNow > 0 && remainingAfterWallet > 0 ? (
+          ) : totalWalletBalance > 0 ? (
             <Text style={styles.heroSubText}>
-              Still to pay: {fmtKES(totalOverdueNow)}
-            </Text>
-          ) : null}
-
-          {totalCurrentNow > 0 && remainingAfterWallet > 0 ? (
-            <Text style={styles.heroSubText}>
-              Current due: {fmtKES(totalCurrentNow)}
-            </Text>
-          ) : null}
-
-          <View style={styles.heroWalletRow}>
-            <Ionicons name="wallet-outline" size={15} color={ACCENT_TEXT} />
-            <Text style={styles.heroWalletText}>
-              Total wallet balance: {fmtKES(totalWalletBalance)}
-            </Text>
-          </View>
-
-          {remainingAfterWallet <= 0 && totalRequiredNow > 0 ? (
-            <Text style={[styles.heroSubText, { color: SUCCESS_TEXT }]}>
-              Your merry wallet can clear what is due now.
-            </Text>
-          ) : totalPenaltyNow > 0 ? (
-            <Text style={[styles.heroSubText, { color: WARNING_TEXT }]}>
-              Includes penalties: {fmtKES(totalPenaltyNow)}
+              Your wallet will handle what is due.
             </Text>
           ) : (
             <Text style={styles.heroSubText}>
-              Combined total across your merry groups
+              You can still contribute for later.
             </Text>
           )}
 
+          {totalWalletBalance > 0 ? (
+            <View style={styles.heroWalletRow}>
+              <Ionicons name="wallet-outline" size={15} color={ACCENT_TEXT} />
+              <Text style={styles.heroWalletText}>
+                Wallet balance: {fmtKES(totalWalletBalance)}
+              </Text>
+            </View>
+          ) : null}
+
           <Button
-            title={remainingAfterWallet > 0 ? "Pay total now" : "Use wallet"}
+            title={remainingAfterWallet > 0 ? "Pay total now" : "Contribute now"}
             onPress={onPayAllMerryNow}
-            disabled={remainingAfterWallet <= 0}
             style={styles.heroButton}
           />
         </View>

@@ -1,4 +1,3 @@
-
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -17,7 +16,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
-import Section from "@/components/ui/Section";
 
 import { ROUTES } from "@/constants/routes";
 import { FONT, SPACING } from "@/constants/theme";
@@ -63,7 +61,12 @@ const DANGER_TEXT = "#FECACA";
 const INFO_BG = "rgba(12,106,128,0.20)";
 const INFO_TEXT = "#D9F3F9";
 
-const REPAYABLE_STATUSES = ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"];
+const REPAYABLE_STATUSES = [
+  "APPROVED",
+  "DISBURSED",
+  "UNDER_REPAYMENT",
+  "DEFAULTED",
+];
 
 function statusMeta(status?: string) {
   switch ((status || "").toUpperCase()) {
@@ -78,7 +81,7 @@ function statusMeta(status?: string) {
     case "DEFAULTED":
       return { bg: DANGER_BG, text: DANGER_TEXT, label: "Overdue" };
     case "REJECTED":
-      return { bg: DANGER_BG, text: DANGER_TEXT, label: "Not approved" };
+      return { bg: DANGER_BG, text: DANGER_TEXT, label: "Declined" };
     case "UNDER_REVIEW":
       return { bg: WARNING_BG, text: WARNING_TEXT, label: "Under review" };
     case "PENDING":
@@ -90,6 +93,10 @@ function statusMeta(status?: string) {
 function formatDateTime(value?: string | null) {
   if (!value) return "—";
   return value;
+}
+
+function SectionTitle({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
 }
 
 function DetailRow({
@@ -138,7 +145,7 @@ function PaymentRow({ item }: { item: LoanPayment }) {
         </Text>
         <Text style={styles.listSub}>
           {item.reference || "No reference"}
-          {(item.created_at || item.paid_at)
+          {item.created_at || item.paid_at
             ? ` • ${item.created_at || item.paid_at}`
             : ""}
         </Text>
@@ -163,7 +170,9 @@ function InstallmentRow({
   highlight?: boolean;
 }) {
   const remaining =
-    toNumber(item.total_due) + toNumber(item.late_fee) - toNumber(item.paid_amount);
+    toNumber(item.total_due) +
+    toNumber(item.late_fee) -
+    toNumber(item.paid_amount);
 
   const isPaid = getInstallmentPaidFlag(item) || remaining <= 0;
 
@@ -176,9 +185,13 @@ function InstallmentRow({
   return (
     <View style={[styles.installmentCard, highlight ? styles.currentCard : null]}>
       <View style={styles.rowTop}>
-        <Text style={styles.installmentTitle}>Support step {item.installment_no}</Text>
+        <Text style={styles.installmentTitle}>
+          Current contribution step {item.installment_no}
+        </Text>
         <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.badgeText, { color: tone.text }]}>{tone.label}</Text>
+          <Text style={[styles.badgeText, { color: tone.text }]}>
+            {tone.label}
+          </Text>
         </View>
       </View>
 
@@ -186,7 +199,9 @@ function InstallmentRow({
         {fmtKES(remaining > 0 ? remaining : 0)}
       </Text>
 
-      <Text style={styles.listSub}>{item.due_date || "Current scheduled step"}</Text>
+      <Text style={styles.listSub}>
+        {item.due_date || "Current scheduled payment"}
+      </Text>
 
       <Text style={styles.listSub}>
         Planned: {fmtKES(item.total_due)} • Paid: {fmtKES(item.paid_amount)}
@@ -319,7 +334,9 @@ function getCurrentInstallment(installments: LoanInstallment[]) {
 
   const nextOpen = installments.find((item) => {
     const remaining =
-      toNumber(item.total_due) + toNumber(item.late_fee) - toNumber(item.paid_amount);
+      toNumber(item.total_due) +
+      toNumber(item.late_fee) -
+      toNumber(item.paid_amount);
     return !getInstallmentPaidFlag(item) && remaining > 0;
   });
 
@@ -338,7 +355,7 @@ export default function LoanDetailScreen() {
   const [me, setMe] = useState<LocalUser | null>(null);
   const [loan, setLoan] = useState<Loan | null>(null);
 
-  const [booted, setBooted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -358,7 +375,8 @@ export default function LoanDetailScreen() {
     async (silent = false) => {
       if (!loanId || Number.isNaN(loanId)) {
         setLoan(null);
-        setError("Invalid support selected.");
+        setError("Invalid item selected.");
+        setLoading(false);
         return;
       }
 
@@ -371,7 +389,8 @@ export default function LoanDetailScreen() {
           getLoanDetail(loanId),
         ]);
 
-        const sessionUser = sessionRes.status === "fulfilled" ? sessionRes.value : null;
+        const sessionUser =
+          sessionRes.status === "fulfilled" ? sessionRes.value : null;
         const meUser = meRes.status === "fulfilled" ? meRes.value : null;
 
         setMe(
@@ -398,6 +417,8 @@ export default function LoanDetailScreen() {
           setLoan(null);
           setError(getApiErrorMessage(e));
         }
+      } finally {
+        setLoading(false);
       }
     },
     [loanId, loan]
@@ -411,7 +432,7 @@ export default function LoanDetailScreen() {
         try {
           await load(true);
         } finally {
-          if (active) setBooted(true);
+          if (!active) return;
         }
       })();
 
@@ -459,7 +480,9 @@ export default function LoanDetailScreen() {
 
   const actualInstallments = loan?.installments ?? [];
   const fallbackInstallments = buildEstimatedInstallments(loan);
-  const installments = actualInstallments.length ? actualInstallments : fallbackInstallments;
+  const installments = actualInstallments.length
+    ? actualInstallments
+    : fallbackInstallments;
 
   const currentInstallment = getCurrentInstallment(installments);
   const paidInstallments = getPreviouslyPaidInstallments(installments);
@@ -479,7 +502,10 @@ export default function LoanDetailScreen() {
 
       const borrowerUserId = getLoanBorrowerId(loan);
       if (!borrowerUserId) {
-        Alert.alert("Unable to continue", "Borrower details are missing for this support.");
+        Alert.alert(
+          "Unable to continue",
+          "Member details are missing for this record."
+        );
         return;
       }
 
@@ -494,8 +520,8 @@ export default function LoanDetailScreen() {
           amount: String(payAmount),
           editableAmount: "true",
           returnTo: ROUTES.tabs.loans,
-          backLabel: "Back to Support",
-          landingTitle: "Support Payment",
+          backLabel: "Back",
+          landingTitle: "Payment",
         },
       });
     },
@@ -509,7 +535,7 @@ export default function LoanDetailScreen() {
       setBusy(true);
       const res = await approveLoan(loan.id);
       if (res?.loan) setLoan(res.loan);
-      Alert.alert("Success", res?.message || "Support approved successfully.");
+      Alert.alert("Success", res?.message || "Request approved successfully.");
     } catch (e: any) {
       Alert.alert("Unable to approve", getApiErrorMessage(e));
     } finally {
@@ -529,20 +555,16 @@ export default function LoanDetailScreen() {
       setBusy(true);
       const res = await rejectLoan(loan.id, rejectReason.trim());
       if (res?.loan) setLoan(res.loan);
-      Alert.alert("Done", res?.message || "Support request updated.");
+      Alert.alert("Done", res?.message || "Request updated.");
     } catch (e: any) {
-      Alert.alert("Unable to reject", getApiErrorMessage(e));
+      Alert.alert("Unable to decline", getApiErrorMessage(e));
     } finally {
       setBusy(false);
     }
   }, [loan?.id, rejectReason]);
 
-  if (!booted && !loan) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.page} />
-      </SafeAreaView>
-    );
+  if (loading && !loan) {
+    return null;
   }
 
   if (!loanId || Number.isNaN(loanId)) {
@@ -550,7 +572,7 @@ export default function LoanDetailScreen() {
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
           <EmptyState
-            title="Invalid support"
+            title="Invalid item"
             subtitle="The selected item could not be opened."
             actionLabel="Back"
             onAction={backToLoans}
@@ -595,8 +617,8 @@ export default function LoanDetailScreen() {
       >
         <View style={styles.topBar}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.pageTitle}>SUPPORT DETAILS</Text>
-            <Text style={styles.pageSub}>Community support record</Text>
+            <Text style={styles.pageTitle}>Community details</Text>
+            <Text style={styles.pageSub}>Simple member information</Text>
           </View>
 
           <TouchableOpacity style={styles.iconBtn} onPress={backToLoans}>
@@ -605,7 +627,8 @@ export default function LoanDetailScreen() {
         </View>
 
         {currentInstallment ? (
-          <Section title="Current step">
+          <>
+            <SectionTitle title="Current payment" />
             <Card style={styles.blockCard} variant="default">
               <InstallmentRow
                 item={currentInstallment}
@@ -621,13 +644,14 @@ export default function LoanDetailScreen() {
                 }}
               />
             </Card>
-          </Section>
+            <View style={styles.sectionGap} />
+          </>
         ) : null}
 
         <Card style={styles.heroCard} variant="default">
           <View style={styles.heroTop}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.heroEyebrow}>SUPPORT #{loan.id}</Text>
+              <Text style={styles.heroEyebrow}>Record #{loan.id}</Text>
               <Text style={styles.heroTitle}>{borrowerName}</Text>
               <Text style={styles.heroSubtitle}>{productName}</Text>
             </View>
@@ -649,7 +673,7 @@ export default function LoanDetailScreen() {
 
               {allowPayNow ? (
                 <View style={styles.payChip}>
-                  <Text style={styles.payChipText}>Pay Now</Text>
+                  <Text style={styles.payChipText}>Pay now</Text>
                   <Ionicons name="chevron-forward" size={15} color={WHITE} />
                 </View>
               ) : null}
@@ -660,7 +684,7 @@ export default function LoanDetailScreen() {
             <View style={styles.divider} />
 
             <View style={styles.miniRow}>
-              <Text style={styles.miniLabel}>Support received</Text>
+              <Text style={styles.miniLabel}>Amount received</Text>
               <Text style={styles.miniValue}>{principal}</Text>
             </View>
 
@@ -671,7 +695,7 @@ export default function LoanDetailScreen() {
 
             {weeklyEstimate > 0 ? (
               <View style={styles.miniRow}>
-                <Text style={styles.miniLabel}>Current step guide</Text>
+                <Text style={styles.miniLabel}>Estimated step amount</Text>
                 <Text style={styles.miniValue}>{fmtKES(weeklyEstimate)}</Text>
               </View>
             ) : null}
@@ -679,7 +703,7 @@ export default function LoanDetailScreen() {
 
           {allowPayNow ? (
             <View style={{ marginTop: SPACING.md }}>
-              <Button title="Pay Support" onPress={() => payNow()} />
+              <Button title="Pay now" onPress={() => payNow()} />
             </View>
           ) : null}
         </Card>
@@ -691,28 +715,41 @@ export default function LoanDetailScreen() {
           </Card>
         ) : null}
 
-        <Section title="Overview">
-          <View style={styles.statRow}>
-            <StatCard label="Support received" value={principal} icon="cash-outline" />
-            <View style={{ width: SPACING.sm }} />
-            <StatCard label="Paid so far" value={totalPaid} icon="checkmark-circle-outline" />
-          </View>
+        <View style={styles.statRow}>
+          <StatCard
+            label="Amount received"
+            value={principal}
+            icon="cash-outline"
+          />
+          <View style={{ width: SPACING.sm }} />
+          <StatCard
+            label="Paid so far"
+            value={totalPaid}
+            icon="checkmark-circle-outline"
+          />
+        </View>
 
-          <View style={{ height: SPACING.sm }} />
+        <View style={{ height: SPACING.sm }} />
 
-          <View style={styles.statRow}>
-            <StatCard label="Amount left" value={outstanding} icon="wallet-outline" />
-            <View style={{ width: SPACING.sm }} />
-            <StatCard
-              label="Steps"
-              value={`${loan.term_weeks || 0}`}
-              icon="calendar-outline"
-            />
-          </View>
-        </Section>
+        <View style={styles.statRow}>
+          <StatCard
+            label="Amount left"
+            value={outstanding}
+            icon="wallet-outline"
+          />
+          <View style={{ width: SPACING.sm }} />
+          <StatCard
+            label="Weeks"
+            value={`${loan.term_weeks || 0}`}
+            icon="calendar-outline"
+          />
+        </View>
+
+        <View style={styles.sectionGap} />
 
         {guarantors.length > 0 ? (
-          <Section title="People supporting this support">
+          <>
+            <SectionTitle title="Community members involved" />
             <Card style={styles.blockCard} variant="default">
               {guarantors.map((g, idx) => {
                 const accepted = !!g.accepted;
@@ -730,7 +767,9 @@ export default function LoanDetailScreen() {
                             style={[
                               styles.badge,
                               {
-                                backgroundColor: accepted ? SUCCESS_BG : WARNING_BG,
+                                backgroundColor: accepted
+                                  ? SUCCESS_BG
+                                  : WARNING_BG,
                               },
                             ]}
                           >
@@ -738,7 +777,9 @@ export default function LoanDetailScreen() {
                               style={[
                                 styles.badgeText,
                                 {
-                                  color: accepted ? SUCCESS_TEXT : WARNING_TEXT,
+                                  color: accepted
+                                    ? SUCCESS_TEXT
+                                    : WARNING_TEXT,
                                 },
                               ]}
                             >
@@ -756,11 +797,13 @@ export default function LoanDetailScreen() {
                 );
               })}
             </Card>
-          </Section>
+            <View style={styles.sectionGap} />
+          </>
         ) : null}
 
         {paidInstallments.length > 0 ? (
-          <Section title="Completed steps">
+          <>
+            <SectionTitle title="Completed payments" />
             <Card style={styles.blockCard} variant="default">
               {paidInstallments.map((item, idx) => (
                 <View key={item.id || idx}>
@@ -771,11 +814,13 @@ export default function LoanDetailScreen() {
                 </View>
               ))}
             </Card>
-          </Section>
+            <View style={styles.sectionGap} />
+          </>
         ) : null}
 
         {payments.length > 0 ? (
-          <Section title="Payment history">
+          <>
+            <SectionTitle title="Payment history" />
             <Card style={styles.blockCard} variant="default">
               {payments.map((item, idx) => (
                 <View key={item.id || idx}>
@@ -786,49 +831,60 @@ export default function LoanDetailScreen() {
                 </View>
               ))}
             </Card>
-          </Section>
+            <View style={styles.sectionGap} />
+          </>
         ) : null}
 
         {isAdmin ? (
           <>
-            <Section title="Admin details">
-              <Card style={styles.blockCard} variant="default">
-                <DetailRow label="Member" value={borrowerName} />
-                <DetailRow label="Status" value={status.label} />
-                <DetailRow label="Type" value={productName} />
-                <DetailRow label="Approved on" value={formatDateTime(loan.approved_at)} />
-                <DetailRow label="Completed on" value={formatDateTime(loan.completed_at)} />
-                <DetailRow label="Reviewed on" value={formatDateTime(loan.reviewed_at)} />
+            <SectionTitle title="More details" />
+            <Card style={styles.blockCard} variant="default">
+              <DetailRow label="Member" value={borrowerName} />
+              <DetailRow label="Status" value={status.label} />
+              <DetailRow label="Type" value={productName} />
+              <DetailRow
+                label="Approved on"
+                value={formatDateTime(loan.approved_at)}
+              />
+              <DetailRow
+                label="Completed on"
+                value={formatDateTime(loan.completed_at)}
+              />
+              <DetailRow
+                label="Reviewed on"
+                value={formatDateTime(loan.reviewed_at)}
+              />
 
-                {loan.member_note ? (
-                  <View style={styles.noteBox}>
-                    <Text style={styles.noteTitle}>Member note</Text>
-                    <Text style={styles.noteText}>{loan.member_note}</Text>
-                  </View>
-                ) : null}
+              {loan.member_note ? (
+                <View style={styles.noteBox}>
+                  <Text style={styles.noteTitle}>Member note</Text>
+                  <Text style={styles.noteText}>{loan.member_note}</Text>
+                </View>
+              ) : null}
 
-                {loan.rejection_reason ? (
-                  <View
-                    style={[
-                      styles.noteBox,
-                      {
-                        backgroundColor: DANGER_BG,
-                        borderColor: "rgba(239,68,68,0.18)",
-                      },
-                    ]}
-                  >
-                    <Text style={styles.noteTitle}>Reason</Text>
-                    <Text style={styles.noteText}>{loan.rejection_reason}</Text>
-                  </View>
-                ) : null}
-              </Card>
-            </Section>
+              {loan.rejection_reason ? (
+                <View
+                  style={[
+                    styles.noteBox,
+                    {
+                      backgroundColor: DANGER_BG,
+                      borderColor: "rgba(239,68,68,0.18)",
+                    },
+                  ]}
+                >
+                  <Text style={styles.noteTitle}>Reason</Text>
+                  <Text style={styles.noteText}>{loan.rejection_reason}</Text>
+                </View>
+              ) : null}
+            </Card>
 
             {canApproveOrReject ? (
-              <Section title="Admin action">
+              <>
+                <View style={styles.sectionGap} />
+                <SectionTitle title="Review action" />
                 <Card style={styles.blockCard} variant="default">
                   <Button
-                    title={busy ? "Please wait..." : "Approve Support"}
+                    title={busy ? "Please wait..." : "Approve request"}
                     onPress={onApprove}
                     disabled={busy}
                   />
@@ -847,13 +903,13 @@ export default function LoanDetailScreen() {
                   <View style={{ height: SPACING.sm }} />
 
                   <Button
-                    title={busy ? "Please wait..." : "Decline Support"}
+                    title={busy ? "Please wait..." : "Decline request"}
                     variant="secondary"
                     onPress={onReject}
                     disabled={busy}
                   />
                 </Card>
-              </Section>
+              </>
             ) : null}
           </>
         ) : null}
@@ -901,7 +957,6 @@ const styles = StyleSheet.create({
     color: WHITE,
     fontSize: 20,
     fontFamily: FONT.bold,
-    letterSpacing: 0.8,
   },
 
   pageSub: {
@@ -922,10 +977,22 @@ const styles = StyleSheet.create({
     borderColor: CARD_BORDER,
   },
 
+  sectionTitle: {
+    color: WHITE,
+    fontSize: 18,
+    fontFamily: FONT.bold,
+    marginBottom: SPACING.sm,
+    marginTop: 2,
+  },
+
+  sectionGap: {
+    height: SPACING.lg,
+  },
+
   heroCard: {
-    backgroundColor: "rgba(12,106,128,0.22)",
+    backgroundColor: CARD_BG,
     borderWidth: 1,
-    borderColor: "rgba(12,106,128,0.30)",
+    borderColor: CARD_BORDER,
     borderRadius: 24,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
@@ -939,10 +1006,9 @@ const styles = StyleSheet.create({
   },
 
   heroEyebrow: {
-    color: "rgba(255,255,255,0.75)",
+    color: MUTED,
     fontSize: 12,
     fontFamily: FONT.bold,
-    letterSpacing: 1.1,
     marginBottom: 8,
   },
 
@@ -963,14 +1029,14 @@ const styles = StyleSheet.create({
   amountBox: {
     marginTop: SPACING.md,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.10)",
     padding: SPACING.md,
   },
 
   amountBoxActive: {
-    backgroundColor: "rgba(255,255,255,0.13)",
+    backgroundColor: "rgba(255,255,255,0.10)",
   },
 
   amountTop: {
@@ -1203,13 +1269,6 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
 
-  emptyText: {
-    color: MUTED,
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily: FONT.regular,
-  },
-
   input: {
     minHeight: 92,
     borderRadius: 16,
@@ -1244,10 +1303,12 @@ const styles = StyleSheet.create({
   },
 
   bottomActions: {
-    marginTop: SPACING.sm,
+    marginTop: SPACING.lg,
     marginBottom: SPACING.sm,
   },
 });
+
+
 // import { Ionicons } from "@expo/vector-icons";
 // import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 // import React, { useCallback, useMemo, useState } from "react";
@@ -1312,7 +1373,12 @@ const styles = StyleSheet.create({
 // const INFO_BG = "rgba(12,106,128,0.20)";
 // const INFO_TEXT = "#D9F3F9";
 
-// const REPAYABLE_STATUSES = ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"];
+// const REPAYABLE_STATUSES = [
+//   "APPROVED",
+//   "DISBURSED",
+//   "UNDER_REPAYMENT",
+//   "DEFAULTED",
+// ];
 
 // function statusMeta(status?: string) {
 //   switch ((status || "").toUpperCase()) {
@@ -1387,7 +1453,9 @@ const styles = StyleSheet.create({
 //         </Text>
 //         <Text style={styles.listSub}>
 //           {item.reference || "No reference"}
-//           {(item.created_at || item.paid_at) ? ` • ${item.created_at || item.paid_at}` : ""}
+//           {item.created_at || item.paid_at
+//             ? ` • ${item.created_at || item.paid_at}`
+//             : ""}
 //         </Text>
 //       </View>
 //     </View>
@@ -1402,13 +1470,17 @@ const styles = StyleSheet.create({
 //   item,
 //   onPay,
 //   showPayButton,
+//   highlight,
 // }: {
 //   item: LoanInstallment;
 //   onPay?: () => void;
 //   showPayButton?: boolean;
+//   highlight?: boolean;
 // }) {
 //   const remaining =
-//     toNumber(item.total_due) + toNumber(item.late_fee) - toNumber(item.paid_amount);
+//     toNumber(item.total_due) +
+//     toNumber(item.late_fee) -
+//     toNumber(item.paid_amount);
 
 //   const isPaid = getInstallmentPaidFlag(item) || remaining <= 0;
 
@@ -1416,21 +1488,27 @@ const styles = StyleSheet.create({
 //     ? { bg: SUCCESS_BG, text: SUCCESS_TEXT, label: "Paid" }
 //     : toNumber(item.late_fee) > 0
 //       ? { bg: DANGER_BG, text: DANGER_TEXT, label: "Due now" }
-//       : { bg: WARNING_BG, text: WARNING_TEXT, label: "Upcoming" };
+//       : { bg: WARNING_BG, text: WARNING_TEXT, label: "Current" };
 
 //   return (
-//     <View style={styles.installmentCard}>
+//     <View style={[styles.installmentCard, highlight ? styles.currentCard : null]}>
 //       <View style={styles.rowTop}>
-//         <Text style={styles.installmentTitle}>Support step {item.installment_no}</Text>
+//         <Text style={styles.installmentTitle}>
+//           Support step {item.installment_no}
+//         </Text>
 //         <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-//           <Text style={[styles.badgeText, { color: tone.text }]}>{tone.label}</Text>
+//           <Text style={[styles.badgeText, { color: tone.text }]}>
+//             {tone.label}
+//           </Text>
 //         </View>
 //       </View>
 
-//       <Text style={styles.installmentAmount}>{fmtKES(remaining > 0 ? remaining : 0)}</Text>
+//       <Text style={styles.installmentAmount}>
+//         {fmtKES(remaining > 0 ? remaining : 0)}
+//       </Text>
 
 //       <Text style={styles.listSub}>
-//         {item.due_date || "Scheduled step"}
+//         {item.due_date || "Current scheduled step"}
 //       </Text>
 
 //       <Text style={styles.listSub}>
@@ -1442,9 +1520,6 @@ const styles = StyleSheet.create({
 //           <Button title="Pay This Step" onPress={onPay} />
 //         </View>
 //       ) : null}
-
-      
-      
 //     </View>
 //   );
 // }
@@ -1567,11 +1642,17 @@ const styles = StyleSheet.create({
 
 //   const nextOpen = installments.find((item) => {
 //     const remaining =
-//       toNumber(item.total_due) + toNumber(item.late_fee) - toNumber(item.paid_amount);
+//       toNumber(item.total_due) +
+//       toNumber(item.late_fee) -
+//       toNumber(item.paid_amount);
 //     return !getInstallmentPaidFlag(item) && remaining > 0;
 //   });
 
-//   return nextOpen || installments[0];
+//   return nextOpen || null;
+// }
+
+// function getPreviouslyPaidInstallments(installments: LoanInstallment[]) {
+//   return installments.filter((item) => getInstallmentPaidFlag(item));
 // }
 
 // export default function LoanDetailScreen() {
@@ -1598,46 +1679,55 @@ const styles = StyleSheet.create({
 //     router.replace(target as any);
 //   }, [params.returnTo]);
 
-//   const load = useCallback(async () => {
-//     if (!loanId || Number.isNaN(loanId)) {
-//       setLoan(null);
-//       setError("Invalid support selected.");
-//       return;
-//     }
-
-//     try {
-//       setError("");
-
-//       const [sessionRes, meRes, loanRes] = await Promise.allSettled([
-//         getSessionUser(),
-//         getMe(),
-//         getLoanDetail(loanId),
-//       ]);
-
-//       const sessionUser = sessionRes.status === "fulfilled" ? sessionRes.value : null;
-//       const meUser = meRes.status === "fulfilled" ? meRes.value : null;
-
-//       setMe(
-//         sessionUser || meUser
-//           ? {
-//               ...(sessionUser ?? {}),
-//               ...(meUser ?? {}),
-//             }
-//           : null
-//       );
-
-//       if (loanRes.status !== "fulfilled") {
+//   const load = useCallback(
+//     async (silent = false) => {
+//       if (!loanId || Number.isNaN(loanId)) {
 //         setLoan(null);
-//         setError(getApiErrorMessage(loanRes.reason));
+//         setError("Invalid support selected.");
 //         return;
 //       }
 
-//       setLoan(loanRes.value);
-//     } catch (e: any) {
-//       setLoan(null);
-//       setError(getApiErrorMessage(e));
-//     }
-//   }, [loanId]);
+//       try {
+//         if (!silent) setError("");
+
+//         const [sessionRes, meRes, loanRes] = await Promise.allSettled([
+//           getSessionUser(),
+//           getMe(),
+//           getLoanDetail(loanId),
+//         ]);
+
+//         const sessionUser =
+//           sessionRes.status === "fulfilled" ? sessionRes.value : null;
+//         const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+
+//         setMe(
+//           sessionUser || meUser
+//             ? {
+//                 ...(sessionUser ?? {}),
+//                 ...(meUser ?? {}),
+//               }
+//             : null
+//         );
+
+//         if (loanRes.status !== "fulfilled") {
+//           if (!loan) {
+//             setLoan(null);
+//             setError(getApiErrorMessage(loanRes.reason));
+//           }
+//           return;
+//         }
+
+//         setLoan(loanRes.value);
+//         setError("");
+//       } catch (e: any) {
+//         if (!loan) {
+//           setLoan(null);
+//           setError(getApiErrorMessage(e));
+//         }
+//       }
+//     },
+//     [loanId, loan]
+//   );
 
 //   useFocusEffect(
 //     useCallback(() => {
@@ -1645,7 +1735,7 @@ const styles = StyleSheet.create({
 
 //       (async () => {
 //         try {
-//           await load();
+//           await load(true);
 //         } finally {
 //           if (active) setBooted(true);
 //         }
@@ -1660,7 +1750,7 @@ const styles = StyleSheet.create({
 //   const onRefresh = useCallback(async () => {
 //     setRefreshing(true);
 //     try {
-//       await load();
+//       await load(true);
 //     } finally {
 //       setRefreshing(false);
 //     }
@@ -1681,7 +1771,6 @@ const styles = StyleSheet.create({
 
 //   const principalValue = toNumber(loan?.principal);
 //   const totalPaidValue = toNumber(loan?.total_paid);
-//   const estimatedTotalPayable = computeEstimatedTotalPayable(loan);
 //   const displayOutstanding = computeDisplayOutstanding(loan);
 
 //   const principal = fmtKES(principalValue);
@@ -1696,16 +1785,21 @@ const styles = StyleSheet.create({
 
 //   const actualInstallments = loan?.installments ?? [];
 //   const fallbackInstallments = buildEstimatedInstallments(loan);
-//   const installments = actualInstallments.length ? actualInstallments : fallbackInstallments;
+//   const installments = actualInstallments.length
+//     ? actualInstallments
+//     : fallbackInstallments;
+
 //   const currentInstallment = getCurrentInstallment(installments);
+//   const paidInstallments = getPreviouslyPaidInstallments(installments);
 //   const payments = loan?.payments ?? [];
 //   const guarantors = loan?.guarantors ?? [];
 
 //   const weeklyEstimate = useMemo(() => {
 //     const termWeeks = Math.max(0, Number(loan?.term_weeks || 0));
+//     const estimatedTotalPayable = computeEstimatedTotalPayable(loan);
 //     if (termWeeks <= 0 || estimatedTotalPayable <= 0) return 0;
 //     return estimatedTotalPayable / termWeeks;
-//   }, [estimatedTotalPayable, loan?.term_weeks]);
+//   }, [loan]);
 
 //   const payNow = useCallback(
 //     (amount?: number) => {
@@ -1713,7 +1807,10 @@ const styles = StyleSheet.create({
 
 //       const borrowerUserId = getLoanBorrowerId(loan);
 //       if (!borrowerUserId) {
-//         Alert.alert("Unable to continue", "Borrower details are missing for this support.");
+//         Alert.alert(
+//           "Unable to continue",
+//           "Borrower details are missing for this support."
+//         );
 //         return;
 //       }
 
@@ -1771,14 +1868,8 @@ const styles = StyleSheet.create({
 //     }
 //   }, [loan?.id, rejectReason]);
 
-//   if (!booted) {
-//     return (
-//       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-//         <ScrollView style={styles.page}>
-//           <View style={styles.content} />
-//         </ScrollView>
-//       </SafeAreaView>
-//     );
+//   if (!booted && !loan) {
+//     return null;
 //   }
 
 //   if (!loanId || Number.isNaN(loanId)) {
@@ -1840,6 +1931,26 @@ const styles = StyleSheet.create({
 //           </TouchableOpacity>
 //         </View>
 
+//         {currentInstallment ? (
+//           <Section title="Current step">
+//             <Card style={styles.blockCard} variant="default">
+//               <InstallmentRow
+//                 item={currentInstallment}
+//                 highlight
+//                 showPayButton={allowPayNow}
+//                 onPay={() => {
+//                   const remaining =
+//                     toNumber(currentInstallment.total_due) +
+//                     toNumber(currentInstallment.late_fee) -
+//                     toNumber(currentInstallment.paid_amount);
+
+//                   payNow(remaining > 0 ? remaining : undefined);
+//                 }}
+//               />
+//             </Card>
+//           </Section>
+//         ) : null}
+
 //         <Card style={styles.heroCard} variant="default">
 //           <View style={styles.heroTop}>
 //             <View style={{ flex: 1, paddingRight: 12 }}>
@@ -1887,7 +1998,7 @@ const styles = StyleSheet.create({
 
 //             {weeklyEstimate > 0 ? (
 //               <View style={styles.miniRow}>
-//                 <Text style={styles.miniLabel}>Suggested step amount</Text>
+//                 <Text style={styles.miniLabel}>Current step guide</Text>
 //                 <Text style={styles.miniValue}>{fmtKES(weeklyEstimate)}</Text>
 //               </View>
 //             ) : null}
@@ -1900,25 +2011,6 @@ const styles = StyleSheet.create({
 //           ) : null}
 //         </Card>
 
-//         {currentInstallment ? (
-//           <Section title="Current step">
-//             <Card style={styles.blockCard} variant="default">
-//               <InstallmentRow
-//                 item={currentInstallment}
-//                 showPayButton={allowPayNow}
-//                 onPay={() => {
-//                   const remaining =
-//                     toNumber(currentInstallment.total_due) +
-//                     toNumber(currentInstallment.late_fee) -
-//                     toNumber(currentInstallment.paid_amount);
-
-//                   payNow(remaining > 0 ? remaining : undefined);
-//                 }}
-//               />
-//             </Card>
-//           </Section>
-//         ) : null}
-
 //         {error ? (
 //           <Card style={styles.errorCard} variant="default">
 //             <Ionicons name="alert-circle-outline" size={18} color="#FECACA" />
@@ -1928,15 +2020,27 @@ const styles = StyleSheet.create({
 
 //         <Section title="Overview">
 //           <View style={styles.statRow}>
-//             <StatCard label="Support received" value={principal} icon="cash-outline" />
+//             <StatCard
+//               label="Support received"
+//               value={principal}
+//               icon="cash-outline"
+//             />
 //             <View style={{ width: SPACING.sm }} />
-//             <StatCard label="Paid so far" value={totalPaid} icon="checkmark-circle-outline" />
+//             <StatCard
+//               label="Paid so far"
+//               value={totalPaid}
+//               icon="checkmark-circle-outline"
+//             />
 //           </View>
 
 //           <View style={{ height: SPACING.sm }} />
 
 //           <View style={styles.statRow}>
-//             <StatCard label="Amount left" value={outstanding} icon="wallet-outline" />
+//             <StatCard
+//               label="Amount left"
+//               value={outstanding}
+//               icon="wallet-outline"
+//             />
 //             <View style={{ width: SPACING.sm }} />
 //             <StatCard
 //               label="Steps"
@@ -1965,7 +2069,9 @@ const styles = StyleSheet.create({
 //                             style={[
 //                               styles.badge,
 //                               {
-//                                 backgroundColor: accepted ? SUCCESS_BG : WARNING_BG,
+//                                 backgroundColor: accepted
+//                                   ? SUCCESS_BG
+//                                   : WARNING_BG,
 //                               },
 //                             ]}
 //                           >
@@ -1973,7 +2079,9 @@ const styles = StyleSheet.create({
 //                               style={[
 //                                 styles.badgeText,
 //                                 {
-//                                   color: accepted ? SUCCESS_TEXT : WARNING_TEXT,
+//                                   color: accepted
+//                                     ? SUCCESS_TEXT
+//                                     : WARNING_TEXT,
 //                                 },
 //                               ]}
 //                             >
@@ -1994,53 +2102,35 @@ const styles = StyleSheet.create({
 //           </Section>
 //         ) : null}
 
-//         <Section title="All steps">
-//           <Card style={styles.blockCard} variant="default">
-//             {!installments.length ? (
-//               <Text style={styles.emptyText}>Support steps will appear here.</Text>
-//             ) : (
-//               installments.map((item, idx) => {
-//                 const remaining =
-//                   toNumber(item.total_due) +
-//                   toNumber(item.late_fee) -
-//                   toNumber(item.paid_amount);
+//         {paidInstallments.length > 0 ? (
+//           <Section title="Completed steps">
+//             <Card style={styles.blockCard} variant="default">
+//               {paidInstallments.map((item, idx) => (
+//                 <View key={item.id || idx}>
+//                   <InstallmentRow item={item} />
+//                   {idx < paidInstallments.length - 1 ? (
+//                     <View style={styles.lineDivider} />
+//                   ) : null}
+//                 </View>
+//               ))}
+//             </Card>
+//           </Section>
+//         ) : null}
 
-//                 const canPayThisStep =
-//                   allowPayNow && !getInstallmentPaidFlag(item) && remaining > 0;
-
-//                 return (
-//                   <View key={item.id || idx}>
-//                     <InstallmentRow
-//                       item={item}
-//                       showPayButton={canPayThisStep}
-//                       onPay={() => payNow(remaining > 0 ? remaining : undefined)}
-//                     />
-//                     {idx < installments.length - 1 ? (
-//                       <View style={styles.lineDivider} />
-//                     ) : null}
-//                   </View>
-//                 );
-//               })
-//             )}
-//           </Card>
-//         </Section>
-
-//         <Section title="Payment history">
-//           <Card style={styles.blockCard} variant="default">
-//             {!payments.length ? (
-//               <Text style={styles.emptyText}>No payments recorded yet.</Text>
-//             ) : (
-//               payments.map((item, idx) => (
+//         {payments.length > 0 ? (
+//           <Section title="Payment history">
+//             <Card style={styles.blockCard} variant="default">
+//               {payments.map((item, idx) => (
 //                 <View key={item.id || idx}>
 //                   <PaymentRow item={item} />
 //                   {idx < payments.length - 1 ? (
 //                     <View style={styles.lineDivider} />
 //                   ) : null}
 //                 </View>
-//               ))
-//             )}
-//           </Card>
-//         </Section>
+//               ))}
+//             </Card>
+//           </Section>
+//         ) : null}
 
 //         {isAdmin ? (
 //           <>
@@ -2350,6 +2440,14 @@ const styles = StyleSheet.create({
 
 //   installmentCard: {
 //     paddingVertical: 4,
+//   },
+
+//   currentCard: {
+//     borderRadius: 18,
+//     backgroundColor: "rgba(255,255,255,0.05)",
+//     padding: SPACING.md,
+//     borderWidth: 1,
+//     borderColor: "rgba(255,255,255,0.08)",
 //   },
 
 //   installmentTitle: {

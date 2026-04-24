@@ -77,6 +77,8 @@ export const ENDPOINTS = {
     membershipDetail: (membershipId: number | string) =>
       `/api/groups/memberships/${membershipId}/`,
 
+    dependants: "/api/groups/dependants/",
+
     joinRequests: "/api/groups/join-requests/",
     joinRequestDetail: (requestId: number | string) =>
       `/api/groups/join-requests/${requestId}/`,

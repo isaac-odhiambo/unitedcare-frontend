@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
+  GestureResponderEvent,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -82,66 +82,24 @@ function getMemberIdentity(user: GroupsUser | null) {
   );
 }
 
+function toSafeAmount(value?: string | number | null) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? String(n) : "";
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  if (typeof value === "string") {
+    const n = Number(String(value).replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  return 0;
+}
+
 function SectionTitle({ title }: { title: string }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;
-}
-
-function StatPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <View style={styles.heroStatPill}>
-      <Text style={styles.heroStatLabel}>{label}</Text>
-      <Text style={styles.heroStatValue}>{value}</Text>
-    </View>
-  );
-}
-
-function ActionCard({
-  title,
-  subtitle,
-  icon,
-  onPress,
-  primary = false,
-}: {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.92}
-      onPress={onPress}
-      style={[
-        styles.actionCard,
-        primary ? styles.actionCardPrimary : styles.actionCardSecondary,
-      ]}
-    >
-      <View
-        style={[
-          styles.actionIconWrap,
-          primary
-            ? styles.actionIconWrapPrimary
-            : styles.actionIconWrapSecondary,
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={20}
-          color={primary ? "#0C6A80" : "#FFFFFF"}
-        />
-      </View>
-
-      <Text style={styles.actionTitle}>{title}</Text>
-      <Text style={styles.actionSubtitle}>{subtitle}</Text>
-    </TouchableOpacity>
-  );
 }
 
 function GroupCard({
@@ -151,6 +109,7 @@ function GroupCard({
   onJoin,
   onContribute,
   busy,
+  navigationLocked,
 }: {
   group: Group;
   isMember: boolean;
@@ -158,17 +117,66 @@ function GroupCard({
   onJoin: (group: Group) => void;
   onContribute: (group: Group) => void;
   busy: boolean;
+  navigationLocked: boolean;
 }) {
   const joinPolicy = String(group.join_policy || "").toUpperCase().trim();
   const isClosed = joinPolicy === "CLOSED";
-  const canAct = !isMember && !hasPendingRequest && !isClosed;
-  const actionTitle = getJoinActionLabel(group);
+  const canJoin = !isMember && !hasPendingRequest && !isClosed;
+
+  const openGroupDetail = useCallback(() => {
+    if (navigationLocked || busy) return;
+
+    const groupId = Number(group?.id);
+    if (!Number.isFinite(groupId) || groupId <= 0) {
+      Alert.alert("Group unavailable", "This group is not ready yet.");
+      return;
+    }
+
+    try {
+      router.push({
+        pathname: ROUTES.dynamic.groupDetail(groupId) as any,
+        params: {
+          groupId: String(groupId),
+          group_id: String(groupId),
+          group: JSON.stringify(group),
+        },
+      });
+    } catch {
+      Alert.alert("Group unavailable", "Unable to open this group right now.");
+    }
+  }, [busy, group, navigationLocked]);
+
+  const handleFooterPress = useCallback(
+    (e: GestureResponderEvent) => {
+      e.stopPropagation();
+
+      if (navigationLocked || busy) return;
+
+      if (isMember) {
+        onContribute(group);
+        return;
+      }
+
+      if (canJoin) {
+        onJoin(group);
+        return;
+      }
+
+      openGroupDetail();
+    },
+    [busy, canJoin, group, isMember, navigationLocked, onContribute, onJoin, openGroupDetail]
+  );
 
   return (
     <TouchableOpacity
       activeOpacity={0.95}
-      onPress={() => router.push(ROUTES.dynamic.groupDetail(group.id) as any)}
-      style={[styles.groupCard, isMember && styles.groupCardActive]}
+      onPress={openGroupDetail}
+      disabled={navigationLocked || busy}
+      style={[
+        styles.groupCard,
+        isMember && styles.groupCardActive,
+        (navigationLocked || busy) && styles.groupCardDisabled,
+      ]}
     >
       <View style={styles.groupGlowTop} />
       <View style={styles.groupGlowBottom} />
@@ -197,7 +205,7 @@ function GroupCard({
       </View>
 
       {!!group.description ? (
-        <Text style={styles.groupDescription} numberOfLines={3}>
+        <Text style={styles.groupDescription} numberOfLines={4}>
           {group.description}
         </Text>
       ) : null}
@@ -264,56 +272,61 @@ function GroupCard({
           </Text>
           <Text style={styles.cardFooterSub}>
             {isMember
-              ? "Continue contributing and participating in this group."
+              ? "Continue with your contribution and stay active in this community."
               : "Read more and continue with your community."}
           </Text>
         </View>
 
-        <TouchableOpacity
-          activeOpacity={0.92}
-          onPress={() => {
-            if (isMember) {
-              onContribute(group);
-              return;
-            }
-
-            if (!canAct) {
-              router.push(ROUTES.dynamic.groupDetail(group.id) as any);
-              return;
-            }
-
-            onJoin(group);
-          }}
-          disabled={busy || (!isMember && isClosed)}
-          style={[
-            styles.footerButton,
-            isMember
-              ? styles.footerButtonContribute
-              : canAct
-              ? styles.footerButtonPrimary
-              : styles.footerButtonSecondary,
-            (busy || (!isMember && isClosed)) && styles.footerButtonDisabled,
-          ]}
-        >
-          <Text
+        <View style={styles.cardFooterButtons}>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={openGroupDetail}
+            disabled={busy || navigationLocked}
             style={[
-              styles.footerButtonText,
-              isMember
-                ? styles.footerButtonTextContribute
-                : canAct
-                ? styles.footerButtonTextPrimary
-                : styles.footerButtonTextSecondary,
+              styles.footerButton,
+              styles.footerButtonSecondary,
+              (busy || navigationLocked) && styles.footerButtonDisabled,
             ]}
           >
-            {isMember
-              ? "Contribute"
-              : hasPendingRequest
-              ? "View"
-              : busy
-              ? "Please wait..."
-              : actionTitle}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.footerButtonText,
+                styles.footerButtonTextSecondary,
+              ]}
+            >
+              Detail
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={handleFooterPress}
+            disabled={busy || navigationLocked || (!isMember && !canJoin)}
+            style={[
+              styles.footerButton,
+              isMember
+                ? styles.footerButtonContribute
+                : canJoin
+                  ? styles.footerButtonPrimary
+                  : styles.footerButtonSecondary,
+              (busy || navigationLocked || (!isMember && !canJoin)) &&
+                styles.footerButtonDisabled,
+            ]}
+          >
+            <Text
+              style={[
+                styles.footerButtonText,
+                isMember
+                  ? styles.footerButtonTextContribute
+                  : canJoin
+                    ? styles.footerButtonTextPrimary
+                    : styles.footerButtonTextSecondary,
+              ]}
+            >
+              {isMember ? "Continue" : hasPendingRequest ? "View" : getJoinActionLabel(group)}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -322,151 +335,186 @@ function GroupCard({
 export default function GroupsIndexScreen() {
   const [user, setUser] = useState<GroupsUser | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>(
-    []
-  );
+  const [myMembershipGroupIds, setMyMembershipGroupIds] = useState<number[]>([]);
   const [pendingJoinGroupIds, setPendingJoinGroupIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [showAvailableGroups, setShowAvailableGroups] = useState(true);
   const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null);
 
-  const load = useCallback(async (mountedRef?: { current: boolean }) => {
-    const safeSet = (fn: () => void) => {
-      if (!mountedRef || mountedRef.current) fn();
-    };
+  const isMountedRef = useRef(false);
+  const isLoadingRef = useRef(false);
 
-    try {
-      safeSet(() => setError(""));
-
-      const [sessionRes, meRes, groupsRes, membershipsRes, joinReqRes] =
-        await Promise.allSettled([
-          getSessionUser(),
-          getMe(),
-          listAvailableGroups(),
-          listGroupMemberships(),
-          listMyGroupJoinRequests(),
-        ]);
-
-      const sessionUserRaw =
-        sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
-
-      const sessionUser = hasUsefulUserIdentity(sessionUserRaw)
-        ? sessionUserRaw
-        : null;
-      const meUser = hasUsefulUserIdentity(meUserRaw) ? meUserRaw : null;
-
-      const mergedUser: GroupsUser | null = meUser
-        ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
-        : sessionUser
-        ? { ...sessionUser }
-        : null;
-
-      const availableGroups =
-        groupsRes.status === "fulfilled" && Array.isArray(groupsRes.value)
-          ? groupsRes.value
-          : [];
-
-      const memberships =
-        membershipsRes.status === "fulfilled" &&
-        Array.isArray(membershipsRes.value)
-          ? membershipsRes.value
-          : [];
-
-      const membershipIds = toUniqueNumberArray(
-        memberships.map((m: any) =>
-          m.group_id ?? (typeof m.group === "number" ? m.group : m.group?.id)
-        )
-      );
-
-      const joinRequests =
-        joinReqRes.status === "fulfilled" && Array.isArray(joinReqRes.value)
-          ? joinReqRes.value
-          : [];
-
-      const pendingIds = toUniqueNumberArray(
-        joinRequests
-          .filter(
-            (r: any) =>
-              String(r.status || "").toUpperCase().trim() === "PENDING"
-          )
-          .map((r: any) =>
-            r.group_id ?? (typeof r.group === "number" ? r.group : r.group?.id)
-          )
-      );
-
-      safeSet(() => {
-        setUser(mergedUser);
-        setGroups(availableGroups);
-        setMyMembershipGroupIds(membershipIds);
-        setPendingJoinGroupIds(pendingIds);
-      });
-
-      let nextError = "";
-
-      if (meRes.status === "rejected" && !sessionUser) {
-        nextError =
-          getApiErrorMessage(meRes.reason) || getErrorMessage(meRes.reason);
-      } else if (groupsRes.status === "rejected") {
-        nextError =
-          getApiErrorMessage(groupsRes.reason) ||
-          getErrorMessage(groupsRes.reason);
-      } else if (membershipsRes.status === "rejected") {
-        nextError =
-          getApiErrorMessage(membershipsRes.reason) ||
-          getErrorMessage(membershipsRes.reason);
-      } else if (joinReqRes.status === "rejected") {
-        nextError =
-          getApiErrorMessage(joinReqRes.reason) ||
-          getErrorMessage(joinReqRes.reason);
-      }
-
-      safeSet(() => {
-        if (nextError) setError(nextError);
-      });
-    } catch (e: any) {
-      safeSet(() => {
-        setError(getApiErrorMessage(e) || getErrorMessage(e));
-      });
-    }
+  const safeSetState = useCallback((cb: () => void) => {
+    if (isMountedRef.current) cb();
   }, []);
+
+  const load = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (isLoadingRef.current) return;
+
+      isLoadingRef.current = true;
+
+      try {
+        if (!options?.silent) {
+          safeSetState(() => {
+            setError("");
+          });
+        }
+
+        const [sessionRes, meRes, groupsRes, membershipsRes, joinReqRes] =
+          await Promise.allSettled([
+            getSessionUser(),
+            getMe(),
+            listAvailableGroups(),
+            listGroupMemberships(),
+            listMyGroupJoinRequests(),
+          ]);
+
+        const sessionUserRaw =
+          sessionRes.status === "fulfilled" ? sessionRes.value : null;
+        const meUserRaw = meRes.status === "fulfilled" ? meRes.value : null;
+
+        const sessionUser = hasUsefulUserIdentity(sessionUserRaw)
+          ? sessionUserRaw
+          : null;
+        const meUser = hasUsefulUserIdentity(meUserRaw) ? meUserRaw : null;
+
+        const mergedUser: GroupsUser | null = meUser
+          ? { ...(sessionUser ?? {}), ...(meUser ?? {}) }
+          : sessionUser
+            ? { ...sessionUser }
+            : null;
+
+        const currentUserId =
+          toNumber((mergedUser as any)?.id) ||
+          toNumber((mergedUser as any)?.user_id) ||
+          toNumber((mergedUser as any)?.pk);
+
+        const availableGroups =
+          groupsRes.status === "fulfilled" && Array.isArray(groupsRes.value)
+            ? groupsRes.value
+            : [];
+
+        const memberships =
+          membershipsRes.status === "fulfilled" &&
+          Array.isArray(membershipsRes.value)
+            ? membershipsRes.value
+            : [];
+
+        const myMembershipIds = toUniqueNumberArray(
+          memberships
+            .filter((m: any) => {
+              const membershipUserId =
+                toNumber(m?.user_id) ||
+                toNumber(m?.user?.id) ||
+                toNumber(m?.member_user_id);
+
+              return currentUserId > 0 && membershipUserId === currentUserId && !!m?.is_active;
+            })
+            .map((m: any) =>
+              m.group_id ?? (typeof m.group === "number" ? m.group : m.group?.id)
+            )
+        );
+
+        const joinRequests =
+          joinReqRes.status === "fulfilled" && Array.isArray(joinReqRes.value)
+            ? joinReqRes.value
+            : [];
+
+        const pendingIds = toUniqueNumberArray(
+          joinRequests
+            .filter(
+              (r: any) => String(r.status || "").toUpperCase().trim() === "PENDING"
+            )
+            .map((r: any) =>
+              r.group_id ?? (typeof r.group === "number" ? r.group : r.group?.id)
+            )
+        );
+
+        safeSetState(() => {
+          setUser(mergedUser);
+          setGroups(availableGroups);
+          setMyMembershipGroupIds(myMembershipIds);
+          setPendingJoinGroupIds(pendingIds);
+        });
+
+        let nextError = "";
+
+        const authFailed =
+          !sessionUser &&
+          !meUser &&
+          meRes.status === "rejected" &&
+          sessionRes.status === "rejected";
+
+        if (authFailed) {
+          nextError =
+            getApiErrorMessage(meRes.reason) ||
+            getErrorMessage(meRes.reason) ||
+            getApiErrorMessage(sessionRes.reason) ||
+            getErrorMessage(sessionRes.reason) ||
+            "Please login again to continue.";
+        } else if (groupsRes.status === "rejected") {
+          nextError =
+            getApiErrorMessage(groupsRes.reason) ||
+            getErrorMessage(groupsRes.reason) ||
+            "Unable to load groups right now.";
+        }
+
+        safeSetState(() => {
+          setError(nextError);
+        });
+      } catch (e: any) {
+        safeSetState(() => {
+          setError(
+            getApiErrorMessage(e) || getErrorMessage(e) || "Something went wrong."
+          );
+        });
+      } finally {
+        isLoadingRef.current = false;
+        safeSetState(() => {
+          setLoading(false);
+          setBootstrapped(true);
+        });
+      }
+    },
+    [safeSetState]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      const mountedRef = { current: true };
-
-      const run = async () => {
-        try {
-          if (mountedRef.current) setLoading(true);
-          await load(mountedRef);
-        } finally {
-          if (mountedRef.current) setLoading(false);
-        }
-      };
-
-      run();
+      isMountedRef.current = true;
+      load({ silent: true });
 
       return () => {
-        mountedRef.current = false;
+        isMountedRef.current = false;
       };
     }, [load])
   );
 
   const onRefresh = useCallback(async () => {
-    const mountedRef = { current: true };
+    safeSetState(() => {
+      setRefreshing(true);
+    });
 
     try {
-      setRefreshing(true);
-      await load(mountedRef);
+      await load({ silent: true });
     } finally {
-      if (mountedRef.current) setRefreshing(false);
+      safeSetState(() => {
+        setRefreshing(false);
+      });
     }
-  }, [load]);
+  }, [load, safeSetState]);
 
   const handleJoinFromCard = useCallback(
     (group: Group) => {
+      const groupId = Number(group?.id);
+      if (!Number.isFinite(groupId) || groupId <= 0) {
+        Alert.alert("Group unavailable", "This group is not ready yet.");
+        return;
+      }
+
       const joinPolicy = String(group.join_policy || "").toUpperCase().trim();
       const isOpen = joinPolicy === "OPEN";
       const isClosed = joinPolicy === "CLOSED";
@@ -490,9 +538,10 @@ export default function GroupsIndexScreen() {
             text: isOpen ? "Join now" : "Send request",
             onPress: async () => {
               try {
-                setJoiningGroupId(group.id);
+                setJoiningGroupId(groupId);
+
                 const res = await createGroupJoinRequest({
-                  group_id: group.id,
+                  group_id: groupId,
                 });
 
                 Alert.alert(
@@ -503,9 +552,12 @@ export default function GroupsIndexScreen() {
                       : "Your request has been sent.")
                 );
 
-                await load();
+                await load({ silent: true });
               } catch (e: any) {
-                Alert.alert("Community space", getApiErrorMessage(e));
+                Alert.alert(
+                  "Community space",
+                  getApiErrorMessage(e) || "Unable to complete request."
+                );
               } finally {
                 setJoiningGroupId(null);
               }
@@ -517,16 +569,118 @@ export default function GroupsIndexScreen() {
     [load]
   );
 
-  const handleContribute = useCallback((group: Group) => {
-    router.push({
-      pathname: "/(tabs)/groups/contribute" as any,
-      params: {
-        groupId: String(group.id),
-        group_id: String(group.id),
-        group_name: group.name,
-      },
-    });
-  }, []);
+  const handleContribute = useCallback(
+    async (group: Group) => {
+      const groupId = Number(group?.id);
+      if (!Number.isFinite(groupId) || groupId <= 0) {
+        Alert.alert("Group unavailable", "This group is not ready yet.");
+        return;
+      }
+
+      try {
+        const currentUserId =
+          toNumber((user as any)?.id) ||
+          toNumber((user as any)?.user_id) ||
+          toNumber((user as any)?.pk);
+
+        const groupName = String(group?.name || "Community space").trim();
+        const groupCode = String((group as any)?.payment_code || "")
+          .trim()
+          .toUpperCase();
+        const contributionAmount = toSafeAmount((group as any)?.contribution_amount);
+
+        if (!groupCode) {
+          Alert.alert(
+            "Contribution unavailable",
+            "This community space does not have a payment code yet."
+          );
+          return;
+        }
+
+        if (currentUserId <= 0) {
+          Alert.alert(
+            "Contribution unavailable",
+            "We could not identify your account right now."
+          );
+          return;
+        }
+
+        const memberships = await listGroupMemberships();
+
+        const membership = Array.isArray(memberships)
+          ? memberships.find((item: any) => {
+              const membershipGroupId =
+                Number(
+                  item?.group_id ??
+                    (typeof item?.group === "number" ? item.group : item?.group?.id)
+                ) || 0;
+
+              const membershipUserId =
+                toNumber(item?.user_id) ||
+                toNumber(item?.user?.id) ||
+                toNumber(item?.member_user_id);
+
+              return (
+                membershipGroupId === groupId &&
+                membershipUserId === currentUserId &&
+                !!item?.is_active
+              );
+            })
+          : null;
+
+        if (!membership) {
+          Alert.alert(
+            "Contribution unavailable",
+            "You are not an active member of this group. Please join first."
+          );
+          return;
+        }
+
+        const targetUserId =
+          toNumber((membership as any)?.user_id) ||
+          toNumber((membership as any)?.user?.id) ||
+          toNumber((membership as any)?.member_user_id);
+
+        if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+          Alert.alert(
+            "Contribution unavailable",
+            "We could not resolve your membership details right now."
+          );
+          return;
+        }
+
+        const finalReference = `${groupCode}${targetUserId}`;
+
+        const payload = {
+          groupId: String(groupId),
+          group_id: String(groupId),
+          group_name: groupName,
+          groupCode,
+          payment_code: groupCode,
+          userId: String(targetUserId),
+          reference: finalReference,
+          title: "Group contribution",
+          subtitle: groupName || "Community space",
+          helperText: "Review your contribution and continue to payment.",
+          ctaLabel: "Continue to payment",
+          amount: contributionAmount,
+          amountLabel: contributionAmount,
+          returnTo: ROUTES.dynamic.groupDetail(groupId),
+        };
+
+        router.push({
+          pathname: "/(tabs)/groups/contribute" as any,
+          params: payload,
+        });
+      } catch {
+        Alert.alert(
+          "Contribution unavailable",
+          "We could not prepare your payment right now."
+        );
+      }
+    },
+    [user]
+  );
 
   const stats = useMemo(() => {
     return {
@@ -537,18 +691,35 @@ export default function GroupsIndexScreen() {
   }, [groups, myMembershipGroupIds, pendingJoinGroupIds]);
 
   const activeGroups = useMemo(
-    () => groups.filter((g) => myMembershipGroupIds.includes(g.id)),
+    () => groups.filter((g) => myMembershipGroupIds.includes(Number(g.id))),
     [groups, myMembershipGroupIds]
   );
 
   const availableGroups = useMemo(
-    () => groups.filter((g) => !myMembershipGroupIds.includes(g.id)),
+    () => groups.filter((g) => !myMembershipGroupIds.includes(Number(g.id))),
     [groups, myMembershipGroupIds]
   );
 
   const memberName = useMemo(() => getMemberIdentity(user), [user]);
 
-  if (!loading && !user) {
+  const showJoinRequestsCard = stats.pendingRequests > 0;
+  const showActiveSection = activeGroups.length > 0;
+  const showAvailableSection = availableGroups.length > 0;
+
+  const showOnlyEmptyState =
+    bootstrapped &&
+    !loading &&
+    !error &&
+    activeGroups.length === 0 &&
+    availableGroups.length === 0 &&
+    stats.pendingRequests === 0;
+
+  const navigationLocked = !bootstrapped || loading;
+
+  const shouldShowSessionUnavailable =
+    bootstrapped && !loading && !user && !!error && groups.length === 0;
+
+  if (shouldShowSessionUnavailable) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.page}>
@@ -592,22 +763,20 @@ export default function GroupsIndexScreen() {
           <Text style={styles.heroTag}>COMMUNITY GROUPS</Text>
           <Text style={styles.heroTitle}>Hello, {memberName || "Member"}</Text>
           <Text style={styles.heroCaption}>
-            Open your active groups first, contribute easily, and explore more
-            community spaces below.
+            Find your community spaces and continue with ease.
           </Text>
 
-          <View style={styles.heroStatsRow}>
-            <StatPill label="All groups" value={stats.totalGroups} />
-            <StatPill label="Active" value={stats.myMemberships} />
-            <StatPill label="Requests" value={stats.pendingRequests} />
+          <View style={styles.heroActionsRow}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => router.push("/(tabs)/groups/history" as any)}
+              style={styles.heroActionButton}
+            >
+              <Ionicons name="time-outline" size={16} color="#0C6A80" />
+              <Text style={styles.heroActionButtonText}>Contribution history</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {loading ? (
-          <View style={styles.inlineLoader}>
-            <ActivityIndicator size="small" color="#8CF0C7" />
-          </View>
-        ) : null}
 
         {error ? (
           <View style={styles.errorCard}>
@@ -618,102 +787,82 @@ export default function GroupsIndexScreen() {
           </View>
         ) : null}
 
-        <SectionTitle title="Quick actions" />
-        <View style={styles.actionsGrid}>
-          <ActionCard
-            primary
-            icon="people-outline"
-            title="Your joined groups"
-            subtitle="Open the groups you already belong to and continue contributing."
-            onPress={() => router.push(ROUTES.tabs.groupsMemberships as any)}
-          />
+        {showJoinRequestsCard ? (
+          <>
+            <SectionTitle title="Join requests" />
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => router.push("/(tabs)/groups/join-requests" as any)}
+              style={styles.requestSummaryCard}
+              disabled={navigationLocked}
+            >
+              <View style={styles.requestSummaryLeft}>
+                <View style={styles.requestSummaryIcon}>
+                  <Ionicons
+                    name="git-pull-request-outline"
+                    size={18}
+                    color="#0A6E8A"
+                  />
+                </View>
 
-          <ActionCard
-            icon={showAvailableGroups ? "eye-off-outline" : "eye-outline"}
-            title={showAvailableGroups ? "Hide available" : "Show available"}
-            subtitle="Control whether available groups appear below."
-            onPress={() => setShowAvailableGroups((prev) => !prev)}
-          />
-        </View>
+                <View style={styles.requestSummaryTextWrap}>
+                  <Text style={styles.requestSummaryTitle}>Your join requests</Text>
+                  <Text style={styles.requestSummarySub}>
+                    {stats.pendingRequests} request
+                    {stats.pendingRequests > 1 ? "s" : ""} currently waiting
+                  </Text>
+                </View>
+              </View>
 
-        <SectionTitle title="Join requests" />
-        <TouchableOpacity
-          activeOpacity={0.92}
-          onPress={() => router.push("/(tabs)/groups/join-requests" as any)}
-          style={styles.requestSummaryCard}
-        >
-          <View style={styles.requestSummaryLeft}>
-            <View style={styles.requestSummaryIcon}>
-              <Ionicons
-                name="git-pull-request-outline"
-                size={18}
-                color="#0A6E8A"
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          </>
+        ) : null}
+
+        {showActiveSection ? (
+          <>
+            <SectionTitle title="Your active groups" />
+            {activeGroups.map((g) => (
+              <GroupCard
+                key={String(g.id)}
+                group={g}
+                isMember={true}
+                hasPendingRequest={pendingJoinGroupIds.includes(Number(g.id))}
+                onJoin={handleJoinFromCard}
+                onContribute={handleContribute}
+                busy={joiningGroupId === Number(g.id)}
+                navigationLocked={navigationLocked}
               />
-            </View>
+            ))}
+          </>
+        ) : null}
 
-            <View style={styles.requestSummaryTextWrap}>
-              <Text style={styles.requestSummaryTitle}>Your join requests</Text>
-              <Text style={styles.requestSummarySub}>
-                {stats.pendingRequests > 0
-                  ? `${stats.pendingRequests} request${
-                      stats.pendingRequests > 1 ? "s" : ""
-                    } currently waiting`
-                  : "Track current and past join requests here"}
-              </Text>
-            </View>
-          </View>
+        {showAvailableSection ? (
+          <>
+            <SectionTitle title="Available groups" />
+            {availableGroups.map((g) => (
+              <GroupCard
+                key={String(g.id)}
+                group={g}
+                isMember={false}
+                hasPendingRequest={pendingJoinGroupIds.includes(Number(g.id))}
+                onJoin={handleJoinFromCard}
+                onContribute={handleContribute}
+                busy={joiningGroupId === Number(g.id)}
+                navigationLocked={navigationLocked}
+              />
+            ))}
+          </>
+        ) : null}
 
-          <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
-
-        <SectionTitle title="Your active groups" />
-        {activeGroups.length === 0 ? (
+        {showOnlyEmptyState ? (
           <View style={styles.emptyHolder}>
             <EmptyState
               icon="people-outline"
-              title="No active groups yet"
-              subtitle="The groups you join will appear here first."
+              title="No groups yet"
+              subtitle="Join a community space when one becomes available."
             />
           </View>
-        ) : (
-          activeGroups.map((g) => (
-            <GroupCard
-              key={g.id}
-              group={g}
-              isMember={true}
-              hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
-              onJoin={handleJoinFromCard}
-              onContribute={handleContribute}
-              busy={joiningGroupId === g.id}
-            />
-          ))
-        )}
-
-        {showAvailableGroups ? (
-          <>
-            <SectionTitle title="Available groups" />
-            {availableGroups.length === 0 ? (
-              <View style={styles.emptyHolder}>
-                <EmptyState
-                  icon="people-outline"
-                  title="No available groups"
-                  subtitle="Available groups will appear here once ready."
-                />
-              </View>
-            ) : (
-              availableGroups.map((g) => (
-                <GroupCard
-                  key={g.id}
-                  group={g}
-                  isMember={false}
-                  hasPendingRequest={pendingJoinGroupIds.includes(g.id)}
-                  onJoin={handleJoinFromCard}
-                  onContribute={handleContribute}
-                  busy={joiningGroupId === g.id}
-                />
-              ))
-            )}
-          </>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -734,13 +883,6 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.lg,
     paddingBottom: 12,
-  },
-
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#062C49",
   },
 
   backgroundBlobTop: {
@@ -795,9 +937,9 @@ const styles = StyleSheet.create({
 
   heroCard: {
     backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 28,
-    padding: SPACING.lg,
-    marginBottom: SPACING.lg,
+    borderRadius: 24,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
     overflow: "hidden",
@@ -807,9 +949,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: -30,
     top: -24,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: "rgba(255,255,255,0.07)",
   },
 
@@ -817,72 +959,70 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: -24,
     bottom: -32,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: "rgba(140,240,199,0.08)",
   },
 
   heroOrbThree: {
     position: "absolute",
-    right: 34,
+    right: 30,
     bottom: -18,
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: "rgba(12,192,183,0.08)",
   },
 
   heroTag: {
     alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.14)",
     color: "#E8FFF5",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   heroTitle: {
-    fontSize: 26,
+    fontSize: 22,
     color: "#FFFFFF",
     fontWeight: "900",
   },
 
   heroCaption: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 21,
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
     color: "rgba(255,255,255,0.85)",
     fontWeight: "700",
   },
 
-  heroStatsRow: {
+  heroActionsRow: {
+    marginTop: SPACING.md,
     flexDirection: "row",
-    marginTop: SPACING.lg,
-    gap: 12,
   },
 
-  heroStatPill: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    borderRadius: 16,
-    padding: 12,
+  heroActionButton: {
+    minHeight: 42,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    alignSelf: "flex-start",
   },
 
-  heroStatLabel: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.65)",
-    fontWeight: "700",
-  },
-
-  heroStatValue: {
-    marginTop: 4,
-    fontSize: 18,
-    color: "#FFFFFF",
-    fontWeight: "900",
+  heroActionButtonText: {
+    color: "#0C6A80",
+    fontSize: 13,
+    fontWeight: "800",
   },
 
   sectionTitle: {
@@ -920,60 +1060,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 12,
     lineHeight: 18,
-  },
-
-  actionsGrid: {
-    flexDirection: "row",
-    gap: SPACING.md,
-    marginBottom: SPACING.lg,
-  },
-
-  actionCard: {
-    flex: 1,
-    borderRadius: 22,
-    padding: SPACING.md,
-    borderWidth: 1,
-  },
-
-  actionCardPrimary: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-
-  actionCardSecondary: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderColor: "rgba(255,255,255,0.10)",
-  },
-
-  actionIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-
-  actionIconWrapPrimary: {
-    backgroundColor: "rgba(236,251,255,0.95)",
-  },
-
-  actionIconWrapSecondary: {
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
-
-  actionTitle: {
-    color: "#FFFFFF",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-
-  actionSubtitle: {
-    marginTop: 6,
-    color: "rgba(255,255,255,0.75)",
-    fontWeight: "600",
-    fontSize: 11,
-    lineHeight: 17,
   },
 
   requestSummaryCard: {
@@ -1038,6 +1124,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(129,244,231,0.20)",
   },
 
+  groupCardDisabled: {
+    opacity: 0.75,
+  },
+
   groupGlowTop: {
     position: "absolute",
     top: -30,
@@ -1100,10 +1190,11 @@ const styles = StyleSheet.create({
   },
 
   groupDescription: {
-    marginTop: 10,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "rgba(255,255,255,0.85)",
+    marginTop: 12,
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#FFFFFF",
+    fontWeight: "800",
   },
 
   groupInfoBox: {
@@ -1190,6 +1281,12 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
+  cardFooterButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
   cardFooterText: {
     color: "#FFFFFF",
     fontWeight: "800",
@@ -1252,11 +1349,5 @@ const styles = StyleSheet.create({
 
   emptyHolder: {
     marginBottom: SPACING.lg,
-  },
-
-  inlineLoader: {
-    marginBottom: 10,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

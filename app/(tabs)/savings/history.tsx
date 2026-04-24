@@ -328,10 +328,9 @@ export default function SavingsHistoryScreen() {
 
   const [account, setAccount] = useState<SavingsAccount | null>(null);
   const [transactions, setTransactions] = useState<SavingsHistoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [hasBootstrapped, setHasBootstrapped] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -366,14 +365,10 @@ export default function SavingsHistoryScreen() {
 
       const run = async () => {
         try {
-          setLoading(true);
-          if (active) {
-            await load();
-          }
+          await load();
         } finally {
           if (active) {
-            setLoading(false);
-            setHasBootstrapped(true);
+            setReady(true);
           }
         }
       };
@@ -418,10 +413,8 @@ export default function SavingsHistoryScreen() {
   const canWithdraw = canShowWithdrawAction(account);
   const savingsReference = account?.id ? buildSavingsReference(account.id) : "";
 
-  if (!hasBootstrapped) {
-    return (
-      <SafeAreaView style={styles.page} edges={["top", "left", "right"]} />
-    );
+  if (!ready) {
+    return null;
   }
 
   if (!account && error) {
@@ -609,21 +602,6 @@ const styles = StyleSheet.create({
   content: {
     padding: SPACING.lg,
     position: "relative",
-  },
-
-  loadingWrap: {
-    flex: 1,
-    backgroundColor: "#062C49",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: SPACING.lg,
-  },
-
-  loadingText: {
-    marginTop: SPACING.sm,
-    fontFamily: FONT.regular,
-    fontSize: 12,
-    color: "rgba(255,255,255,0.88)",
   },
 
   backgroundBlobTop: {
