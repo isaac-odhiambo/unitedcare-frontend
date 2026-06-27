@@ -1,6 +1,8 @@
 // app/_layout.tsx
 
+import { AuthProvider } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { queryClient } from "@/lib/queryClient";
 import { setUnauthorizedHandler } from "@/services/api";
 import {
   clearSavedLoginPersistence,
@@ -9,6 +11,7 @@ import {
   getKeepSignedIn,
   getSessionUser,
 } from "@/services/session";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { router, Stack, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +31,7 @@ export default function RootLayout() {
     setUnauthorizedHandler(async () => {
       await clearSessionUser();
       await clearSavedLoginPersistence();
+      queryClient.clear();
       router.replace("/(auth)/login" as any);
     });
   }, []);
@@ -77,90 +81,160 @@ export default function RootLayout() {
   if (!bootstrapped) {
     return (
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: UI.page }} />
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <View style={{ flex: 1, backgroundColor: UI.page }} />
+          </AuthProvider>
+        </QueryClientProvider>
       </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <NotificationProvider>
-        <StatusBar style="light" />
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <NotificationProvider>
+            <StatusBar style="light" />
 
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: "fade",
-            contentStyle: {
-              backgroundColor: UI.page,
-            },
-          }}
-        >
-          <Stack.Screen
-            name="(auth)"
-            options={{
-              headerShown: false,
-              animation: "fade",
-            }}
-          />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: "fade",
+                contentStyle: {
+                  backgroundColor: UI.page,
+                },
+              }}
+            >
+              <Stack.Screen
+                name="(auth)"
+                options={{
+                  headerShown: false,
+                  animation: "fade",
+                }}
+              />
 
-          <Stack.Screen
-            name="(tabs)"
-            options={{
-              headerShown: false,
-            }}
-          />
+              <Stack.Screen
+                name="(tabs)"
+                options={{
+                  headerShown: false,
+                }}
+              />
 
-          <Stack.Screen
-            name="modal"
-            options={{
-              presentation: "transparentModal",
-              headerShown: false,
-            }}
-          />
-        </Stack>
-      </NotificationProvider>
+              <Stack.Screen
+                name="modal"
+                options={{
+                  presentation: "transparentModal",
+                  headerShown: false,
+                }}
+              />
+            </Stack>
+          </NotificationProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
+
 
 // // app/_layout.tsx
 
 // import { NotificationProvider } from "@/context/NotificationContext";
 // import { setUnauthorizedHandler } from "@/services/api";
-// import { router, Stack } from "expo-router";
+// import {
+//   clearSavedLoginPersistence,
+//   clearSessionUser,
+//   getAuthToken,
+//   getKeepSignedIn,
+//   getSessionUser,
+// } from "@/services/session";
+// import { router, Stack, useSegments } from "expo-router";
 // import { StatusBar } from "expo-status-bar";
-// import { useEffect } from "react";
+// import { useEffect, useRef, useState } from "react";
+// import { View } from "react-native";
 // import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // const UI = {
-//   page: "#062C49", // your main app background
+//   page: "#062C49",
 // };
 
 // export default function RootLayout() {
+//   const segments = useSegments();
+//   const [bootstrapped, setBootstrapped] = useState(false);
+//   const didRouteRef = useRef(false);
+
 //   useEffect(() => {
-//     setUnauthorizedHandler(() => {
+//     setUnauthorizedHandler(async () => {
+//       await clearSessionUser();
+//       await clearSavedLoginPersistence();
 //       router.replace("/(auth)/login" as any);
 //     });
 //   }, []);
 
+//   useEffect(() => {
+//     let mounted = true;
+
+//     const bootstrapAuth = async () => {
+//       try {
+//         const [sessionUser, keepSignedIn, token] = await Promise.all([
+//           getSessionUser(),
+//           getKeepSignedIn(),
+//           getAuthToken(),
+//         ]);
+
+//         if (!mounted) return;
+
+//         const inAuthGroup = segments[0] === "(auth)";
+//         const hasSession = !!sessionUser;
+//         const hasPersistentLogin = keepSignedIn && !!token;
+
+//         if (!didRouteRef.current) {
+//           if ((hasSession || hasPersistentLogin) && inAuthGroup) {
+//             didRouteRef.current = true;
+//             router.replace("/(tabs)/dashboard" as any);
+//           } else if (!hasSession && !hasPersistentLogin && !inAuthGroup) {
+//             didRouteRef.current = true;
+//             router.replace("/(auth)/login" as any);
+//           }
+//         }
+//       } catch {
+//         if (!mounted) return;
+//       } finally {
+//         if (mounted) {
+//           setBootstrapped(true);
+//         }
+//       }
+//     };
+
+//     bootstrapAuth();
+
+//     return () => {
+//       mounted = false;
+//     };
+//   }, [segments]);
+
+//   if (!bootstrapped) {
+//     return (
+//       <SafeAreaProvider>
+//         <View style={{ flex: 1, backgroundColor: UI.page }} />
+//       </SafeAreaProvider>
+//     );
+//   }
+
 //   return (
 //     <SafeAreaProvider>
 //       <NotificationProvider>
-
-//         {/* Match your app dark theme */}
 //         <StatusBar style="light" />
 
 //         <Stack
 //           screenOptions={{
-//             headerShown: false, // 🔥 FORCE NO HEADER ANYWHERE
+//             headerShown: false,
 //             animation: "fade",
 //             contentStyle: {
-//               backgroundColor: UI.page, // 🔥 match dashboard theme
+//               backgroundColor: UI.page,
 //             },
 //           }}
 //         >
-//           {/* AUTH FLOW */}
 //           <Stack.Screen
 //             name="(auth)"
 //             options={{
@@ -169,7 +243,6 @@ export default function RootLayout() {
 //             }}
 //           />
 
-//           {/* MAIN APP */}
 //           <Stack.Screen
 //             name="(tabs)"
 //             options={{
@@ -177,7 +250,6 @@ export default function RootLayout() {
 //             }}
 //           />
 
-//           {/* MODALS */}
 //           <Stack.Screen
 //             name="modal"
 //             options={{
@@ -190,3 +262,4 @@ export default function RootLayout() {
 //     </SafeAreaProvider>
 //   );
 // }
+

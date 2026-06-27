@@ -145,6 +145,13 @@ export const ENDPOINTS = {
 
     detail: (merryId: number | string) => `/api/merry/${merryId}/`,
 
+    // Mobile optimized detail screen
+    mobileDetail: (merryId: number | string) =>
+      `/api/merry/${merryId}/mobile-detail/`,
+
+    mobileReadinessRows: (merryId: number | string) =>
+      `/api/merry/${merryId}/mobile-readiness-rows/`,
+
     dashboard: (merryId: number | string) =>
       `/api/merry/${merryId}/dashboard/`,
 

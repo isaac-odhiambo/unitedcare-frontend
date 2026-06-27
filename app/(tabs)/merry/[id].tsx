@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   RefreshControl,
@@ -24,20 +24,24 @@ import { api, getErrorMessage } from "@/services/api";
 import { ENDPOINTS } from "@/services/endpoints";
 import {
   fmtKES,
-  getApiErrorMessage,
-  getMerryDetail,
   getMerryMemberDashboard,
+  getMerryMobileDetailBundle,
+  getMerryMobileReadiness,
   getNextPayoutTurn,
   getPayoutReadiness,
   MerryDetail,
   MerryMemberDashboardResponse,
+  MerryMobileDetailBundle,
   NextPayoutTurnResponse,
-  PayoutReadinessResponse,
+  PayoutReadinessResponse
 } from "@/services/merry";
-import { getMe, MeResponse } from "@/services/profile";
-import { getSessionUser, SessionUser } from "@/services/session";
 
-type MerryUser = Partial<MeResponse> & Partial<SessionUser>;
+type MerryUser = {
+    username?: string | null;
+    is_admin?: boolean;
+    is_staff?: boolean;
+    is_superuser?: boolean;
+  };
 
 type BreakdownRow = {
   due_id?: number;
@@ -51,8 +55,10 @@ type BreakdownRow = {
   base_amount?: string | number;
   penalty_amount?: string | number;
   due_amount?: string | number;
+  expected_amount?: string | number;
   paid_amount?: string | number;
   outstanding?: string | number;
+  outstanding_amount?: string | number;
   days_overdue?: number;
   bucket?: string;
 };
@@ -70,8 +76,10 @@ type ReadinessRow = {
   base_amount?: string | number;
   penalty_amount?: string | number;
   due_amount?: string | number;
+  expected_amount?: string | number;
   paid_amount?: string | number;
   outstanding?: string | number;
+  outstanding_amount?: string | number;
   status?: string;
   due_date?: string | null;
   days_overdue?: number;
@@ -110,6 +118,27 @@ function moneyNumber(value?: string | number | null) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function getApiErrorMessage(error: any): string {
+  const data = error?.response?.data;
+
+  if (typeof data === "string") return data;
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.message === "string") return data.message;
+  if (typeof data?.error === "string") return data.error;
+
+  if (data && typeof data === "object") {
+    const firstValue = Object.values(data).find(Boolean);
+
+    if (Array.isArray(firstValue)) {
+      return String(firstValue[0] ?? "");
+    }
+
+    if (firstValue) return String(firstValue);
+  }
+
+  return "";
+}
+
 function formatShortDueDate(value?: string | null) {
   if (!value) return "";
   const d = new Date(value);
@@ -122,18 +151,213 @@ function formatShortDueDate(value?: string | null) {
   });
 }
 
+function unwrapApiData(value: any): any {
+  if (!value || typeof value !== "object") return value;
+
+  if (value.data && typeof value.data === "object") return value.data;
+  if (value.result && typeof value.result === "object") return value.result;
+  if (value.payload && typeof value.payload === "object") return value.payload;
+
+  return value;
+}
+
+function normalizeReadinessSource(value: any): any {
+  const source = unwrapApiData(value);
+
+  if (!source || typeof source !== "object") return null;
+
+  return (
+    source.readiness ||
+    source.payout_readiness ||
+    source.payoutReadiness ||
+    source.payout_readiness_status ||
+    source.payoutReadinessStatus ||
+    source
+  );
+}
+
+function normalizeTurnSource(value: any): any {
+  const source = unwrapApiData(value);
+
+  if (!source || typeof source !== "object") return null;
+
+  return (
+    source.next_turn ||
+    source.nextTurn ||
+    source.current_turn ||
+    source.currentTurn ||
+    source.turn ||
+    source
+  );
+}
+
+function hasReadinessContent(value: any) {
+  const source = normalizeReadinessSource(value);
+
+  if (!source || typeof source !== "object") return false;
+
+  return Boolean(
+    Array.isArray(source.rows) ||
+      Array.isArray(source.members_paid) ||
+      Array.isArray(source.members_not_paid) ||
+      source.pool_amount !== undefined ||
+      source.total_paid !== undefined ||
+      source.total_unpaid !== undefined ||
+      source.paid_total !== undefined ||
+      source.outstanding_total !== undefined ||
+      source.due_total !== undefined ||
+      source.total_paid_allocated !== undefined ||
+      source.total_due !== undefined ||
+      source.next_turn ||
+      source.nextTurn,
+  );
+}
+
+function firstReadinessSource(...sources: any[]) {
+  for (const source of sources) {
+    const normalized = normalizeReadinessSource(source);
+
+    if (hasReadinessContent(normalized)) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+function readinessNumber(source: any, keys: string[]) {
+  const normalized = normalizeReadinessSource(source);
+
+  if (!normalized || typeof normalized !== "object") return 0;
+
+  for (const key of keys) {
+    if (normalized[key] !== undefined && normalized[key] !== null) {
+      return moneyNumber(normalized[key]);
+    }
+  }
+
+  return 0;
+}
+
+function readinessRowsFrom(source: any): ReadinessRow[] {
+  const normalized = normalizeReadinessSource(source);
+
+  if (!normalized || typeof normalized !== "object") return [];
+
+  const mobileMemberRows = [
+    ...(Array.isArray(normalized.members_paid) ? normalized.members_paid : []),
+    ...(Array.isArray(normalized.members_not_paid)
+      ? normalized.members_not_paid
+      : []),
+  ];
+
+  const candidates = [
+    normalized.rows,
+    mobileMemberRows.length ? mobileMemberRows : undefined,
+    normalized.data?.rows,
+    normalized.member_rows,
+    normalized.memberRows,
+    normalized.readiness_rows,
+    normalized.readinessRows,
+    normalized.payout_rows,
+    normalized.payoutRows,
+  ];
+
+  const rows = candidates.find((candidate) => Array.isArray(candidate));
+
+  return Array.isArray(rows) ? rows : [];
+}
+
+function rowPaidAmount(row: any) {
+  return moneyNumber(
+    row?.paid_amount ??
+      row?.paidAmount ??
+      row?.amount_paid ??
+      row?.amountPaid ??
+      row?.total_paid ??
+      row?.totalPaid ??
+      row?.paid,
+  );
+}
+
+function rowOutstandingAmount(row: any) {
+  return moneyNumber(
+    row?.outstanding ??
+      row?.outstanding_amount ??
+      row?.outstandingAmount ??
+      row?.remaining ??
+      row?.remaining_amount ??
+      row?.remainingAmount ??
+      row?.balance,
+  );
+}
+
+function rowDueAmount(row: any) {
+  const direct = moneyNumber(
+    row?.due_amount ??
+      row?.dueAmount ??
+      row?.total_due ??
+      row?.totalDue ??
+      row?.amount,
+  );
+
+  if (direct > 0) return direct;
+
+  return moneyNumber(row?.base_amount ?? row?.baseAmount) +
+    moneyNumber(row?.penalty_amount ?? row?.penaltyAmount);
+}
+
+function rowStatus(row: any) {
+  return String(row?.status || "").trim().toUpperCase();
+}
+
+
 function getIsAdmin(user?: MerryUser | null) {
   if (!user) return false;
 
-  const role = String((user as any)?.role || "").toLowerCase();
+  const adminFlags = [
+    (user as any)?.is_admin,
+    (user as any)?.isAdmin,
+    (user as any)?.is_staff,
+    (user as any)?.isStaff,
+    (user as any)?.is_superuser,
+    (user as any)?.isSuperuser,
+    (user as any)?.can_manage_merry,
+    (user as any)?.canManageMerry,
+    (user as any)?.can_manage_users,
+    (user as any)?.canManageUsers,
+  ];
 
-  return (
-    toBool((user as any)?.is_admin) ||
-    toBool((user as any)?.is_staff) ||
-    toBool((user as any)?.is_superuser) ||
-    role === "admin" ||
-    role === "super_admin" ||
-    role === "superadmin"
+  if (adminFlags.some((value) => toBool(value))) return true;
+
+  const roleFields = [
+    (user as any)?.role,
+    (user as any)?.user_role,
+    (user as any)?.userRole,
+    (user as any)?.account_role,
+    (user as any)?.accountRole,
+    (user as any)?.account_type,
+    (user as any)?.accountType,
+    (user as any)?.user_type,
+    (user as any)?.userType,
+    (user as any)?.type,
+  ]
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+
+  return roleFields.some((role) =>
+    [
+      "admin",
+      "administrator",
+      "super_admin",
+      "superadmin",
+      "staff",
+      "owner",
+    ].includes(role),
   );
 }
 
@@ -146,6 +370,10 @@ function getStatusColors(status?: string | null) {
 
   if (s === "PARTIAL") {
     return { bg: INFO_BG, text: INFO_TEXT, label: "Partial" };
+  }
+
+  if (s === "NOT_PAID") {
+    return { bg: DANGER_BG, text: DANGER_TEXT, label: "Not paid" };
   }
 
   if (s === "OVERDUE") {
@@ -245,7 +473,9 @@ function ActionButton({
       <Text
         style={[
           styles.actionBtnText,
-          isPrimary ? styles.actionBtnTextPrimary : styles.actionBtnTextSecondary,
+          isPrimary
+            ? styles.actionBtnTextPrimary
+            : styles.actionBtnTextSecondary,
           disabled ? styles.actionBtnTextDisabled : null,
         ]}
       >
@@ -263,7 +493,9 @@ function BreakdownCard({ row }: { row: BreakdownRow }) {
   const baseAmount = moneyNumber(row.base_amount);
   const paidAmount = moneyNumber(row.paid_amount);
   const daysLate = Number(row.days_overdue ?? 0);
-  const dueDateLabel = row.due_date ? formatShortDueDate(String(row.due_date)) : "";
+  const dueDateLabel = row.due_date
+    ? formatShortDueDate(String(row.due_date))
+    : "";
 
   return (
     <View style={styles.breakdownCard}>
@@ -283,7 +515,9 @@ function BreakdownCard({ row }: { row: BreakdownRow }) {
       {row.due_date ? (
         <Text style={styles.breakdownMeta}>
           Due date: {dueDateLabel || String(row.due_date)}
-          {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue` : ""}
+          {daysLate > 0
+            ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue`
+            : ""}
         </Text>
       ) : null}
 
@@ -295,7 +529,10 @@ function BreakdownCard({ row }: { row: BreakdownRow }) {
       {penalty > 0 ? (
         <View style={styles.breakdownMoneyRow}>
           <Text style={styles.breakdownMoneyLabel}>
-            Penalty{daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}` : ""}
+            Penalty
+            {daysLate > 0
+              ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}`
+              : ""}
           </Text>
           <Text style={[styles.breakdownMoneyValue, { color: WARNING_TEXT }]}>
             {fmtKES(penalty)}
@@ -320,11 +557,13 @@ function BreakdownCard({ row }: { row: BreakdownRow }) {
 
 function AdminRowCard({ row }: { row: ReadinessRow }) {
   const colors = getStatusColors(row.status);
-  const outstanding = moneyNumber(row.outstanding);
-  const penalty = moneyNumber(row.penalty_amount);
-  const paidAmount = moneyNumber(row.paid_amount);
+  const outstanding = rowOutstandingAmount(row);
+  const penalty = moneyNumber((row as any)?.penalty_amount ?? (row as any)?.penaltyAmount);
+  const paidAmount = rowPaidAmount(row);
   const daysLate = Number(row.days_overdue ?? 0);
-  const dueDateLabel = row.due_date ? formatShortDueDate(String(row.due_date)) : "";
+  const dueDateLabel = row.due_date
+    ? formatShortDueDate(String(row.due_date))
+    : "";
 
   return (
     <View style={styles.breakdownCard}>
@@ -347,7 +586,9 @@ function AdminRowCard({ row }: { row: ReadinessRow }) {
       {row.due_date ? (
         <Text style={styles.breakdownMeta}>
           Due date: {dueDateLabel || String(row.due_date)}
-          {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue` : ""}
+          {daysLate > 0
+            ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"} overdue`
+            : ""}
         </Text>
       ) : null}
 
@@ -360,7 +601,9 @@ function AdminRowCard({ row }: { row: ReadinessRow }) {
         <View style={styles.breakdownMoneyRow}>
           <Text style={styles.breakdownMoneyLabel}>
             Penalty
-            {daysLate > 0 ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}` : ""}
+            {daysLate > 0
+              ? ` • ${daysLate} day${daysLate === 1 ? "" : "s"}`
+              : ""}
           </Text>
           <Text style={[styles.breakdownMoneyValue, { color: WARNING_TEXT }]}>
             {fmtKES(penalty)}
@@ -378,22 +621,65 @@ function AdminRowCard({ row }: { row: ReadinessRow }) {
   );
 }
 
+
+
+function firstParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function merryUserFromMobileBundle(
+  bundle?: MerryMobileDetailBundle | null
+): MerryUser | null {
+  const viewer = bundle?.viewer as any;
+
+  if (!viewer || typeof viewer !== "object") return null;
+
+  return {
+    ...viewer,
+    is_staff: viewer.is_staff ?? viewer.is_admin,
+    is_superuser: viewer.is_superuser ?? viewer.is_admin,
+  };
+}
+
+async function fetchCurrentMerryUser(): Promise<MerryUser | null> {
+  try {
+    const res = await api.get(ENDPOINTS.accounts.me);
+    const data = unwrapApiData(res.data);
+
+    if (!data || typeof data !== "object") return null;
+
+    return data as MerryUser;
+  } catch {
+    return null;
+  }
+}
+
 export default function MerryDetailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
-    id?: string;
-    returnTo?: string;
+    id?: string | string[];
+    merryId?: string | string[];
+    merry_id?: string | string[];
+    returnTo?: string | string[];
   }>();
-  const merryId = Number(params.id);
+
+  const rawMerryId =
+    firstParam(params.id) ??
+    firstParam(params.merryId) ??
+    firstParam(params.merry_id);
+
+  const merryId = Number.parseInt(String(rawMerryId ?? ""), 10);
+  const hasValidMerryId = Number.isFinite(merryId) && merryId > 0;
+  const returnToValue = firstParam(params.returnTo);
 
   const backToMerryIndex = useCallback(() => {
     const target =
-      typeof params.returnTo === "string" && params.returnTo.trim()
-        ? params.returnTo
+      typeof returnToValue === "string" && returnToValue.trim()
+        ? returnToValue
         : ROUTES.tabs.merry;
 
     router.replace(target as any);
-  }, [params.returnTo]);
+  }, [returnToValue]);
 
   const [user, setUser] = useState<MerryUser | null>(null);
   const [detail, setDetail] = useState<MerryDetail | null>(null);
@@ -401,7 +687,7 @@ export default function MerryDetailScreen() {
     useState<MerryMemberDashboardResponse | null>(null);
   const [nextTurn, setNextTurn] = useState<NextPayoutTurnResponse | null>(null);
   const [readiness, setReadiness] = useState<PayoutReadinessResponse | null>(
-    null
+    null,
   );
 
   const [loading, setLoading] = useState(true);
@@ -413,9 +699,11 @@ export default function MerryDetailScreen() {
   const [payoutMetaError, setPayoutMetaError] = useState("");
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showAdminBreakdown, setShowAdminBreakdown] = useState(false);
+  const [adminRowsLoading, setAdminRowsLoading] = useState(false);
+  const [adminRowsLoaded, setAdminRowsLoaded] = useState(false);
 
   const loadDashboard = useCallback(async () => {
-    if (!merryId || Number.isNaN(merryId)) return;
+    if (!hasValidMerryId) return;
 
     try {
       setDashboardError("");
@@ -423,136 +711,155 @@ export default function MerryDetailScreen() {
       setDashboard(res);
     } catch (e: any) {
       setDashboard(null);
-      setDashboardError(
-        getApiErrorMessage(e) || "Unable to load merry dashboard."
-      );
+
+      // This is not a fatal screen error. Keep the page clean and allow pull-to-refresh.
+      setDashboardError("");
     }
-  }, [merryId]);
+  }, [hasValidMerryId, merryId]);
 
-  const loadPayoutMeta = useCallback(async () => {
-    if (!merryId || Number.isNaN(merryId)) return;
+  const loadPayoutMeta = useCallback(
+    async (includeReadiness = false) => {
+      if (!hasValidMerryId) return;
 
-    try {
-      setPayoutMetaError("");
+      try {
+        setPayoutMetaError("");
 
-      const [turnRes, readinessRes] = await Promise.allSettled([
-        getNextPayoutTurn(merryId),
-        getPayoutReadiness(merryId),
-      ]);
+        // Normal members only need the next payout turn.
+        // Readiness is mainly for admin payout creation and can fail on some accounts,
+        // so do not let it show a scary warning for ordinary member viewing.
+        const [turnRes, readinessRes] = await Promise.allSettled([
+          getNextPayoutTurn(merryId),
+          includeReadiness
+            ? getPayoutReadiness(merryId)
+            : Promise.resolve(null),
+        ]);
 
-      setNextTurn(turnRes.status === "fulfilled" ? turnRes.value : null);
-      setReadiness(
-        readinessRes.status === "fulfilled" ? readinessRes.value : null
-      );
-
-      const payoutErrors: string[] = [];
-
-      if (turnRes.status === "rejected") {
-        payoutErrors.push(
-          getApiErrorMessage(turnRes.reason) || getErrorMessage(turnRes.reason)
+        setNextTurn(
+          turnRes.status === "fulfilled"
+            ? normalizeTurnSource(turnRes.value)
+            : null,
         );
-      }
 
-      if (readinessRes.status === "rejected") {
-        payoutErrors.push(
-          getApiErrorMessage(readinessRes.reason) ||
-            getErrorMessage(readinessRes.reason)
-        );
-      }
+        if (includeReadiness) {
+          setReadiness(
+            readinessRes.status === "fulfilled"
+              ? normalizeReadinessSource(readinessRes.value)
+              : null,
+          );
+        } else {
+          setReadiness(null);
+        }
 
-      setPayoutMetaError(payoutErrors.filter(Boolean).join(" • "));
-    } catch (e: any) {
-      setNextTurn(null);
-      setReadiness(null);
-      setPayoutMetaError(
-        getApiErrorMessage(e) || "Unable to load payout information."
-      );
-    }
-  }, [merryId]);
+        if (turnRes.status === "rejected") {
+          // Non-critical metadata failed. Keep the screen professional and quiet.
+          setPayoutMetaError("");
+          return;
+        }
+
+        if (includeReadiness && readinessRes.status === "rejected") {
+          // Admin can refresh; do not show raw backend/network wording in the UI.
+          setPayoutMetaError("");
+          return;
+        }
+
+        setPayoutMetaError("");
+      } catch (e: any) {
+        setNextTurn(null);
+        setReadiness(null);
+
+        // This should not block the page or show "something went wrong".
+        setPayoutMetaError("");
+      }
+    },
+    [hasValidMerryId, merryId],
+  );
 
   const load = useCallback(async () => {
-    if (!merryId || Number.isNaN(merryId)) {
+    if (!hasValidMerryId) {
       setError("Invalid merry selected.");
       setDetail(null);
       setDashboard(null);
       setReadiness(null);
       setNextTurn(null);
+      setUser(null);
       setDashboardError("");
       setPayoutMetaError("");
+      setAdminRowsLoaded(false);
       return;
     }
 
     try {
       setError("");
+      setDashboardError("");
+      setPayoutMetaError("");
+      setAdminRowsLoaded(false);
+      setShowAdminBreakdown(false);
 
-      const [sessionRes, meRes, detailRes] = await Promise.allSettled([
-        getSessionUser(),
-        getMe(),
-        getMerryDetail(merryId),
-      ]);
+      // Mobile-only source of truth.
+      // 1) /api/merry/:id/mobile-detail/ opens the screen.
+      // 2) /api/merry/:id/mobile-readiness-rows/ loads admin payment totals/rows silently after the page is visible.
+      const mobileBundle = await getMerryMobileDetailBundle(merryId);
+      const viewerUser = merryUserFromMobileBundle(mobileBundle);
 
-      const sessionUser =
-        sessionRes.status === "fulfilled" ? sessionRes.value : null;
-      const meUser = meRes.status === "fulfilled" ? meRes.value : null;
+      setUser(viewerUser);
+      setDetail(mobileBundle.detail);
+      setDashboard(mobileBundle.dashboard);
+      setNextTurn(mobileBundle.nextTurn);
+      setReadiness(mobileBundle.readiness);
+      setAdminRowsLoaded(false);
 
-      const mergedUser: MerryUser | null =
-        sessionUser || meUser
-          ? {
-              ...(sessionUser ?? {}),
-              ...(meUser ?? {}),
-            }
-          : null;
+      if (getIsAdmin(viewerUser)) {
+        setAdminRowsLoading(true);
 
-      setUser(mergedUser);
+        getMerryMobileReadiness(merryId)
+          .then((adminReadiness) => {
+            setReadiness((prev: any) => {
+              const previous = normalizeReadinessSource(prev) || {};
 
-      if (detailRes.status !== "fulfilled") {
-        setDetail(null);
-        setDashboard(null);
-        setReadiness(null);
-        setNextTurn(null);
-        setDashboardError("");
-        setPayoutMetaError("");
-        setError(
-          getApiErrorMessage(detailRes.reason) ||
-            getErrorMessage(detailRes.reason)
-        );
-        return;
-      }
+              return {
+                ...previous,
+                ...adminReadiness,
+                next_turn:
+                  adminReadiness.next_turn ||
+                  previous.next_turn ||
+                  previous.nextTurn ||
+                  null,
+                rows: Array.isArray(adminReadiness.rows)
+                  ? adminReadiness.rows
+                  : Array.isArray(previous.rows)
+                    ? previous.rows
+                    : [],
+              };
+            });
 
-      const nextDetail = detailRes.value;
-      setDetail(nextDetail);
-
-      const tasks: Promise<any>[] = [];
-
-      if (nextDetail.is_member) {
-        tasks.push(loadDashboard());
-        tasks.push(loadPayoutMeta());
+            setAdminRowsLoaded(true);
+          })
+          .catch(() => {
+            setAdminRowsLoaded(false);
+            setPayoutMetaError("");
+          })
+          .finally(() => {
+            setAdminRowsLoading(false);
+          });
       } else {
-        setDashboard(null);
-        setDashboardError("");
-
-        if (getIsAdmin(mergedUser)) {
-          tasks.push(loadPayoutMeta());
-        } else {
-          setReadiness(null);
-          setNextTurn(null);
-          setPayoutMetaError("");
-        }
-      }
-
-      if (tasks.length) {
-        await Promise.all(tasks);
+        setAdminRowsLoading(false);
       }
     } catch (e: any) {
       setDetail(null);
       setDashboard(null);
       setReadiness(null);
       setNextTurn(null);
+      setUser(null);
       setDashboardError("");
       setPayoutMetaError("");
-      setError(getApiErrorMessage(e) || getErrorMessage(e));
+      setAdminRowsLoaded(false);
+      setError(
+        getApiErrorMessage(e) ||
+          getErrorMessage(e) ||
+          "This merry could not be loaded. Please login again and refresh.",
+      );
     }
-  }, [loadDashboard, loadPayoutMeta, merryId]);
+  }, [hasValidMerryId, merryId]);
 
   const initialLoad = useCallback(async () => {
     try {
@@ -563,11 +870,9 @@ export default function MerryDetailScreen() {
     }
   }, [load]);
 
-  useFocusEffect(
-    useCallback(() => {
-      initialLoad();
-    }, [initialLoad])
-  );
+  useEffect(() => {
+    initialLoad();
+  }, [initialLoad]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -577,6 +882,41 @@ export default function MerryDetailScreen() {
       setRefreshing(false);
     }
   }, [load]);
+
+  const loadAdminReadinessRows = useCallback(async () => {
+    if (!hasValidMerryId) return false;
+
+    try {
+      setAdminRowsLoading(true);
+      setPayoutMetaError("");
+
+      const normalizedRows = await getMerryMobileReadiness(merryId);
+
+      setReadiness((prev: any) => {
+        const previous = normalizeReadinessSource(prev) || {};
+
+        return {
+          ...previous,
+          ...normalizedRows,
+          next_turn:
+            normalizedRows.next_turn ||
+            previous.next_turn ||
+            previous.nextTurn ||
+            null,
+          rows: Array.isArray(normalizedRows.rows) ? normalizedRows.rows : [],
+        };
+      });
+
+      setAdminRowsLoaded(true);
+      return true;
+    } catch {
+      // Keep the UI clean. Admin can pull-to-refresh and try again.
+      setPayoutMetaError("");
+      return false;
+    } finally {
+      setAdminRowsLoading(false);
+    }
+  }, [hasValidMerryId, merryId]);
 
   const isAdminUser = useMemo(() => getIsAdmin(user), [user]);
   const isMember = !!detail?.is_member;
@@ -621,14 +961,14 @@ export default function MerryDetailScreen() {
   const penaltyTotal = useMemo(() => {
     return breakdownRows.reduce(
       (sum, row) => sum + moneyNumber(row.penalty_amount),
-      0
+      0,
     );
   }, [breakdownRows]);
 
   const overdueBaseTotal = useMemo(() => {
     return breakdownRows.reduce(
       (sum, row) => sum + moneyNumber(row.base_amount),
-      0
+      0,
     );
   }, [breakdownRows]);
 
@@ -636,26 +976,167 @@ export default function MerryDetailScreen() {
     return totals.overdue + totals.current;
   }, [totals.current, totals.overdue]);
 
-  const totalPool = useMemo(() => {
-    return moneyNumber(nextTurn?.expected_amount ?? 0);
-  }, [nextTurn?.expected_amount]);
+  const payableAfterWallet = useMemo(() => {
+    const payable = myDueNow - walletBalance;
+    return payable > 0 ? payable : 0;
+  }, [myDueNow, walletBalance]);
 
-  const totalPaid = useMemo(() => {
-    return moneyNumber(readiness?.paid_total ?? 0);
-  }, [readiness]);
+  const depositAmount = useMemo(() => {
+    if (myDueNow > 0) {
+      return payableAfterWallet;
+    }
 
-  const totalOutstanding = useMemo(() => {
-    return moneyNumber(readiness?.outstanding_total ?? 0);
-  }, [readiness]);
+    return memberPayAmount;
+  }, [memberPayAmount, myDueNow, payableAfterWallet]);
+
+  const effectiveReadiness = useMemo<any>(() => {
+    return firstReadinessSource(
+      readiness,
+      (detail as any)?.readiness,
+      (detail as any)?.payout_readiness,
+      (detail as any)?.payoutReadiness,
+      (detail as any)?.data?.readiness,
+      (detail as any)?.data?.payout_readiness,
+      (dashboard as any)?.readiness,
+      (dashboard as any)?.payout_readiness,
+    );
+  }, [dashboard, detail, readiness]);
+
+  const effectiveNextTurn = useMemo<any>(() => {
+    return (
+      normalizeTurnSource(nextTurn) ||
+      normalizeTurnSource(effectiveReadiness?.next_turn) ||
+      normalizeTurnSource(effectiveReadiness?.nextTurn) ||
+      normalizeTurnSource((detail as any)?.next_turn) ||
+      normalizeTurnSource((detail as any)?.nextTurn) ||
+      null
+    );
+  }, [detail, effectiveReadiness, nextTurn]);
 
   const readinessRows = useMemo<ReadinessRow[]>(() => {
-    const rows = (readiness as any)?.rows || [];
-    return Array.isArray(rows) ? rows : [];
-  }, [readiness]);
+    return readinessRowsFrom(effectiveReadiness);
+  }, [effectiveReadiness]);
+
+  const rowsPaidTotal = useMemo(() => {
+    return readinessRows.reduce((sum, row) => sum + rowPaidAmount(row), 0);
+  }, [readinessRows]);
+
+  const rowsOutstandingTotal = useMemo(() => {
+    return readinessRows.reduce(
+      (sum, row) => sum + rowOutstandingAmount(row),
+      0,
+    );
+  }, [readinessRows]);
+
+  const rowsDueTotal = useMemo(() => {
+    return readinessRows.reduce((sum, row) => sum + rowDueAmount(row), 0);
+  }, [readinessRows]);
+
+  const totalPool = useMemo(() => {
+    const backendDueTotal = readinessNumber(effectiveReadiness, [
+      "pool_amount",
+      "due_total",
+      "total_due",
+      "expected_amount",
+      "payout_amount",
+      "amount",
+    ]);
+
+    const turnExpected = moneyNumber(
+      effectiveNextTurn?.expected_amount ?? effectiveNextTurn?.amount,
+    );
+
+    return rowsDueTotal || backendDueTotal || turnExpected;
+  }, [effectiveNextTurn, effectiveReadiness, rowsDueTotal]);
+
+  const totalPaid = useMemo(() => {
+    const backendPaidTotal = readinessNumber(effectiveReadiness, [
+      "paid_total",
+      "total_paid",
+      "total_paid_allocated",
+      "paid",
+    ]);
+
+    return Math.max(rowsPaidTotal, backendPaidTotal);
+  }, [effectiveReadiness, rowsPaidTotal]);
+
+  const totalOutstanding = useMemo(() => {
+    const backendOutstandingTotal = readinessNumber(effectiveReadiness, [
+      "total_unpaid",
+      "outstanding_total",
+      "total_outstanding",
+      "remaining_total",
+      "balance_total",
+      "outstanding",
+    ]);
+
+    return Math.max(rowsOutstandingTotal, backendOutstandingTotal);
+  }, [effectiveReadiness, rowsOutstandingTotal]);
+
+  const paidRows = useMemo(() => {
+    return readinessRows.filter((row) => {
+      return rowPaidAmount(row) > 0 && rowOutstandingAmount(row) <= 0;
+    });
+  }, [readinessRows]);
+
+  const partialRows = useMemo(() => {
+    return readinessRows.filter((row) => {
+      return rowPaidAmount(row) > 0 && rowOutstandingAmount(row) > 0;
+    });
+  }, [readinessRows]);
 
   const unpaidRows = useMemo(() => {
-    return readinessRows.filter((row) => moneyNumber(row.outstanding) > 0);
+    return readinessRows.filter((row) => {
+      return rowPaidAmount(row) <= 0 && rowOutstandingAmount(row) > 0;
+    });
   }, [readinessRows]);
+
+  const adminMemberRows = useMemo(() => {
+    return [...paidRows, ...partialRows, ...unpaidRows];
+  }, [paidRows, partialRows, unpaidRows]);
+
+  const adminRowsCount = useMemo(() => {
+    const explicitCount = Number(
+      (effectiveReadiness as any)?.rows_count ??
+        (effectiveReadiness as any)?.rowsCount ??
+        ((effectiveReadiness as any)?.paid_count !== undefined ||
+        (effectiveReadiness as any)?.not_paid_count !== undefined
+          ? Number((effectiveReadiness as any)?.paid_count ?? 0) +
+            Number((effectiveReadiness as any)?.not_paid_count ?? 0)
+          : undefined),
+    );
+
+    if (Number.isFinite(explicitCount) && explicitCount > 0) {
+      return explicitCount;
+    }
+
+    if (adminMemberRows.length > 0) return adminMemberRows.length;
+
+    const seatCount = Number(
+      detail?.seats_count ?? detail?.members_count ?? detail?.max_seats ?? 0,
+    );
+
+    return Number.isFinite(seatCount) && seatCount > 0 ? seatCount : 0;
+  }, [
+    adminMemberRows.length,
+    detail?.max_seats,
+    detail?.members_count,
+    detail?.seats_count,
+    effectiveReadiness,
+  ]);
+
+  const handleToggleAdminBreakdown = useCallback(async () => {
+    if (!showAdminBreakdown && !adminRowsLoaded && !adminRowsLoading) {
+      await loadAdminReadinessRows();
+    }
+
+    setShowAdminBreakdown((value) => !value);
+  }, [
+    adminRowsLoaded,
+    adminRowsLoading,
+    loadAdminReadinessRows,
+    showAdminBreakdown,
+  ]);
 
   const availableSeatText = useMemo(() => {
     if (detail?.available_seats == null) return "Unlimited";
@@ -675,26 +1156,73 @@ export default function MerryDetailScreen() {
   const canCreateNextPayout = useMemo(() => {
     return !!(
       isAdminUser &&
-      (readiness as any)?.can_admin_create_payout &&
-      readiness?.ready_for_payout &&
-      !(readiness as any)?.payout_already_exists
+      effectiveReadiness?.can_admin_create_payout &&
+      effectiveReadiness?.ready_for_payout &&
+      !effectiveReadiness?.payout_already_exists
     );
-  }, [isAdminUser, readiness]);
+  }, [effectiveReadiness, isAdminUser]);
 
   const currentTargetLabel = useMemo(() => {
-    if (!nextTurn?.username) return "—";
-    return `${nextTurn.username}${
-      nextTurn?.seat_no ? ` • Seat ${nextTurn.seat_no}` : ""
-    }`;
-  }, [nextTurn?.seat_no, nextTurn?.username]);
+    const name = effectiveNextTurn?.username;
+    const seatNo = effectiveNextTurn?.seat_no;
+
+    if (!name) return "—";
+
+    return `${name}${seatNo ? ` • Seat ${seatNo}` : ""}`;
+  }, [effectiveNextTurn]);
+
+  const nextMemberLabel = useMemo(() => {
+    const directName =
+      effectiveNextTurn?.next_username ||
+      effectiveNextTurn?.next_user_name ||
+      effectiveNextTurn?.next_member_name ||
+      effectiveNextTurn?.upcoming_username ||
+      effectiveNextTurn?.upcoming_member_name;
+
+    const directSeatNo =
+      effectiveNextTurn?.next_seat_no || effectiveNextTurn?.upcoming_seat_no;
+
+    if (directName) {
+      return `${directName}${directSeatNo ? ` • Seat ${directSeatNo}` : ""}`;
+    }
+
+    const currentSeatNo = Number(effectiveNextTurn?.seat_no ?? 0);
+    const orderedRows = readinessRows
+      .filter((row) => row.username && Number.isFinite(Number(row.seat_no)))
+      .slice()
+      .sort((a, b) => Number(a.seat_no ?? 0) - Number(b.seat_no ?? 0));
+
+    if (orderedRows.length && currentSeatNo > 0) {
+      const nextRow =
+        orderedRows.find((row) => Number(row.seat_no ?? 0) > currentSeatNo) ||
+        orderedRows[0];
+
+      return `${nextRow.username}${
+        nextRow.seat_no ? ` • Seat ${nextRow.seat_no}` : ""
+      }`;
+    }
+
+    if (effectiveNextTurn?.username) {
+      return `${effectiveNextTurn.username}${
+        effectiveNextTurn?.seat_no ? ` • Seat ${effectiveNextTurn.seat_no}` : ""
+      }`;
+    }
+
+    return "—";
+  }, [effectiveNextTurn, readinessRows]);
 
   const currentPayoutDate = useMemo(() => {
-    return nextTurn?.due_date || (readiness as any)?.scheduled_date || null;
-  }, [nextTurn?.due_date, readiness]);
+    return (
+      effectiveNextTurn?.due_date ||
+      effectiveNextTurn?.scheduled_date ||
+      effectiveReadiness?.scheduled_date ||
+      null
+    );
+  }, [effectiveNextTurn, effectiveReadiness]);
 
   const memberHeadline = useMemo(() => {
-    return fmtKES(memberPayAmount);
-  }, [memberPayAmount]);
+    return fmtKES(depositAmount);
+  }, [depositAmount]);
 
   const memberHeadlineLabel = useMemo(() => {
     return isMember ? "Contribute now" : "Contribution per seat";
@@ -717,7 +1245,7 @@ export default function MerryDetailScreen() {
   }, [availableSeatText, isMember, membershipLabel, myDueNow, walletBalance]);
 
   const goToDeposit = useCallback(() => {
-    const amount = String(memberPayAmount || 0);
+    const amount = String(depositAmount || 0);
 
     router.replace({
       pathname: "/(tabs)/payments/deposit" as any,
@@ -739,7 +1267,7 @@ export default function MerryDetailScreen() {
         narration: `Merry contribution - ${title}`,
       },
     });
-  }, [memberPayAmount, merryId, title]);
+  }, [depositAmount, merryId, title]);
 
   const openMembers = useCallback(() => {
     router.push({
@@ -749,12 +1277,12 @@ export default function MerryDetailScreen() {
   }, [merryId]);
 
   const handleCreateNextPayout = useCallback(async () => {
-    if (!merryId || !canCreateNextPayout) {
+    if (!hasValidMerryId || !canCreateNextPayout) {
       Alert.alert(
         "Not ready",
-        (readiness as any)?.payout_already_exists
+        effectiveReadiness?.payout_already_exists
           ? "A payout already exists for this turn."
-          : "This payout is not ready yet."
+          : "This payout is not ready yet.",
       );
       return;
     }
@@ -768,21 +1296,22 @@ export default function MerryDetailScreen() {
 
       Alert.alert(
         "Payout created",
-        res?.data?.message || "The next payout record was created successfully."
+        res?.data?.message ||
+          "The next payout record was created successfully.",
       );
 
       await load();
     } catch (e: any) {
       Alert.alert(
         "Could not create payout",
-        getApiErrorMessage(e) || getErrorMessage(e)
+        getApiErrorMessage(e) || getErrorMessage(e),
       );
     } finally {
       setCreatingNextPayout(false);
     }
-  }, [canCreateNextPayout, load, merryId, readiness]);
+  }, [canCreateNextPayout, effectiveReadiness, hasValidMerryId, load, merryId]);
 
-  if (!merryId || Number.isNaN(merryId)) {
+  if (!hasValidMerryId) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
         <View style={styles.emptyWrap}>
@@ -797,17 +1326,47 @@ export default function MerryDetailScreen() {
     );
   }
 
-  if (!user && !loading) {
+  if (!detail && loading) {
     return (
       <SafeAreaView style={styles.page} edges={["top", "left", "right"]}>
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            title="Not signed in"
-            subtitle="Please login to continue."
-            actionLabel="Go to Login"
-            onAction={() => router.replace(ROUTES.auth.login as any)}
-          />
-        </View>
+        <ScrollView
+          style={styles.page}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: Math.max(insets.bottom + 24, 32) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.topBar}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pageTitle}>Merry</Text>
+              <Text style={styles.pageSubTitle}>Opening quietly</Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={backToMerryIndex}
+              style={styles.iconBtn}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color={WHITE} />
+            </TouchableOpacity>
+          </View>
+
+          <Card style={styles.heroCard} variant="default">
+            <Text style={styles.heroLabel}>Merry contribution</Text>
+            <Text style={styles.heroAmount}>{fmtKES(0)}</Text>
+            <Text style={styles.heroHint}>
+              Your merry details will appear here shortly.
+            </Text>
+          </Card>
+
+          <SectionBlock title="Current turn">
+            <Card style={styles.sectionCard} variant="default">
+              <Text style={styles.turnTarget}>—</Text>
+              <Text style={styles.turnMeta}>Loading details quietly...</Text>
+            </Card>
+          </SectionBlock>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -855,7 +1414,9 @@ export default function MerryDetailScreen() {
                 <Text style={styles.pageSubTitle}>
                   {isMember
                     ? `${mySeatCount} seat${mySeatCount === 1 ? "" : "s"}${
-                        mySeatNumbers.length ? ` • ${mySeatNumbers.join(", ")}` : ""
+                        mySeatNumbers.length
+                          ? ` • ${mySeatNumbers.join(", ")}`
+                          : ""
                       }`
                     : `${availableSeatText} • ${membershipLabel}`}
                 </Text>
@@ -889,13 +1450,16 @@ export default function MerryDetailScreen() {
               {isMember ? (
                 <>
                   <Text style={styles.heroHint}>
-                    {mySeatCount} seat{mySeatCount === 1 ? "" : "s"} • {fmtKES(contributionPerSeat)} each
+                    {mySeatCount} seat{mySeatCount === 1 ? "" : "s"} •{" "}
+                    {fmtKES(contributionPerSeat)} each
                   </Text>
 
                   <Text style={styles.heroHint}>{heroMessage}</Text>
 
                   {walletBalance > 0 ? (
-                    <Text style={styles.heroHint}>Wallet: {fmtKES(walletBalance)}</Text>
+                    <Text style={styles.heroHint}>
+                      Wallet: {fmtKES(walletBalance)}
+                    </Text>
                   ) : null}
 
                   <View style={styles.heroActions}>
@@ -944,7 +1508,9 @@ export default function MerryDetailScreen() {
                     />
                   ) : (
                     <ActionButton
-                      title={detail.is_open === false ? "Merry closed" : "Details"}
+                      title={
+                        detail.is_open === false ? "Merry closed" : "Details"
+                      }
                       onPress={openMembers}
                       variant="secondary"
                     />
@@ -964,35 +1530,31 @@ export default function MerryDetailScreen() {
               </Card>
             ) : null}
 
-            {dashboardError && isMember ? (
-              <Card style={styles.errorCard} variant="default">
-                <Text style={styles.errorText}>{dashboardError}</Text>
-              </Card>
-            ) : null}
-
-            {payoutMetaError ? (
-              <Card style={styles.errorCard} variant="default">
-                <Text style={styles.errorText}>{payoutMetaError}</Text>
-              </Card>
-            ) : null}
+            {/* Non-critical dashboard/payout metadata errors are kept out of the UI.
+                The main page stays usable, and pull-to-refresh can retry silently. */}
 
             {isMember ? (
               <SectionBlock title="Current turn">
                 <Card style={styles.sectionCard} variant="default">
                   <Text style={styles.turnTarget}>{currentTargetLabel}</Text>
                   <Text style={styles.turnMeta}>
-                    Turn {nextTurn?.turn_no ?? "—"} • Cycle {(nextTurn as any)?.cycle_no ?? "—"}
+                    Turn {effectiveNextTurn?.turn_no ?? "—"} • Cycle{" "}
+                    {effectiveNextTurn?.cycle_no ??
+                      effectiveNextTurn?.cycle_number ??
+                      "—"}
                   </Text>
                   {currentPayoutDate ? (
                     <Text style={styles.turnMeta}>
-                      Due date: {formatShortDueDate(String(currentPayoutDate)) || String(currentPayoutDate)}
+                      Due date:{" "}
+                      {formatShortDueDate(String(currentPayoutDate)) ||
+                        String(currentPayoutDate)}
                     </Text>
                   ) : null}
 
                   <View style={styles.summaryRow}>
                     <SummaryStat
                       label="Pay now"
-                      value={fmtKES(memberPayAmount)}
+                      value={fmtKES(depositAmount)}
                       icon="cash-outline"
                     />
                     <SummaryStat
@@ -1022,7 +1584,10 @@ export default function MerryDetailScreen() {
                         danger={myDueNow > 0}
                       />
                     ) : (
-                      <InfoPill text="You can still contribute for later." success />
+                      <InfoPill
+                        text="You can still contribute for later."
+                        success
+                      />
                     )}
                   </View>
                 </Card>
@@ -1092,35 +1657,46 @@ export default function MerryDetailScreen() {
                     />
                     <SummaryStat
                       label="Next member"
-                      value={nextTurn?.username || "—"}
+                      value={nextMemberLabel}
                       icon="person-outline"
                     />
                   </View>
 
                   <View style={{ marginTop: SPACING.sm }}>
-                    {readiness?.ready_for_payout ? (
+                    {effectiveReadiness?.ready_for_payout ? (
                       <InfoPill text="Payout is ready" success />
                     ) : (
                       <InfoPill
                         text={`Payout is not ready • ${fmtKES(totalOutstanding)} still missing`}
                       />
                     )}
+
+                    {adminRowsLoading && !adminRowsLoaded ? (
+                      <Text style={[styles.sectionMiniText, { marginTop: SPACING.sm }]}>
+                        Updating payment status quietly...
+                      </Text>
+                    ) : null}
                   </View>
 
-                  {unpaidRows.length ? (
+                  {adminRowsCount ? (
                     <View style={{ marginTop: SPACING.md }}>
                       <TouchableOpacity
                         activeOpacity={0.9}
-                        onPress={() => setShowAdminBreakdown((v) => !v)}
+                        onPress={handleToggleAdminBreakdown}
+                        disabled={adminRowsLoading}
                         style={styles.toggleBtn}
                       >
                         <Text style={styles.toggleBtnText}>
                           {showAdminBreakdown
-                            ? "Hide unpaid members"
-                            : "View unpaid members"}
+                            ? "Hide current turn members"
+                            : adminRowsLoading
+                              ? "Loading current turn members..."
+                              : `View current turn members (${adminRowsCount})`}
                         </Text>
                         <Ionicons
-                          name={showAdminBreakdown ? "chevron-up" : "chevron-down"}
+                          name={
+                            showAdminBreakdown ? "chevron-up" : "chevron-down"
+                          }
                           size={16}
                           color={WHITE}
                         />
@@ -1128,12 +1704,69 @@ export default function MerryDetailScreen() {
 
                       {showAdminBreakdown ? (
                         <View style={{ marginTop: SPACING.md }}>
-                          {unpaidRows.map((row, idx) => (
-                            <AdminRowCard
-                              key={`${row.due_id ?? idx}-${row.user_id ?? idx}`}
-                              row={row}
-                            />
-                          ))}
+                          {adminRowsLoading ? (
+                            <Text style={styles.sectionMiniText}>
+                              Loading member payment status...
+                            </Text>
+                          ) : adminMemberRows.length ? (
+                            <>
+                              {paidRows.length ? (
+                                <>
+                                  <Text style={styles.sectionMiniText}>
+                                    Paid members ({paidRows.length})
+                                  </Text>
+                                  {paidRows.map((row, idx) => (
+                                    <AdminRowCard
+                                      key={`paid-${row.due_id ?? idx}-${row.user_id ?? idx}-${row.seat_no ?? idx}`}
+                                      row={row}
+                                    />
+                                  ))}
+                                </>
+                              ) : null}
+
+                              {partialRows.length ? (
+                                <>
+                                  <Text
+                                    style={[
+                                      styles.sectionMiniText,
+                                      { marginTop: SPACING.sm },
+                                    ]}
+                                  >
+                                    Partially paid members ({partialRows.length})
+                                  </Text>
+                                  {partialRows.map((row, idx) => (
+                                    <AdminRowCard
+                                      key={`partial-${row.due_id ?? idx}-${row.user_id ?? idx}-${row.seat_no ?? idx}`}
+                                      row={row}
+                                    />
+                                  ))}
+                                </>
+                              ) : null}
+
+                              {unpaidRows.length ? (
+                                <>
+                                  <Text
+                                    style={[
+                                      styles.sectionMiniText,
+                                      { marginTop: SPACING.sm },
+                                    ]}
+                                  >
+                                    Unpaid members ({unpaidRows.length})
+                                  </Text>
+                                  {unpaidRows.map((row, idx) => (
+                                    <AdminRowCard
+                                      key={`unpaid-${row.due_id ?? idx}-${row.user_id ?? idx}-${row.seat_no ?? idx}`}
+                                      row={row}
+                                    />
+                                  ))}
+                                </>
+                              ) : null}
+                            </>
+                          ) : (
+                            <Text style={styles.sectionMiniText}>
+                              Member rows could not be loaded. Pull down to refresh and try again.
+                            </Text>
+                          )}
                         </View>
                       ) : null}
                     </View>
@@ -1188,6 +1821,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: PAGE_BG,
     padding: 24,
+  },
+
+  loadingText: {
+    color: TEXT_SOFT,
+    fontSize: 14,
+    fontFamily: FONT.medium,
+    marginTop: SPACING.md,
   },
 
   topBar: {

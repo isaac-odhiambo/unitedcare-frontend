@@ -18,10 +18,20 @@ import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   getApiErrorMessage,
+  getInstallmentDaysOverdue,
+  getInstallmentDaysRemaining,
+  getInstallmentFullDue,
+  getLoanAmountDueNow,
   getLoanBorrowerId,
+  getLoanDaysOverdue,
+  getLoanDaysRemaining,
   getLoanDetail,
+  getLoanProductName,
+  getLoanStatusLabel,
   getMyLoans,
+  getNextUnpaidInstallment,
   Loan,
+  LoanInstallment,
   toNumber,
 } from "@/services/loans";
 import { getMe, MeResponse } from "@/services/profile";
@@ -32,10 +42,10 @@ type LoanUser = Partial<MeResponse> & Partial<SessionUser>;
 const UI = {
   page: "#062C49",
   text: "#FFFFFF",
-  textSoft: "rgba(255,255,255,0.88)",
-  textMuted: "rgba(255,255,255,0.70)",
-  supportCard: "rgba(255,255,255,0.07)",
-  supportBorder: "rgba(255,255,255,0.10)",
+  textSoft: "rgba(255,255,255,0.86)",
+  textMuted: "rgba(255,255,255,0.68)",
+  card: "rgba(255,255,255,0.07)",
+  cardBorder: "rgba(255,255,255,0.10)",
   glass: "rgba(255,255,255,0.08)",
   glassSoft: "rgba(255,255,255,0.06)",
   border: "rgba(255,255,255,0.10)",
@@ -43,11 +53,19 @@ const UI = {
   whiteButtonText: "#0C6A80",
   greenButton: "#197D71",
   greenButtonText: "#FFFFFF",
-  iconChipBg: "rgba(236,255,252,0.76)",
-  iconChipColor: "#148C84",
+  danger: "#FCA5A5",
+  dangerBg: "rgba(239,68,68,0.18)",
+  warning: "#FEF3C7",
+  warningBg: "rgba(245,158,11,0.18)",
+  success: "#DCFCE7",
+  successBg: "rgba(34,197,94,0.16)",
+  info: "#D9F3F9",
+  infoBg: "rgba(12,106,128,0.20)",
+  iconBg: "rgba(236,255,252,0.76)",
+  iconColor: "#148C84",
 };
 
-const ACTIVE_SUPPORT_STATUSES = [
+const ACTIVE_LOAN_STATUSES = [
   "PENDING",
   "UNDER_REVIEW",
   "APPROVED",
@@ -56,7 +74,12 @@ const ACTIVE_SUPPORT_STATUSES = [
   "DEFAULTED",
 ];
 
-const REPAYABLE_STATUSES = ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"];
+const REPAYABLE_STATUSES = [
+  "APPROVED",
+  "DISBURSED",
+  "UNDER_REPAYMENT",
+  "DEFAULTED",
+];
 
 function toNum(value?: string | number | null) {
   const n = Number(value ?? 0);
@@ -65,16 +88,41 @@ function toNum(value?: string | number | null) {
 
 function fmtKES(amount?: string | number | null) {
   const n = toNum(amount);
+
   return `KES ${n.toLocaleString("en-KE", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })}`;
 }
 
-function getStatusLabel(status?: string | null) {
-  if (!status) return "Unknown";
-  const value = String(status).replaceAll("_", " ").trim().toLowerCase();
-  return value.replace(/\b\w/g, (m) => m.toUpperCase());
+function getStatusTone(status?: string | null) {
+  const s = String(status || "").toUpperCase();
+
+  if (s === "COMPLETED") {
+    return { bg: UI.successBg, text: UI.success, label: "DONE" };
+  }
+
+  if (s === "DEFAULTED" || s === "REJECTED" || s === "CANCELLED") {
+    return {
+      bg: UI.dangerBg,
+      text: UI.danger,
+      label: getLoanStatusLabel({ status: s } as Loan).toUpperCase(),
+    };
+  }
+
+  if (s === "PENDING" || s === "UNDER_REVIEW") {
+    return {
+      bg: UI.warningBg,
+      text: UI.warning,
+      label: getLoanStatusLabel({ status: s } as Loan).toUpperCase(),
+    };
+  }
+
+  return {
+    bg: UI.infoBg,
+    text: UI.info,
+    label: getLoanStatusLabel({ status: s } as Loan).toUpperCase(),
+  };
 }
 
 function getPrimaryLoan(loans: Loan[]) {
@@ -82,7 +130,7 @@ function getPrimaryLoan(loans: Loan[]) {
 
   return (
     loans.find((loan) =>
-      ACTIVE_SUPPORT_STATUSES.includes(String(loan?.status || "").toUpperCase())
+      ACTIVE_LOAN_STATUSES.includes(String(loan?.status || "").toUpperCase())
     ) || null
   );
 }
@@ -155,26 +203,14 @@ function computeDisplayOutstanding(loan?: Loan | null): number {
   return Math.max(0, backendOutstanding);
 }
 
-function getCurrentStepAmount(loan?: Loan | null) {
+function getCurrentInstallmentAmount(loan?: Loan | null) {
   if (!loan) return 0;
 
-  const installments = Array.isArray(loan.installments) ? loan.installments : [];
-  const current = installments.find((item: any) => {
-    const planned = toNumber(item.total_due);
-    const lateFee = toNumber(item.late_fee);
-    const paid = toNumber(item.paid_amount);
-    const remaining = planned + lateFee - paid;
-    const isPaid = !!item?.is_paid || !!item?.isPaid || remaining <= 0;
-    return !isPaid && remaining > 0;
-  });
+  const dueNow = getLoanAmountDueNow(loan);
+  if (dueNow > 0) return dueNow;
 
-  if (current) {
-    const remaining =
-      toNumber(current.total_due) +
-      toNumber(current.late_fee) -
-      toNumber(current.paid_amount);
-    return Math.max(0, remaining);
-  }
+  const current = getNextUnpaidInstallment(loan);
+  if (current) return getInstallmentFullDue(current);
 
   const weeks = Math.max(0, Number(loan.term_weeks || 0));
   const totalPayable = computeEstimatedTotalPayable(loan);
@@ -209,13 +245,13 @@ function openLoanDeposit(loan?: Loan | null, amount?: number) {
   router.push({
     pathname: "/(tabs)/payments/deposit" as any,
     params: {
-      title: "Community Support Payment",
+      title: "Community Support",
       source: "loan",
       purpose: "LOAN_REPAYMENT",
       loanId: String(loanId),
       borrowerUserId: String(borrowerUserId),
-      reference: `LOAN${borrowerUserId}`,
-      narration: `Community support repayment for member #${borrowerUserId} (Support #${loanId})`,
+      reference: `SUP${borrowerUserId}`,
+      narration: `Community support contribution for member #${borrowerUserId} (Support #${loanId})`,
       amount: payAmount > 0 ? String(payAmount) : "",
       editableAmount: "true",
       returnTo: ROUTES.dynamic.loanDetail(loanId),
@@ -223,36 +259,121 @@ function openLoanDeposit(loan?: Loan | null, amount?: number) {
   });
 }
 
-function MetricChip({
+function InfoPill({
   icon,
   label,
+  danger,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
+  danger?: boolean;
 }) {
   return (
-    <View style={styles.metricChip}>
+    <View style={[styles.infoPill, danger ? styles.infoPillDanger : null]}>
       <Ionicons name={icon} size={14} color="#FFFFFF" />
-      <Text style={styles.metricChipText}>{label}</Text>
+      <Text style={styles.infoPillText} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function ActionCard({
+function StatusBadge({ status }: { status?: string | null }) {
+  const tone = getStatusTone(status);
+
+  return (
+    <View style={[styles.badge, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.badgeText, { color: tone.text }]}>
+        {tone.label}
+      </Text>
+    </View>
+  );
+}
+
+function SmallAction({
   icon,
   label,
   onPress,
+  danger,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  danger?: boolean;
 }) {
   return (
-    <TouchableOpacity activeOpacity={0.92} onPress={onPress} style={styles.actionCard}>
-      <View style={styles.actionIconWrap}>
-        <Ionicons name={icon} size={20} color={UI.iconChipColor} />
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={[styles.smallAction, danger ? styles.smallActionDanger : null]}
+    >
+      <Ionicons name={icon} size={18} color={danger ? UI.danger : "#FFFFFF"} />
+      <Text style={styles.smallActionText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function NextStepLine({
+  installment,
+  canPay,
+  onPay,
+}: {
+  installment: LoanInstallment | null;
+  canPay: boolean;
+  onPay: () => void;
+}) {
+  if (!installment) return null;
+
+  const due = getInstallmentFullDue(installment);
+  const late = getInstallmentDaysOverdue(installment);
+  const remaining = getInstallmentDaysRemaining(installment);
+
+  return (
+    <View style={styles.nextLine}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.nextLabel}>Next step</Text>
+        <Text style={styles.nextText}>
+          {fmtKES(due)}
+          {late > 0 ? ` • Late ${late}d` : ""}
+          {remaining > 0 ? ` • ${remaining}d left` : ""}
+        </Text>
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
+
+      {canPay && due > 0 ? (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={onPay}
+          style={styles.nextButton}
+        >
+          <Text style={styles.nextButtonText}>Pay</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function SupportRecordRow({ loan }: { loan: Loan }) {
+  const outstanding = computeDisplayOutstanding(loan);
+  const dueNow = getLoanAmountDueNow(loan);
+  const late = getLoanDaysOverdue(loan);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => openLoanDetail(loan)}
+      style={styles.recordRow}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.recordTitle}>Support #{loan.id}</Text>
+
+        <Text style={styles.recordSub}>
+          Left {fmtKES(outstanding)}
+          {dueNow > 0 ? ` • Now ${fmtKES(dueNow)}` : ""}
+          {late > 0 ? ` • Late ${late}d` : ""}
+        </Text>
+      </View>
+
+      <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.55)" />
     </TouchableOpacity>
   );
 }
@@ -350,6 +471,7 @@ export default function LoansIndexScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+
     try {
       await load();
     } finally {
@@ -364,9 +486,15 @@ export default function LoansIndexScreen() {
 
   const primaryStatus = String(primaryLoan?.status || "").toUpperCase();
   const hasSupport = !!primaryLoan;
+  const isChecking = loading && !hasBootstrapped;
+
+  const nextInstallment = useMemo(
+    () => getNextUnpaidInstallment(primaryLoan),
+    [primaryLoan]
+  );
 
   const currentStepAmount = useMemo(
-    () => getCurrentStepAmount(primaryLoan),
+    () => getCurrentInstallmentAmount(primaryLoan),
     [primaryLoan]
   );
 
@@ -375,34 +503,35 @@ export default function LoansIndexScreen() {
     [primaryLoan]
   );
 
+  const dueNowAmount = useMemo(
+    () => getLoanAmountDueNow(primaryLoan),
+    [primaryLoan]
+  );
+
+  const daysOverdue = useMemo(
+    () => getLoanDaysOverdue(primaryLoan),
+    [primaryLoan]
+  );
+
+  const daysRemaining = useMemo(
+    () => getLoanDaysRemaining(primaryLoan),
+    [primaryLoan]
+  );
+
   const canPay =
     !!primaryLoan &&
     REPAYABLE_STATUSES.includes(primaryStatus) &&
     balanceAmount > 0;
 
-  if (!hasBootstrapped && loading) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-        <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-          <View style={styles.backgroundBlobTop} />
-          <View style={styles.backgroundBlobMiddle} />
-          <View style={styles.backgroundBlobBottom} />
-          <View style={styles.backgroundGlowOne} />
-          <View style={styles.backgroundGlowTwo} />
+  const otherRecords = useMemo(() => {
+    if (!Array.isArray(loans)) return [];
 
-          <View style={styles.skeletonHero} />
-          <View style={styles.skeletonCard} />
-          <View style={styles.skeletonRow}>
-            <View style={styles.skeletonSmallCard} />
-            <View style={styles.skeletonSmallCard} />
-            <View style={styles.skeletonSmallCard} />
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
+    return loans
+      .filter((loan) => Number(loan.id) !== Number(primaryLoan?.id || 0))
+      .slice(0, 2);
+  }, [loans, primaryLoan?.id]);
 
-  if (!user) {
+  if (hasBootstrapped && !user) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.centerWrap}>
@@ -441,107 +570,132 @@ export default function LoansIndexScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroOrbOne} />
           <View style={styles.heroOrbTwo} />
-          <View style={styles.heroOrbThree} />
 
           <Text style={styles.heroTag}>COMMUNITY SUPPORT</Text>
+
           <Text style={styles.heroTitle}>
-            {hasSupport ? "Stay on track with your support" : "Community support when needed"}
-          </Text>
-          <Text style={styles.heroCaption}>
-            {hasSupport
-              ? "See your balance, open your support details, and make your next contribution with ease."
-              : "Start a support request and continue the journey with your community."}
+            {hasSupport ? "Support in progress" : "Need group support?"}
           </Text>
 
-          {hasSupport ? (
-            <View style={styles.heroMetaRow}>
-              <View style={styles.heroPill}>
-                <Ionicons name="ellipse" size={8} color="#DFFFE8" />
-                <Text style={styles.heroPillText}>
-                  {getStatusLabel(primaryLoan?.status)}
-                </Text>
-              </View>
-
-              <View style={styles.heroPill}>
-                <Ionicons name="wallet-outline" size={14} color="#FFFFFF" />
-                <Text style={styles.heroPillText}>{fmtKES(balanceAmount)}</Text>
-              </View>
-            </View>
-          ) : null}
+          <Text style={styles.heroCaption} numberOfLines={1}>
+            {hasSupport ? "Stay on track with your group support." : "Request support when needed."}
+          </Text>
         </View>
+
+        {isChecking ? (
+          <View style={styles.silentCard}>
+            <Text style={styles.silentText}>Checking support...</Text>
+          </View>
+        ) : null}
 
         {error ? (
           <TouchableOpacity
-            activeOpacity={0.92}
+            activeOpacity={0.9}
             onPress={onRefresh}
             style={styles.errorCard}
           >
-            <View style={styles.errorIconWrap}>
-              <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
-            </View>
+            <Ionicons name="alert-circle-outline" size={18} color="#FFFFFF" />
             <Text style={styles.errorText}>{error}</Text>
             <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
           </TouchableOpacity>
         ) : null}
 
-        {hasSupport ? (
+        {!isChecking && hasSupport ? (
           <>
             <View style={styles.mainCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.cardHeaderLeft}>
                   <View style={styles.cardIconWrap}>
-                    <Ionicons name="heart-outline" size={22} color={UI.iconChipColor} />
+                    <Ionicons name="people-outline" size={22} color={UI.iconColor} />
                   </View>
 
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>My community support</Text>
-                    <Text style={styles.cardSubtitle}>Your remaining balance</Text>
+                    <Text style={styles.cardTitle}>Active support</Text>
+                    <Text style={styles.cardSubtitle} numberOfLines={1}>
+                      {getLoanProductName(primaryLoan)}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {getStatusLabel(primaryLoan?.status).toUpperCase()}
-                  </Text>
-                </View>
+                <StatusBadge status={primaryLoan?.status} />
               </View>
 
-              <Text style={styles.mainAmount}>{fmtKES(balanceAmount)}</Text>
+              <Text style={styles.amountLabel}>
+                {dueNowAmount > 0 ? "Needed now" : "Still needed"}
+              </Text>
 
-              <View style={styles.metricsRow}>
-                <MetricChip
-                  icon="cash-outline"
-                  label={`Support received ${fmtKES(primaryLoan?.principal)}`}
+              <Text style={styles.mainAmount}>
+                {fmtKES(dueNowAmount > 0 ? dueNowAmount : balanceAmount)}
+              </Text>
+
+              <View style={styles.infoRow}>
+                <InfoPill
+                  icon="wallet-outline"
+                  label={`Left ${fmtKES(balanceAmount)}`}
+                  danger={daysOverdue > 0}
                 />
-                {canPay && currentStepAmount > 0 ? (
-                  <MetricChip
+
+                {currentStepAmount > 0 ? (
+                  <InfoPill
                     icon="calendar-outline"
-                    label={`This round ${fmtKES(currentStepAmount)}`}
+                    label={`Step ${fmtKES(currentStepAmount)}`}
+                    danger={daysOverdue > 0}
+                  />
+                ) : null}
+
+                {daysOverdue > 0 ? (
+                  <InfoPill
+                    icon="alert-circle-outline"
+                    label={`Late ${daysOverdue}d`}
+                    danger
+                  />
+                ) : daysRemaining > 0 ? (
+                  <InfoPill
+                    icon="time-outline"
+                    label={`${daysRemaining}d left`}
                   />
                 ) : null}
               </View>
 
+              <NextStepLine
+                installment={nextInstallment}
+                canPay={canPay}
+                onPay={() =>
+                  openLoanDeposit(
+                    primaryLoan,
+                    nextInstallment
+                      ? getInstallmentFullDue(nextInstallment)
+                      : dueNowAmount
+                  )
+                }
+              />
+
               <View style={styles.primaryButtonsRow}>
                 <TouchableOpacity
-                  activeOpacity={0.92}
+                  activeOpacity={0.9}
                   onPress={() => openLoanDetail(primaryLoan)}
                   style={[styles.primaryButton, styles.primaryButtonLight]}
                 >
                   <Ionicons name="eye-outline" size={18} color={UI.whiteButtonText} />
                   <Text style={[styles.primaryButtonText, styles.primaryButtonTextLight]}>
-                    View Support Details
+                    Open
                   </Text>
                 </TouchableOpacity>
 
                 {canPay ? (
                   <TouchableOpacity
-                    activeOpacity={0.92}
-                    onPress={() => openLoanDeposit(primaryLoan)}
+                    activeOpacity={0.9}
+                    onPress={() =>
+                      openLoanDeposit(
+                        primaryLoan,
+                        dueNowAmount > 0 ? dueNowAmount : currentStepAmount
+                      )
+                    }
                     style={[styles.primaryButton, styles.primaryButtonGreen]}
                   >
                     <Ionicons name="card-outline" size={18} color={UI.greenButtonText} />
                     <Text style={[styles.primaryButtonText, styles.primaryButtonTextGreen]}>
-                      Contribute
+                      Pay Now
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -549,71 +703,76 @@ export default function LoansIndexScreen() {
             </View>
 
             {canPay ? (
-              <>
-                <Text style={styles.sectionTitle}>Choose how to contribute</Text>
+              <View style={styles.quickRow}>
+                <SmallAction
+                  icon="calendar-outline"
+                  label="This Step"
+                  onPress={() =>
+                    openLoanDeposit(
+                      primaryLoan,
+                      currentStepAmount > 0 ? currentStepAmount : undefined
+                    )
+                  }
+                  danger={daysOverdue > 0}
+                />
 
-                <View style={styles.actionsGrid}>
-                  <ActionCard
-                    icon="flash-outline"
-                    label="Clear Full Balance"
-                    onPress={() => openLoanDeposit(primaryLoan, balanceAmount)}
-                  />
-                  <ActionCard
-                    icon="calendar-outline"
-                    label="Contribute This Round"
-                    onPress={() =>
-                      openLoanDeposit(
-                        primaryLoan,
-                        currentStepAmount > 0 ? currentStepAmount : undefined
-                      )
-                    }
-                  />
-                  <ActionCard
-                    icon="create-outline"
-                    label="Choose My Amount"
-                    onPress={() => openLoanDeposit(primaryLoan)}
-                  />
-                </View>
-              </>
+                <SmallAction
+                  icon="create-outline"
+                  label="Any Amount"
+                  onPress={() => openLoanDeposit(primaryLoan)}
+                />
+              </View>
             ) : null}
           </>
-        ) : (
+        ) : null}
+
+        {!isChecking && !hasSupport ? (
           <View style={styles.mainCard}>
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderLeft}>
                 <View style={styles.cardIconWrap}>
-                  <Ionicons name="heart-outline" size={22} color={UI.iconChipColor} />
+                  <Ionicons name="people-outline" size={22} color={UI.iconColor} />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>No active community support</Text>
+                  <Text style={styles.cardTitle}>No open support</Text>
                   <Text style={styles.cardSubtitle}>
-                    You do not have an open support record at the moment
+                    You have no active request now
                   </Text>
                 </View>
               </View>
             </View>
 
-            <Text style={styles.emptySub}>
-              Start a support request and continue with the next simple step.
-            </Text>
-
-            <View style={styles.singleButtonWrap}>
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={() => router.push(ROUTES.tabs.loansRequest as any)}
-                style={[styles.primaryButton, styles.primaryButtonGreen, styles.fullWidthButton]}
-              >
-                <Ionicons name="add-circle-outline" size={18} color={UI.greenButtonText} />
-                <Text style={[styles.primaryButtonText, styles.primaryButtonTextGreen]}>
-                  Request Community Support
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => router.push(ROUTES.tabs.loansRequest as any)}
+              style={[styles.primaryButton, styles.primaryButtonGreen, styles.fullWidthButton]}
+            >
+              <Ionicons name="add-circle-outline" size={18} color={UI.greenButtonText} />
+              <Text style={[styles.primaryButtonText, styles.primaryButtonTextGreen]}>
+                Request Support
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
-        <View style={{ height: 20 }} />
+        {otherRecords.length > 0 ? (
+          <View style={styles.recordsCard}>
+            <Text style={styles.recordsTitle}>Other support</Text>
+
+            {otherRecords.map((item, index) => (
+              <View key={item.id || index}>
+                <SupportRecordRow loan={item} />
+
+                {index < otherRecords.length - 1 ? (
+                  <View style={styles.divider} />
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={{ height: 12 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -632,7 +791,7 @@ const styles = StyleSheet.create({
 
   content: {
     padding: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.lg,
   },
 
   centerWrap: {
@@ -694,8 +853,8 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
     borderRadius: 22,
-    padding: 16,
-    marginBottom: SPACING.md,
+    padding: 14,
+    marginBottom: SPACING.sm,
     backgroundColor: "rgba(52, 198, 191, 0.14)",
     borderWidth: 1,
     borderColor: "rgba(195, 255, 250, 0.12)",
@@ -721,30 +880,20 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
   },
 
-  heroOrbThree: {
-    position: "absolute",
-    top: 42,
-    right: 78,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-
   heroTag: {
     color: "#DFFFE8",
     fontSize: 11,
     letterSpacing: 0.8,
     fontFamily: FONT.bold,
-    marginBottom: 6,
+    marginBottom: 5,
   },
 
   heroTitle: {
     color: UI.text,
     fontSize: 20,
-    lineHeight: 26,
+    lineHeight: 25,
     fontFamily: FONT.bold,
-    marginBottom: 6,
+    marginBottom: 4,
   },
 
   heroCaption: {
@@ -752,72 +901,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontFamily: FONT.regular,
-    marginBottom: 12,
     maxWidth: "94%",
   },
 
-  heroMetaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-
-  heroPill: {
-    minHeight: 30,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.10)",
+  silentCard: {
+    marginBottom: SPACING.sm,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
 
-  heroPillText: {
-    color: "#FFFFFF",
+  silentText: {
+    color: UI.textMuted,
     fontSize: 12,
-    fontFamily: FONT.medium,
+    fontFamily: FONT.regular,
+    textAlign: "center",
   },
 
   errorCard: {
-    minHeight: 58,
+    minHeight: 52,
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: "rgba(220,53,69,0.18)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: SPACING.lg,
-  },
-
-  errorIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.10)",
+    marginBottom: SPACING.sm,
   },
 
   errorText: {
     flex: 1,
     color: "#FFFFFF",
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
     fontFamily: FONT.medium,
   },
 
   mainCard: {
-    backgroundColor: UI.supportCard,
-    borderColor: UI.supportBorder,
+    backgroundColor: UI.card,
+    borderColor: UI.cardBorder,
     borderWidth: 1,
     borderRadius: 22,
-    padding: 18,
+    padding: 16,
+    marginBottom: SPACING.sm,
   },
 
   cardHeader: {
@@ -825,7 +957,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   cardHeaderLeft: {
@@ -836,18 +968,18 @@ const styles = StyleSheet.create({
   },
 
   cardIconWrap: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: 16,
-    backgroundColor: UI.iconChipBg,
+    backgroundColor: UI.iconBg,
     alignItems: "center",
     justifyContent: "center",
   },
 
   cardTitle: {
     color: UI.text,
-    fontSize: 19,
-    lineHeight: 24,
+    fontSize: 18,
+    lineHeight: 23,
     fontFamily: FONT.bold,
     marginBottom: 2,
   },
@@ -864,60 +996,111 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: "rgba(255,255,255,0.14)",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
   },
 
   badgeText: {
-    color: "#FFFFFF",
     fontSize: 11,
     fontFamily: FONT.bold,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
+  },
+
+  amountLabel: {
+    color: UI.textMuted,
+    fontSize: 13,
+    fontFamily: FONT.bold,
+    marginBottom: 4,
   },
 
   mainAmount: {
     color: UI.text,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 31,
+    lineHeight: 37,
     fontFamily: FONT.bold,
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
-  metricsRow: {
+  infoRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
+    marginBottom: 10,
   },
 
-  metricChip: {
+  infoPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    maxWidth: "100%",
     backgroundColor: UI.glass,
     borderWidth: 1,
     borderColor: UI.border,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
 
-  metricChipText: {
+  infoPillDanger: {
+    backgroundColor: "rgba(239,68,68,0.22)",
+    borderColor: "rgba(239,68,68,0.26)",
+  },
+
+  infoPillText: {
     color: "#FFFFFF",
     fontSize: 12,
     fontFamily: FONT.bold,
   },
 
+  nextLine: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  nextLabel: {
+    color: UI.textMuted,
+    fontSize: 11,
+    fontFamily: FONT.bold,
+    marginBottom: 3,
+  },
+
+  nextText: {
+    color: UI.text,
+    fontSize: 14,
+    fontFamily: FONT.bold,
+  },
+
+  nextButton: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: UI.greenButton,
+  },
+
+  nextButtonText: {
+    color: UI.greenButtonText,
+    fontSize: 12,
+    fontFamily: FONT.bold,
+  },
+
   primaryButtonsRow: {
-    marginTop: SPACING.md,
     flexDirection: "row",
     gap: 10,
     flexWrap: "wrap",
   },
 
   primaryButton: {
-    minHeight: 48,
+    minHeight: 46,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -931,18 +1114,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
     flex: 1,
-    minWidth: 160,
+    minWidth: 120,
   },
 
   primaryButtonGreen: {
     backgroundColor: UI.greenButton,
     borderWidth: 1,
     borderColor: UI.greenButton,
-    minWidth: 108,
+    flex: 1,
+    minWidth: 120,
   },
 
   primaryButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: FONT.bold,
   },
 
@@ -958,86 +1142,74 @@ const styles = StyleSheet.create({
     width: "100%",
   },
 
-  sectionTitle: {
-    color: UI.text,
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: FONT.bold,
-    marginTop: SPACING.md,
-    marginBottom: 10,
-  },
-
-  actionsGrid: {
+  quickRow: {
     flexDirection: "row",
     gap: 10,
+    marginBottom: SPACING.sm,
   },
 
-  actionCard: {
+  smallAction: {
     flex: 1,
+    minHeight: 54,
+    borderRadius: 16,
     backgroundColor: UI.glassSoft,
     borderWidth: 1,
     borderColor: UI.border,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 100,
-  },
-
-  actionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: UI.iconChipBg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-
-  actionLabel: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.bold,
-    textAlign: "center",
-  },
-
-  emptySub: {
-    color: UI.textSoft,
-    fontSize: 14,
-    lineHeight: 21,
-    fontFamily: FONT.regular,
-    marginTop: 4,
-  },
-
-  singleButtonWrap: {
-    marginTop: SPACING.lg,
-  },
-
-  skeletonHero: {
-    height: 140,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    marginBottom: SPACING.md,
-  },
-
-  skeletonCard: {
-    height: 200,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    marginBottom: SPACING.md,
-  },
-
-  skeletonRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
 
-  skeletonSmallCard: {
-    flex: 1,
-    height: 100,
-    borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.07)",
+  smallActionDanger: {
+    backgroundColor: "rgba(239,68,68,0.14)",
+    borderColor: "rgba(239,68,68,0.22)",
+  },
+
+  smallActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontFamily: FONT.bold,
+  },
+
+  recordsCard: {
+    backgroundColor: UI.glassSoft,
+    borderWidth: 1,
+    borderColor: UI.border,
+    borderRadius: 18,
+    padding: 12,
+  },
+
+  recordsTitle: {
+    color: UI.text,
+    fontSize: 15,
+    fontFamily: FONT.bold,
+    marginBottom: 6,
+  },
+
+  recordRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 9,
+  },
+
+  recordTitle: {
+    color: UI.text,
+    fontSize: 14,
+    fontFamily: FONT.bold,
+  },
+
+  recordSub: {
+    color: UI.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: FONT.regular,
+    marginTop: 3,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
 });

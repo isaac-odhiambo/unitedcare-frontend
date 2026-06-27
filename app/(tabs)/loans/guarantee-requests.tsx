@@ -25,35 +25,11 @@ import {
   rejectGuarantee,
 } from "@/services/loans";
 
-type SpaceTone = "savings" | "merry" | "groups" | "support";
+type SpaceTone = "loans";
 
 function getSpaceTonePalette(tone: SpaceTone) {
   const map = {
-    savings: {
-      card: "rgba(29, 196, 182, 0.22)",
-      border: "rgba(129, 244, 231, 0.15)",
-      iconBg: "rgba(220, 255, 250, 0.75)",
-      icon: "#0B6A80",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
-    },
-    merry: {
-      card: "rgba(98, 192, 98, 0.23)",
-      border: "rgba(194, 255, 188, 0.16)",
-      iconBg: "rgba(236, 255, 235, 0.76)",
-      icon: "#379B4A",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
-    },
-    groups: {
-      card: "rgba(49, 180, 217, 0.22)",
-      border: "rgba(189, 244, 255, 0.15)",
-      iconBg: "rgba(236, 251, 255, 0.76)",
-      icon: "#0A6E8A",
-      chip: "rgba(255,255,255,0.14)",
-      amountBg: "rgba(255,255,255,0.10)",
-    },
-    support: {
+    loans: {
       card: "rgba(52, 198, 191, 0.22)",
       border: "rgba(195, 255, 250, 0.16)",
       iconBg: "rgba(236, 255, 252, 0.76)",
@@ -75,27 +51,13 @@ const UI = {
 
   mint: "#8CF0C7",
   aqua: "#0CC0B7",
-  careGreen: "#197D71",
 
   glass: "rgba(255,255,255,0.10)",
   glassStrong: "rgba(255,255,255,0.14)",
   border: "rgba(255,255,255,0.12)",
 
-  supportCard: "rgba(52, 198, 191, 0.22)",
-  supportBorder: "rgba(195, 255, 250, 0.16)",
-  supportIconBg: "rgba(236, 255, 252, 0.76)",
-  supportIcon: "#148C84",
-
   successCard: "rgba(98, 192, 98, 0.23)",
-  successBorder: "rgba(194, 255, 188, 0.16)",
-  successIconBg: "rgba(236, 255, 235, 0.76)",
-  successIcon: "#379B4A",
-
   warningCard: "rgba(255, 204, 102, 0.16)",
-  warningBorder: "rgba(255, 220, 140, 0.18)",
-  warningIconBg: "rgba(255, 247, 224, 0.88)",
-  warningIcon: "#B7791F",
-
   dangerCard: "rgba(220,53,69,0.18)",
 };
 
@@ -121,6 +83,78 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function getLoanObject(item: LoanGuarantor | any) {
+  return typeof item?.loan === "object" && item.loan
+    ? item.loan
+    : item?.loan_detail || null;
+}
+
+function getLoanId(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  const raw = loanObj?.id ?? item?.loan_id ?? item?.loan ?? null;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+function getLoanBorrowerName(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  const borrower =
+    loanObj?.borrower_detail ||
+    loanObj?.borrower ||
+    item?.borrower_detail ||
+    null;
+
+  if (borrower && typeof borrower === "object") {
+    const full =
+      borrower.full_name?.trim?.() ||
+      `${borrower.first_name || ""} ${borrower.last_name || ""}`.trim();
+
+    return full || borrower.username || borrower.email || "Member";
+  }
+
+  return item?.borrower_name || "Member";
+}
+
+function getLoanProductName(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  const product =
+    loanObj?.product_detail ||
+    loanObj?.product ||
+    item?.product_detail ||
+    null;
+
+  if (product && typeof product === "object") {
+    return product.name || product.title || "Support type";
+  }
+
+  return loanObj?.product_name || item?.product_name || "Support type";
+}
+
+function getLoanPrincipal(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  return loanObj?.principal ?? item?.loan_principal ?? item?.principal ?? null;
+}
+
+function getLoanTermWeeks(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  return loanObj?.term_weeks ?? item?.term_weeks ?? null;
+}
+
+function getLoanStatus(item: LoanGuarantor | any) {
+  const loanObj = getLoanObject(item);
+  return String(loanObj?.status || item?.loan_status || "").replace(/_/g, " ");
+}
+
+function isRejectedGuarantee(item: LoanGuarantor | any) {
+  const status = String(item?.status || item?.guarantee_status || "").toUpperCase();
+  return (
+    !!item?.rejected ||
+    !!item?.rejected_at ||
+    status === "REJECTED" ||
+    status === "DECLINED"
+  );
+}
+
 function Pill({
   label,
   tone,
@@ -132,8 +166,8 @@ function Pill({
     tone === "ok"
       ? "rgba(140,240,199,0.18)"
       : tone === "bad"
-      ? "rgba(220,53,69,0.18)"
-      : "rgba(255,204,102,0.18)";
+        ? "rgba(220,53,69,0.18)"
+        : "rgba(255,204,102,0.18)";
 
   return (
     <View style={[styles.pill, { backgroundColor: bg }]}>
@@ -156,7 +190,16 @@ function GuaranteeCard({
   busy?: boolean;
 }) {
   const accepted = !!item.accepted;
-  const guarantorName = item.guarantor_detail?.full_name || "Selected member";
+  const rejected = isRejectedGuarantee(item);
+  const loanId = getLoanId(item);
+  const borrowerName = getLoanBorrowerName(item);
+  const productName = getLoanProductName(item);
+  const principal = getLoanPrincipal(item);
+  const termWeeks = getLoanTermWeeks(item);
+  const loanStatus = getLoanStatus(item);
+
+  const tone = accepted ? "ok" : rejected ? "bad" : "warn";
+  const label = accepted ? "ACCEPTED" : rejected ? "REJECTED" : "PENDING";
 
   return (
     <View style={styles.itemCard}>
@@ -165,26 +208,54 @@ function GuaranteeCard({
 
       <View style={styles.topRow}>
         <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.title}>Support request</Text>
-          <Text style={styles.sub}>Requested for {guarantorName}</Text>
+          <Text style={styles.title}>
+            {loanId ? `Support #${loanId}` : "Support cover request"}
+          </Text>
+          <Text style={styles.sub}>
+            {borrowerName} selected you to help cover this support request.
+          </Text>
         </View>
 
-        {accepted ? (
-          <Pill label="ACCEPTED" tone="ok" />
-        ) : (
-          <Pill label="PENDING" tone="warn" />
-        )}
+        <Pill label={label} tone={tone} />
       </View>
 
       <View style={styles.grid}>
         <View style={styles.cell}>
-          <Text style={styles.label}>Support</Text>
-          <Text style={styles.value}>Member support request</Text>
+          <Text style={styles.label}>Member</Text>
+          <Text style={styles.value}>{borrowerName}</Text>
         </View>
         <View style={styles.cell}>
-          <Text style={styles.label}>Reserved</Text>
+          <Text style={styles.label}>Reserved security</Text>
           <Text style={styles.value}>
             {formatKes(item.reserved_amount ?? "0.00")}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Requested amount</Text>
+          <Text style={styles.value}>
+            {principal == null ? "—" : formatKes(principal)}
+          </Text>
+        </View>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Term</Text>
+          <Text style={styles.value}>
+            {termWeeks ? `${termWeeks} week(s)` : "—"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.grid}>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Product</Text>
+          <Text style={styles.value}>{productName}</Text>
+        </View>
+        <View style={styles.cell}>
+          <Text style={styles.label}>Status</Text>
+          <Text style={styles.value}>
+            {loanStatus ? loanStatus.toUpperCase() : "—"}
           </Text>
         </View>
       </View>
@@ -211,16 +282,29 @@ function GuaranteeCard({
             size={18}
             color={UI.mint}
           />
-          <Text style={styles.acceptedText}>Support accepted.</Text>
+          <Text style={styles.acceptedText}>Cover accepted.</Text>
 
-          <Text style={styles.link} onPress={onOpenLoan}>
-            View support
-          </Text>
+          {loanId ? (
+            <Text style={styles.link} onPress={onOpenLoan}>
+              View support
+            </Text>
+          ) : null}
+        </View>
+      ) : rejected ? (
+        <View style={styles.acceptedRow}>
+          <Ionicons name="close-circle-outline" size={18} color="#FCA5A5" />
+          <Text style={styles.acceptedText}>Cover rejected.</Text>
+
+          {loanId ? (
+            <Text style={styles.link} onPress={onOpenLoan}>
+              View support
+            </Text>
+          ) : null}
         </View>
       ) : (
         <View style={styles.actionsRow}>
           <Button
-            title="Accept"
+            title="Accept Cover"
             onPress={onAccept}
             loading={busy}
             disabled={busy}
@@ -238,8 +322,7 @@ function GuaranteeCard({
       )}
 
       <Text style={styles.helpText}>
-        Reserved amount is applied by the system at approval after support
-        coverage is computed.
+        Your reserved cover can be used by the system only after the request is approved and cover allocation is confirmed.
       </Text>
     </View>
   );
@@ -248,11 +331,13 @@ function GuaranteeCard({
 function HeroCard({
   pendingCount,
   acceptedCount,
+  rejectedCount,
 }: {
   pendingCount: number;
   acceptedCount: number;
+  rejectedCount: number;
 }) {
-  const palette = getSpaceTonePalette("support");
+  const palette = getSpaceTonePalette("loans");
 
   return (
     <View
@@ -268,10 +353,10 @@ function HeroCard({
       <View style={styles.headerGlowTwo} />
 
       <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={styles.headerTag}>MEMBER SUPPORT</Text>
-        <Text style={styles.hTitle}>Support requests</Text>
+        <Text style={styles.headerTag}>LOAN GUARANTEE</Text>
+        <Text style={styles.hTitle}>Cover requests</Text>
         <Text style={styles.hSub}>
-          Accept or reject requests to support a member.
+          Accept or reject requests from members who selected you to help cover their support.
         </Text>
 
         <View style={styles.heroMiniWrap}>
@@ -294,6 +379,18 @@ function HeroCard({
             <Ionicons name="checkmark-circle-outline" size={14} color="#FFFFFF" />
             <Text style={styles.heroMiniText}>Accepted {acceptedCount}</Text>
           </View>
+
+          {rejectedCount > 0 ? (
+            <View
+              style={[
+                styles.heroMiniPill,
+                { backgroundColor: "rgba(220,53,69,0.18)" },
+              ]}
+            >
+              <Ionicons name="close-circle-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.heroMiniText}>Rejected {rejectedCount}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -364,11 +461,20 @@ export default function GuaranteesScreen() {
     }
   }, [load]);
 
-  const pending = useMemo(() => items.filter((x) => !x.accepted), [items]);
+  const pending = useMemo(
+    () => items.filter((x) => !x.accepted && !isRejectedGuarantee(x)),
+    [items]
+  );
+
   const accepted = useMemo(() => items.filter((x) => x.accepted), [items]);
 
-  const openLoan = useCallback((loanId?: number | null) => {
-    const id = Number(loanId ?? 0);
+  const rejected = useMemo(
+    () => items.filter((x) => !x.accepted && isRejectedGuarantee(x)),
+    [items]
+  );
+
+  const openLoan = useCallback((item?: LoanGuarantor | null) => {
+    const id = getLoanId(item);
     if (!id) return;
 
     router.push({
@@ -379,38 +485,55 @@ export default function GuaranteesScreen() {
 
   const doAccept = useCallback(
     async (id: number) => {
-      try {
-        setBusyId(id);
-        setError("");
-        const res = await acceptGuarantee(id);
-        Alert.alert("Success", res?.message || "Support accepted.");
-        await load();
-      } catch (e: any) {
-        const msg = getApiErrorMessage(e) || getErrorMessage(e);
-        setError(msg);
-        Alert.alert("Accept support", msg);
-      } finally {
-        setBusyId(null);
-      }
+      Alert.alert("Accept cover", "Accept this cover request?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Accept",
+          onPress: async () => {
+            try {
+              setBusyId(id);
+              setError("");
+              const res = await acceptGuarantee(id);
+              Alert.alert("Success", res?.message || "Cover accepted.");
+              await load();
+            } catch (e: any) {
+              const msg = getApiErrorMessage(e) || getErrorMessage(e);
+              setError(msg);
+              Alert.alert("Accept cover", msg);
+            } finally {
+              setBusyId(null);
+            }
+          },
+        },
+      ]);
     },
     [load]
   );
 
   const doReject = useCallback(
     async (id: number) => {
-      try {
-        setBusyId(id);
-        setError("");
-        const res = await rejectGuarantee(id);
-        Alert.alert("Done", res?.message || "Support rejected.");
-        await load();
-      } catch (e: any) {
-        const msg = getApiErrorMessage(e) || getErrorMessage(e);
-        setError(msg);
-        Alert.alert("Reject support", msg);
-      } finally {
-        setBusyId(null);
-      }
+      Alert.alert("Reject cover", "Reject this cover request?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusyId(id);
+              setError("");
+              const res = await rejectGuarantee(id);
+              Alert.alert("Done", res?.message || "Cover rejected.");
+              await load();
+            } catch (e: any) {
+              const msg = getApiErrorMessage(e) || getErrorMessage(e);
+              setError(msg);
+              Alert.alert("Reject cover", msg);
+            } finally {
+              setBusyId(null);
+            }
+          },
+        },
+      ]);
     },
     [load]
   );
@@ -436,7 +559,11 @@ export default function GuaranteesScreen() {
         <View style={styles.backgroundGlowOne} />
         <View style={styles.backgroundGlowTwo} />
 
-        <HeroCard pendingCount={pending.length} acceptedCount={accepted.length} />
+        <HeroCard
+          pendingCount={pending.length}
+          acceptedCount={accepted.length}
+          rejectedCount={rejected.length}
+        />
 
         {error ? (
           <View style={styles.errorCard}>
@@ -450,10 +577,12 @@ export default function GuaranteesScreen() {
         ) : null}
 
         <SectionCard title={`Pending (${pending.length})`}>
-          {!loading && pending.length === 0 ? (
+          {loading ? (
+            <Text style={styles.loadingText}>Loading…</Text>
+          ) : pending.length === 0 ? (
             <EmptyState
-              title="No pending requests"
-              subtitle="New requests will appear here."
+              title="No pending cover requests"
+              subtitle="New cover requests will appear here."
             />
           ) : (
             pending.map((g) => (
@@ -463,18 +592,20 @@ export default function GuaranteesScreen() {
                 busy={busyId === g.id}
                 onAccept={() => doAccept(g.id)}
                 onReject={() => doReject(g.id)}
-                onOpenLoan={() => openLoan(g.loan)}
+                onOpenLoan={() => openLoan(g)}
               />
             ))
           )}
         </SectionCard>
 
         <SectionCard title={`Accepted (${accepted.length})`}>
-          {!loading && accepted.length === 0 ? (
+          {loading ? (
+            <Text style={styles.loadingText}>Loading…</Text>
+          ) : accepted.length === 0 ? (
             <EmptyState
               icon="checkmark-done-outline"
-              title="No accepted support"
-              subtitle="Accepted requests will appear here."
+              title="No accepted covers"
+              subtitle="Accepted covers will appear here."
             />
           ) : (
             accepted.map((g) => (
@@ -484,11 +615,26 @@ export default function GuaranteesScreen() {
                 busy={busyId === g.id}
                 onAccept={() => {}}
                 onReject={() => {}}
-                onOpenLoan={() => openLoan(g.loan)}
+                onOpenLoan={() => openLoan(g)}
               />
             ))
           )}
         </SectionCard>
+
+        {rejected.length > 0 ? (
+          <SectionCard title={`Rejected (${rejected.length})`}>
+            {rejected.map((g) => (
+              <GuaranteeCard
+                key={g.id}
+                item={g}
+                busy={busyId === g.id}
+                onAccept={() => {}}
+                onReject={() => {}}
+                onOpenLoan={() => openLoan(g)}
+              />
+            ))}
+          </SectionCard>
+        ) : null}
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -665,6 +811,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FONT.bold,
     marginBottom: SPACING.sm,
+  },
+
+  loadingText: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
+    fontFamily: FONT.regular,
+    paddingVertical: SPACING.md,
   },
 
   errorCard: {

@@ -25,6 +25,7 @@ import { FONT, SPACING } from "@/constants/theme";
 import { getErrorMessage } from "@/services/api";
 import {
   buildLoanRequestPayload,
+  fmtKES,
   getApiErrorMessage,
   getGuarantorCandidates,
   getLoanEligibilityPreview,
@@ -35,7 +36,7 @@ import {
   requestLoan,
 } from "@/services/loans";
 
-type SpaceTone = "savings" | "merry" | "groups" | "support";
+type SpaceTone = "savings" | "merry" | "groups" | "loans";
 
 function getSpaceTonePalette(tone: SpaceTone) {
   const map = {
@@ -63,7 +64,7 @@ function getSpaceTonePalette(tone: SpaceTone) {
       chip: "rgba(255,255,255,0.10)",
       amountBg: "rgba(255,255,255,0.08)",
     },
-    support: {
+    loans: {
       card: "rgba(52, 198, 191, 0.14)",
       border: "rgba(195, 255, 250, 0.12)",
       iconBg: "rgba(236, 255, 252, 0.18)",
@@ -87,17 +88,13 @@ const UI = {
   glassStrong: "rgba(255,255,255,0.10)",
   border: "rgba(255,255,255,0.10)",
   dangerCard: "rgba(220,53,69,0.16)",
+  dangerText: "#FECACA",
   successText: "#8CF0C7",
   warningText: "#FFD27D",
 };
 
 function formatKes(value?: string | number | null) {
-  const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "KES 0";
-  return `KES ${n.toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return fmtKES(value).replace(".00", "");
 }
 
 function toNumber(value?: string | number | null) {
@@ -106,8 +103,12 @@ function toNumber(value?: string | number | null) {
 }
 
 function isPositiveNumber(value: string) {
-  const n = Number(value);
+  const n = Number(String(value || "").replace(/,/g, ""));
   return Number.isFinite(n) && n > 0;
+}
+
+function normalizeAmount(value: string) {
+  return String(value || "").replace(/,/g, "").trim();
 }
 
 function normalizeApiMessage(message: string) {
@@ -115,14 +116,14 @@ function normalizeApiMessage(message: string) {
 
   const lower = message.toLowerCase();
 
-  if (lower.includes("active loan")) return "You already have an active request.";
-  if (lower.includes("already received your merry turn")) return "You cannot start a new request after your merry turn.";
-  if (lower.includes("merry turn")) return "Your merry status does not allow a new request right now.";
+  if (lower.includes("active loan")) return "You already have an active support record.";
+  if (lower.includes("already received your merry turn")) return "You cannot start a new support request after receiving your merry turn.";
+  if (lower.includes("merry turn")) return "Your merry status does not allow a new support request right now.";
   if (lower.includes("principal")) return "Enter a valid amount above zero.";
-  if (lower.includes("term_weeks")) return "Enter at least 1 week.";
-  if (lower.includes("their own guarantor")) return "You cannot add yourself.";
-  if (lower.includes("guarantor") && lower.includes("not found")) return "One selected person could not be found.";
-  if (lower.includes("not eligible") && lower.includes("guarantor")) return "One selected person is not available right now.";
+  if (lower.includes("term_weeks")) return "Enter at least 1 progress week.";
+  if (lower.includes("their own guarantor")) return "You cannot add yourself as a supporting member.";
+  if (lower.includes("guarantor") && lower.includes("not found")) return "One selected supporting member could not be found.";
+  if (lower.includes("not eligible") && lower.includes("guarantor")) return "One selected supporting member is not available right now.";
   if (lower.includes("insufficient security")) return "This request still needs more cover.";
 
   return message;
@@ -215,10 +216,10 @@ function MemberRow({
 
         <View style={{ flex: 1 }}>
           <Text style={styles.memberName} numberOfLines={1}>
-            {item.full_name || "Member"}
+            {item.full_name || item.username || "Member"}
           </Text>
           <Text style={styles.memberMeta}>
-            {selected ? "Added" : "Tap to add"}
+            {selected ? "Added as supporting member" : "Tap to add member"}
           </Text>
         </View>
       </View>
@@ -232,7 +233,7 @@ function MemberRow({
 
 export default function RequestLoanScreen() {
   const insets = useSafeAreaInsets();
-  const palette = getSpaceTonePalette("support");
+  const palette = getSpaceTonePalette("loans");
 
   const [principal, setPrincipal] = useState("");
   const [termWeeks, setTermWeeks] = useState("12");
@@ -256,7 +257,8 @@ export default function RequestLoanScreen() {
 
   const [error, setError] = useState("");
 
-  const hasValidAmount = isPositiveNumber(principal);
+  const normalizedPrincipal = normalizeAmount(principal);
+  const hasValidAmount = isPositiveNumber(normalizedPrincipal);
   const hasActiveLoan = Boolean(eligibility?.has_active_loan);
   const isEligible = eligibility ? Boolean(eligibility.eligible) : true;
   const eligibilityReason = normalizeApiMessage(eligibility?.reason || "");
@@ -264,26 +266,28 @@ export default function RequestLoanScreen() {
 
   const formState = useMemo(() => {
     return buildLoanRequestPayload({
-      principal,
+      principal: normalizedPrincipal,
       term_weeks: Number(termWeeks || 0),
       guarantor_ids: selectedMemberIds,
       member_note: memberNote.trim(),
     });
-  }, [principal, termWeeks, selectedMemberIds, memberNote]);
+  }, [normalizedPrincipal, termWeeks, selectedMemberIds, memberNote]);
 
-  const amountLabel = useMemo(() => formatKes(principal || 0), [principal]);
+  const amountLabel = useMemo(
+    () => formatKes(normalizedPrincipal || 0),
+    [normalizedPrincipal]
+  );
 
-  const totalRepaymentAmount = useMemo(() => {
-    const p = Number(principal || 0);
+  const weeklyPrincipalEstimate = useMemo(() => {
+    const p = Number(normalizedPrincipal || 0);
     const weeks = Number(termWeeks || 0);
 
-    if (!Number.isFinite(p) || p <= 0) return "KES 0";
-    if (!Number.isFinite(weeks) || weeks <= 0) return amountLabel;
+    if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(weeks) || weeks <= 0) {
+      return 0;
+    }
 
-    const annualRate = 0.12;
-    const total = p + p * annualRate * (weeks / 52);
-    return formatKes(total);
-  }, [principal, termWeeks, amountLabel]);
+    return p / weeks;
+  }, [normalizedPrincipal, termWeeks]);
 
   const previewGuarantors = useMemo(() => {
     const rows = (securityPreview as any)?.guarantors;
@@ -297,7 +301,7 @@ export default function RequestLoanScreen() {
   const selectedNamesById = useMemo(() => {
     const map = new Map<number, string>();
     memberCandidates.forEach((item) => {
-      map.set(item.id, item.full_name || "Member");
+      map.set(item.id, item.full_name || item.username || "Member");
     });
 
     previewGuarantors.forEach((item: any) => {
@@ -332,10 +336,10 @@ export default function RequestLoanScreen() {
   const suggestionText = useMemo(() => {
     if (!hasValidAmount) return "Enter amount to continue.";
     if (!isEligible) return blockedReason || "Request unavailable.";
-    if (checkingSecurity) return "Checking cover.";
-    if (fullySecured) return "Cover complete.";
-    if (securityPreview) return "Add more or reduce amount.";
-    return "Fill in the details.";
+    if (checkingSecurity) return "Checking available cover.";
+    if (fullySecured) return "Cover is complete.";
+    if (securityPreview) return "Add supporting member cover or reduce the amount.";
+    return "Fill in the support details.";
   }, [hasValidAmount, isEligible, blockedReason, checkingSecurity, fullySecured, securityPreview]);
 
   const loadEligibility = async () => {
@@ -390,7 +394,7 @@ export default function RequestLoanScreen() {
         setError("");
 
         const preview = await getLoanSecurityPreview({
-          principal: Number(principal),
+          principal: Number(normalizedPrincipal),
           guarantor_ids: selectedMemberIds,
         });
 
@@ -409,7 +413,7 @@ export default function RequestLoanScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [principal, selectedMemberIds, hasValidAmount, hasActiveLoan, isEligible]);
+  }, [normalizedPrincipal, selectedMemberIds, hasValidAmount, hasActiveLoan, isEligible]);
 
   useEffect(() => {
     let active = true;
@@ -505,12 +509,12 @@ export default function RequestLoanScreen() {
     const noteText = memberNote.trim() || "None";
 
     return (
-      `Amount\n${amountLabel}\n\n` +
-      `Repayment\n${totalRepaymentAmount}\n\n` +
+      `Requested amount\n${amountLabel}\n\n` +
       `Period\n${termWeeks || "0"} weeks\n\n` +
+      `Estimated weekly step\n${weeklyPrincipalEstimate > 0 ? formatKes(weeklyPrincipalEstimate) : "KES 0"}\n\n` +
       `Cover\n${currentCover}\n\n` +
       `Shortfall\n${shortfall}\n\n` +
-      `Added\n${selectedMemberIds.length}\n${guarantorText}\n\n` +
+      `Supporting members\n${selectedMemberIds.length}\n${guarantorText}\n\n` +
       `Note\n${noteText}`
     );
   };
@@ -518,18 +522,18 @@ export default function RequestLoanScreen() {
   const performSubmit = async () => {
     try {
       if (hasActiveLoan) {
-        Alert.alert("Request", "You already have an active request.");
+        Alert.alert("Support request", "You already have an active support record.");
         return;
       }
 
       if (!isEligible) {
-        Alert.alert("Request", blockedReason || "You are not eligible right now.");
+        Alert.alert("Support request", blockedReason || "You are not eligible right now.");
         return;
       }
 
       if (!formState.canSubmit || !formState.payload) {
         Alert.alert(
-          "Request",
+          "Support request",
           normalizeApiMessage(formState.error || "Please check your details.")
         );
         return;
@@ -541,8 +545,8 @@ export default function RequestLoanScreen() {
       const res = await requestLoan(formState.payload);
 
       Alert.alert(
-        "Request sent",
-        res?.message || "Your request was sent successfully.",
+        "Support request sent",
+        res?.message || "Your support request was sent successfully.",
         [
           {
             text: "OK",
@@ -555,7 +559,7 @@ export default function RequestLoanScreen() {
         getApiErrorMessage(e) || getErrorMessage(e)
       );
       setError(msg);
-      Alert.alert("Request", msg);
+      Alert.alert("Support request", msg);
     } finally {
       setSubmitting(false);
     }
@@ -563,12 +567,24 @@ export default function RequestLoanScreen() {
 
   const submit = async () => {
     if (checkingSecurity) {
-      Alert.alert("Request", "Please wait while cover is being checked.");
+      Alert.alert("Support request", "Please wait while cover is being checked.");
+      return;
+    }
+
+    if (securityPreview && !securityPreview.fully_secured) {
+      Alert.alert(
+        "Cover not complete",
+        "This request is not fully covered yet. You can still submit it for review, but approval may wait until cover is complete.",
+        [
+          { text: "Edit", style: "cancel" },
+          { text: "Submit anyway", onPress: performSubmit },
+        ]
+      );
       return;
     }
 
     Alert.alert(
-      "Confirm request",
+      "Confirm support request",
       buildSubmissionSummary(),
       [
         { text: "Edit", style: "cancel" },
@@ -582,7 +598,7 @@ export default function RequestLoanScreen() {
       return {
         title: "Enter amount",
         amount: amountLabel,
-        subtitle: "Add amount and period.",
+        subtitle: "Add amount and progress period.",
       };
     }
 
@@ -590,38 +606,38 @@ export default function RequestLoanScreen() {
       return {
         title: "Unavailable",
         amount: amountLabel,
-        subtitle: blockedReason || "You cannot start a new request right now.",
+        subtitle: blockedReason || "You cannot start a new support request right now.",
       };
     }
 
     if (checkingSecurity) {
       return {
-        title: "Checking",
+        title: "Checking cover",
         amount: amountLabel,
-        subtitle: "Please wait.",
+        subtitle: "Please wait while we check available security.",
       };
     }
 
     if (fullySecured) {
       return {
-        title: "Ready",
+        title: "Ready for request",
         amount: formatKes(securityPreview?.secured_total),
-        subtitle: "Cover complete.",
+        subtitle: "Cover is complete.",
       };
     }
 
     if (securityPreview) {
       return {
-        title: "More cover",
+        title: "More cover needed",
         amount: formatKes(securityPreview.shortfall),
-        subtitle: "Add more or reduce amount.",
+        subtitle: "Add supporting members, increase savings, or reduce amount.",
       };
     }
 
     return {
       title: "Summary",
       amount: amountLabel,
-      subtitle: "Fill in the details.",
+      subtitle: "Fill in the support details.",
     };
   }, [hasValidAmount, isEligible, blockedReason, checkingSecurity, fullySecured, securityPreview, amountLabel]);
 
@@ -645,13 +661,13 @@ export default function RequestLoanScreen() {
             </View>
 
             <Text style={styles.blockTitle}>
-              {hasActiveLoan ? "Request active" : "Unavailable"}
+              {hasActiveLoan ? "Active support found" : "Request unavailable"}
             </Text>
 
             <Text style={styles.blockText}>
               {hasActiveLoan
-                ? "You already have an active request."
-                : blockedReason || "You cannot start a request right now."}
+                ? "You already have an active support record. Clear it before requesting another."
+                : blockedReason || "You cannot start a support request right now."}
             </Text>
 
             <View style={{ marginTop: SPACING.md, width: "100%" }}>
@@ -707,8 +723,8 @@ export default function RequestLoanScreen() {
               </TouchableOpacity>
 
               <View style={styles.heroBadge}>
-                <Ionicons name="heart-outline" size={13} color="#FFFFFF" />
-                <Text style={styles.heroBadgeText}>MEMBER SUPPORT</Text>
+                <Ionicons name="cash-outline" size={13} color="#FFFFFF" />
+                <Text style={styles.heroBadgeText}>LOAN REQUEST</Text>
               </View>
             </View>
 
@@ -716,7 +732,7 @@ export default function RequestLoanScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.heroTitle}>Ask for support</Text>
                 <Text style={styles.heroSubtitle}>
-                  Savings, merry, and groups are checked first.
+                  The system will check savings, merry records, group shares, and supporting members.
                 </Text>
               </View>
 
@@ -760,7 +776,9 @@ export default function RequestLoanScreen() {
                 ]}
               >
                 <Ionicons name="receipt-outline" size={13} color="#FFFFFF" />
-                <Text style={styles.heroMiniText}>{totalRepaymentAmount}</Text>
+                <Text style={styles.heroMiniText}>
+                  Weekly step {weeklyPrincipalEstimate > 0 ? formatKes(weeklyPrincipalEstimate) : "KES 0"}
+                </Text>
               </View>
             </View>
           </View>
@@ -772,9 +790,9 @@ export default function RequestLoanScreen() {
             </View>
           ) : null}
 
-          <SectionCard title="Details" subtitle="Amount, period, and note.">
+          <SectionCard title="Support details" subtitle="Enter the requested amount, progress period, and optional note.">
             <View style={styles.inputWrap}>
-              <Text style={styles.inputLabel}>Amount</Text>
+              <Text style={styles.inputLabel}>Requested amount</Text>
               <Input
                 value={principal}
                 onChangeText={setPrincipal}
@@ -784,7 +802,7 @@ export default function RequestLoanScreen() {
             </View>
 
             <View style={styles.inputWrap}>
-              <Text style={styles.inputLabel}>Period</Text>
+              <Text style={styles.inputLabel}>Progress period in weeks</Text>
               <Input
                 value={termWeeks}
                 onChangeText={setTermWeeks}
@@ -794,55 +812,82 @@ export default function RequestLoanScreen() {
             </View>
 
             <View style={styles.inputWrap}>
-              <Text style={styles.inputLabel}>Note</Text>
+              <Text style={styles.inputLabel}>Member note</Text>
               <Input
                 value={memberNote}
                 onChangeText={setMemberNote}
-                placeholder="Optional"
+                placeholder="Optional reason or note"
                 multiline
               />
             </View>
           </SectionCard>
 
-          <SectionCard title="Guide" subtitle={suggestionText}>
+          <SectionCard title="Cover" subtitle={suggestionText}>
             <View style={styles.breakdownList}>
               <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Amount</Text>
+                <Text style={styles.breakdownLabel}>Requested amount</Text>
                 <Text style={styles.breakdownValue}>{amountLabel}</Text>
               </View>
 
               <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Repayment</Text>
-                <Text style={styles.breakdownValue}>{totalRepaymentAmount}</Text>
+                <Text style={styles.breakdownLabel}>Estimated weekly step</Text>
+                <Text style={styles.breakdownValue}>
+                  {weeklyPrincipalEstimate > 0 ? formatKes(weeklyPrincipalEstimate) : "KES 0"}
+                </Text>
               </View>
+
+              {eligibility ? (
+                <>
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Available savings</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(eligibility.available_savings)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Maximum self cover</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(eligibility.max_allowed)}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
 
               {showBreakdown ? (
                 <>
                   <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Savings</Text>
+                    <Text style={styles.breakdownLabel}>Savings cover</Text>
                     <Text style={styles.breakdownValue}>
                       {formatKes(securityPreview?.borrower_savings)}
                     </Text>
                   </View>
 
                   <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Merry</Text>
+                    <Text style={styles.breakdownLabel}>Merry cover</Text>
                     <Text style={styles.breakdownValue}>
                       {formatKes(securityPreview?.borrower_merry)}
                     </Text>
                   </View>
 
                   <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Groups</Text>
+                    <Text style={styles.breakdownLabel}>Group share cover</Text>
                     <Text style={styles.breakdownValue}>
                       {formatKes(securityPreview?.borrower_group)}
                     </Text>
                   </View>
 
                   <View style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>Added cover</Text>
+                    <Text style={styles.breakdownLabel}>Supporting member cover</Text>
                     <Text style={styles.breakdownValue}>
                       {formatKes(securityPreview?.guarantor_total)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Total secured</Text>
+                    <Text style={styles.breakdownValue}>
+                      {formatKes(securityPreview?.secured_total)}
                     </Text>
                   </View>
 
@@ -869,7 +914,7 @@ export default function RequestLoanScreen() {
           />
 
           {previewGuarantors.length > 0 ? (
-            <SectionCard title="Added people" subtitle="Current cover">
+            <SectionCard title="Added supporting members" subtitle="Current member cover">
               <View style={styles.memberList}>
                 {previewGuarantors.map((item: any) => (
                   <View key={String(item?.guarantor_id)} style={styles.coverRow}>
@@ -887,8 +932,8 @@ export default function RequestLoanScreen() {
 
           {showGuarantorSection ? (
             <SectionCard
-              title="Add people"
-              subtitle={fullySecured ? "Cover complete. Add more if you want." : "Add one or more."}
+              title="Supporting members"
+              subtitle={fullySecured ? "Cover is complete. Add more only if needed." : "Add supporting members to improve cover."}
             >
               {selectedMemberIds.length > 0 ? (
                 <>
@@ -913,7 +958,7 @@ export default function RequestLoanScreen() {
                   </View>
                 </>
               ) : (
-                <Text style={styles.helperText}>None added yet.</Text>
+                <Text style={styles.helperText}>No supporting member added yet.</Text>
               )}
 
               <View style={styles.guarantorActionsRow}>
@@ -928,7 +973,7 @@ export default function RequestLoanScreen() {
                     color="#FFFFFF"
                   />
                   <Text style={styles.addAnotherButtonText}>
-                    {showGuarantorPicker ? "Hide list" : "Add person"}
+                    {showGuarantorPicker ? "Hide members" : "Add member"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -936,7 +981,7 @@ export default function RequestLoanScreen() {
               {showGuarantorPicker ? (
                 <>
                   <View style={styles.inputWrap}>
-                    <Text style={styles.inputLabel}>Search</Text>
+                    <Text style={styles.inputLabel}>Search member</Text>
                     <Input
                       value={memberSearch}
                       onChangeText={setMemberSearch}
@@ -953,7 +998,7 @@ export default function RequestLoanScreen() {
                     <View style={styles.emptyWrapBox}>
                       <EmptyState
                         icon="people-outline"
-                        title="No one found"
+                        title="No member found"
                         subtitle="Try another name."
                       />
                     </View>
@@ -980,10 +1025,16 @@ export default function RequestLoanScreen() {
 
           <View style={styles.actionCard}>
             <Button
-              title={submitting ? "Sending..." : "Submit request"}
+              title={submitting ? "Submitting..." : "Submit support request"}
               onPress={submit}
               loading={false}
-              disabled={submitting || !formState.canSubmit || hasActiveLoan || !isEligible}
+              disabled={
+                submitting ||
+                checkingSecurity ||
+                !formState.canSubmit ||
+                hasActiveLoan ||
+                !isEligible
+              }
             />
 
             <View style={{ height: SPACING.sm }} />

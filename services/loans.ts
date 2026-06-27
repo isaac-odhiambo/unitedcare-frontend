@@ -9,17 +9,44 @@ export type LoanStatus =
   | "PENDING"
   | "UNDER_REVIEW"
   | "APPROVED"
+  | "DISBURSED"
+  | "UNDER_REPAYMENT"
   | "REJECTED"
   | "DEFAULTED"
   | "COMPLETED"
-  | "UNDER_REPAYMENT"
-  | "DISBURSED"
+  | "CANCELLED"
+  | string;
+
+export type LoanInstallmentStatus =
+  | "PENDING"
+  | "DUE_SOON"
+  | "DUE_TODAY"
+  | "PARTIAL"
+  | "PAID"
+  | "OVERDUE"
+  | "DEFAULTED"
+  | string;
+
+export type LoanReminderType =
+  | "BEFORE_DUE"
+  | "DUE_TODAY"
+  | "OVERDUE"
+  | "DEFAULTED"
+  | string;
+
+export type LoanReminderChannel =
+  | "SMS"
+  | "EMAIL"
+  | "PUSH"
+  | "WHATSAPP"
+  | "MANUAL"
   | string;
 
 export type SimpleUser = {
   id: number;
   username?: string;
   email?: string;
+  phone?: string;
   first_name?: string;
   last_name?: string;
   full_name?: string;
@@ -33,9 +60,20 @@ export type LoanProduct = {
   repayment_frequency?: "WEEKLY" | "MONTHLY" | string;
   repayment_weekday?: number;
   max_weeks?: number;
+
+  grace_period_days?: number;
+  default_interest_rate_weekly?: string | number;
+
+  /**
+   * Kept for compatibility because old backend screens and services may still read it.
+   * New default interest logic should use default_interest_rate_weekly.
+   */
   late_fee_rate_weekly?: string | number;
+
   is_active?: boolean;
   is_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type LoanGuarantor = {
@@ -45,10 +83,12 @@ export type LoanGuarantor = {
   guarantor_detail?: SimpleUser;
   accepted?: boolean;
   accepted_at?: string | null;
+  rejected_at?: string | null;
   reserved_amount?: string | number;
   request_note?: string;
   admin_note?: string;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type LoanSecurityAllocation = {
@@ -78,13 +118,39 @@ export type LoanInstallment = {
   id: number;
   loan?: number;
   installment_no: number;
+
+  status?: LoanInstallmentStatus;
   due_date?: string | null;
+  grace_ends_on?: string | null;
+  default_interest_start_date?: string | null;
+
   principal_due?: string | number;
   interest_due?: string | number;
   total_due?: string | number;
+
+  default_interest?: string | number;
+  default_interest_weeks_applied?: number;
+  last_default_interest_applied_at?: string | null;
+
+  /**
+   * Kept for compatibility because the model still keeps old late fee fields.
+   */
   late_fee?: string | number;
+  late_fee_weeks_applied?: number;
+
   paid_amount?: string | number;
   is_paid?: boolean;
+  paid_at?: string | null;
+  defaulted_at?: string | null;
+
+  amount_due_now?: string | number;
+  balance_remaining?: string | number;
+  full_amount_due?: string | number;
+  days_remaining?: number;
+  days_overdue?: number;
+
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type LoanPayment = {
@@ -93,8 +159,37 @@ export type LoanPayment = {
   amount: string | number;
   paid_at?: string;
   created_at?: string;
+
   method?: string;
   reference?: string | null;
+
+  applied_to_principal?: string | number;
+  applied_to_interest?: string | number;
+  applied_to_default_interest?: string | number;
+  applied_to_late_fee?: string | number;
+  excess_to_savings?: string | number;
+};
+
+export type LoanReminderLog = {
+  id: number;
+  loan?: number;
+  installment?: number | LoanInstallment | null;
+  borrower?: number | SimpleUser;
+  borrower_detail?: SimpleUser;
+
+  reminder_type: LoanReminderType;
+  channel: LoanReminderChannel;
+
+  days_remaining?: number;
+  days_overdue?: number;
+
+  message?: string;
+  sent_by?: number | SimpleUser | null;
+  sent_by_detail?: SimpleUser | null;
+  sent_at?: string;
+
+  was_successful?: boolean;
+  failure_reason?: string;
 };
 
 export type Loan = {
@@ -114,13 +209,22 @@ export type Loan = {
   status?: LoanStatus;
   is_defaulter?: boolean;
 
+  requested_at?: string | null;
   approved_at?: string | null;
   rejected_at?: string | null;
+  disbursed_at?: string | null;
+  repayment_started_at?: string | null;
+  defaulted_at?: string | null;
   completed_at?: string | null;
+  cancelled_at?: string | null;
   reviewed_at?: string | null;
   created_at?: string;
+  updated_at?: string;
 
   total_payable?: string | number;
+  normal_interest_total?: string | number;
+  default_interest_total?: string | number;
+  late_fee_total?: string | number;
   total_paid?: string | number;
   outstanding_balance?: string | number;
 
@@ -131,10 +235,16 @@ export type Loan = {
   admin_note?: string;
   rejection_reason?: string | null;
 
+  amount_due_now?: string | number;
+  days_remaining?: number;
+  days_overdue?: number;
+  next_unpaid_installment?: LoanInstallment | null;
+
   guarantors?: LoanGuarantor[];
   security_allocations?: LoanSecurityAllocation[];
   installments?: LoanInstallment[];
   payments?: LoanPayment[];
+  reminder_logs?: LoanReminderLog[];
 };
 
 export type LoanApiListResponse<T> =
@@ -236,10 +346,46 @@ export type ApproveLoanResponse = {
   loan: Loan;
 };
 
+export type DisburseLoanResponse = {
+  message: string;
+  loan: Loan;
+};
+
 export type RejectLoanResponse = {
   message: string;
   note?: string;
   loan: Loan;
+};
+
+export type AdminLoansParams = {
+  status?: LoanStatus | "ALL" | "";
+  q?: string;
+};
+
+export type LoanReminderPreview = {
+  loan_id?: number;
+  borrower_id?: number;
+  borrower_name?: string;
+  installment?: LoanInstallment | null;
+  reminder_type?: LoanReminderType;
+  channel?: LoanReminderChannel;
+  days_remaining?: number;
+  days_overdue?: number;
+  amount_due?: string | number;
+  message?: string;
+};
+
+export type SendLoanReminderPayload = {
+  installment_id?: number;
+  channel?: LoanReminderChannel;
+  message?: string;
+  reminder_type?: LoanReminderType;
+};
+
+export type SendLoanReminderResponse = {
+  message: string;
+  reminder?: LoanReminderLog;
+  preview?: LoanReminderPreview;
 };
 
 /* =========================================================
@@ -302,6 +448,34 @@ export type StkLoanRepaymentPayload = {
 };
 
 /* =========================================================
+   Endpoint helpers
+========================================================= */
+
+const loanEndpointMap = (ENDPOINTS.loans || {}) as any;
+
+function loanEndpoint(
+  name: string,
+  fallback: string | ((...args: any[]) => string),
+  ...args: any[]
+): string {
+  const candidate = loanEndpointMap?.[name];
+
+  if (typeof candidate === "function") {
+    return candidate(...args);
+  }
+
+  if (typeof candidate === "string") {
+    return candidate;
+  }
+
+  if (typeof fallback === "function") {
+    return fallback(...args);
+  }
+
+  return fallback;
+}
+
+/* =========================================================
    Helpers
 ========================================================= */
 
@@ -333,6 +507,23 @@ function cleanText(value?: string | null): string {
 function toPositiveInt(value: unknown): number {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+function todayAtMidnight(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const datePart = raw.includes("T") ? raw.split("T")[0] : raw;
+  const d = new Date(`${datePart}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export function toNumber(value?: string | number | null): number {
@@ -387,9 +578,9 @@ export function getLoanBorrowerId(loan?: Loan | null): number {
 export function buildLoanRepaymentReference(borrowerUserId: number | string): string {
   const userId = toPositiveInt(borrowerUserId);
   if (!userId) {
-    throw new Error("A valid borrower user id is required to build loan reference.");
+    throw new Error("A valid member id is required to build support reference.");
   }
-  return `LOAN${userId}`;
+  return `SUP${userId}`;
 }
 
 export function buildLoanRepaymentNarration(input: {
@@ -400,14 +591,149 @@ export function buildLoanRepaymentNarration(input: {
   const loanId = toPositiveInt(input.loanId);
 
   if (!borrowerUserId) {
-    throw new Error("A valid borrower user id is required to build narration.");
+    throw new Error("A valid member id is required to build narration.");
   }
 
   if (loanId) {
-    return `Loan repayment for borrower #${borrowerUserId} (Loan #${loanId})`;
+    return `Community support contribution for member #${borrowerUserId} (Support #${loanId})`;
   }
 
-  return `Loan repayment for borrower #${borrowerUserId}`;
+  return `Community support contribution for member #${borrowerUserId}`;
+}
+
+/* =========================================================
+   Loan calculation helpers for UI
+========================================================= */
+
+export function getInstallmentFullDue(inst?: LoanInstallment | null): number {
+  if (!inst) return 0;
+
+  const explicit =
+    inst.amount_due_now ??
+    inst.balance_remaining ??
+    inst.full_amount_due ??
+    null;
+
+  if (explicit != null) return Math.max(0, toNumber(explicit));
+
+  return Math.max(
+    0,
+    toNumber(inst.total_due) +
+      toNumber(inst.default_interest) +
+      toNumber(inst.late_fee) -
+      toNumber(inst.paid_amount)
+  );
+}
+
+export function getInstallmentBaseUnpaid(inst?: LoanInstallment | null): number {
+  if (!inst) return 0;
+  return Math.max(0, toNumber(inst.total_due) - toNumber(inst.paid_amount));
+}
+
+export function getInstallmentDaysRemaining(inst?: LoanInstallment | null): number {
+  if (!inst || inst.is_paid) return 0;
+  if (typeof inst.days_remaining === "number") return Math.max(0, inst.days_remaining);
+
+  const due = parseDateOnly(inst.due_date);
+  if (!due) return 0;
+
+  const diff = Math.ceil((due.getTime() - todayAtMidnight().getTime()) / 86400000);
+  return diff > 0 ? diff : 0;
+}
+
+export function getInstallmentDaysOverdue(inst?: LoanInstallment | null): number {
+  if (!inst || inst.is_paid) return 0;
+  if (typeof inst.days_overdue === "number") return Math.max(0, inst.days_overdue);
+
+  const due = parseDateOnly(inst.due_date);
+  if (!due) return 0;
+
+  const diff = Math.floor((todayAtMidnight().getTime() - due.getTime()) / 86400000);
+  return diff > 0 ? diff : 0;
+}
+
+export function getNextUnpaidInstallment(loan?: Loan | null): LoanInstallment | null {
+  if (!loan) return null;
+
+  if (loan.next_unpaid_installment) {
+    return loan.next_unpaid_installment;
+  }
+
+  const installments = Array.isArray(loan.installments) ? loan.installments : [];
+  return (
+    installments.find((inst) => {
+      if (inst.is_paid) return false;
+      return getInstallmentFullDue(inst) > 0 || toNumber(inst.total_due) > 0;
+    }) || null
+  );
+}
+
+export function getLoanAmountDueNow(loan?: Loan | null): number {
+  if (!loan) return 0;
+
+  if (loan.amount_due_now != null) {
+    return Math.max(0, toNumber(loan.amount_due_now));
+  }
+
+  const next = getNextUnpaidInstallment(loan);
+  if (next) return getInstallmentFullDue(next);
+
+  return Math.max(0, toNumber(loan.outstanding_balance));
+}
+
+export function getLoanDaysRemaining(loan?: Loan | null): number {
+  if (!loan) return 0;
+  if (typeof loan.days_remaining === "number") return Math.max(0, loan.days_remaining);
+
+  const next = getNextUnpaidInstallment(loan);
+  return getInstallmentDaysRemaining(next);
+}
+
+export function getLoanDaysOverdue(loan?: Loan | null): number {
+  if (!loan) return 0;
+  if (typeof loan.days_overdue === "number") return Math.max(0, loan.days_overdue);
+
+  const next = getNextUnpaidInstallment(loan);
+  return getInstallmentDaysOverdue(next);
+}
+
+export function getInstallmentStatusLabel(inst?: LoanInstallment | null): string {
+  if (!inst) return "Pending";
+
+  const statusValue = String(inst.status || "").toUpperCase();
+  if (statusValue === "PAID" || inst.is_paid) return "Paid";
+  if (statusValue === "PARTIAL") return "Partly completed";
+  if (statusValue === "DEFAULTED") return "Late";
+  if (statusValue === "OVERDUE") return "Late";
+  if (statusValue === "DUE_TODAY") return "Today";
+  if (statusValue === "DUE_SOON") return "Soon";
+
+  const overdue = getInstallmentDaysOverdue(inst);
+  if (overdue > 0) return overdue >= 7 ? "Late" : "Late";
+
+  const remaining = getInstallmentDaysRemaining(inst);
+  if (remaining === 0 && inst.due_date) return "Today";
+  if (remaining > 0 && remaining <= 3) return "Soon";
+
+  return "Pending";
+}
+
+export function getLoanStatusLabel(loan?: Loan | null): string {
+  const statusValue = String(loan?.status || "").toUpperCase();
+
+  const map: Record<string, string> = {
+    PENDING: "Pending review",
+    UNDER_REVIEW: "Under review",
+    APPROVED: "Approved",
+    DISBURSED: "Released",
+    UNDER_REPAYMENT: "In progress",
+    DEFAULTED: "Late",
+    COMPLETED: "Completed",
+    REJECTED: "Not approved",
+    CANCELLED: "Cancelled",
+  };
+
+  return map[statusValue] || "Support";
 }
 
 /* =========================================================
@@ -459,12 +785,12 @@ export function buildLoanRequestPayload(input: {
 ========================================================= */
 
 export async function getMyLoans(): Promise<Loan[]> {
-  const res = await api.get(ENDPOINTS.loans.myLoans);
+  const res = await api.get(loanEndpoint("myLoans", "loans/myloans/"));
   return unwrapList<Loan>(res.data);
 }
 
 export async function getLoanEligibilityPreview(): Promise<LoanEligibilityPreview> {
-  const res = await api.get(ENDPOINTS.loans.eligibility);
+  const res = await api.get(loanEndpoint("eligibility", "loans/eligibility/"));
   return res.data;
 }
 
@@ -479,16 +805,22 @@ export async function getLoanSecurityPreview(payload: {
       : [],
   };
 
-  const res = await api.post(ENDPOINTS.loans.securityPreview, body);
+  const res = await api.post(
+    loanEndpoint("securityPreview", "loans/security-preview/"),
+    body
+  );
   return res.data;
 }
 
 export async function getGuarantorCandidates(
   query?: string
 ): Promise<GuarantorCandidate[]> {
-  const res = await api.get(ENDPOINTS.loans.guarantorCandidates, {
-    params: query?.trim() ? { q: query.trim() } : {},
-  });
+  const res = await api.get(
+    loanEndpoint("guarantorCandidates", "loans/guarantor-candidates/"),
+    {
+      params: query?.trim() ? { q: query.trim() } : {},
+    }
+  );
   return unwrapList<GuarantorCandidate>(res.data);
 }
 
@@ -504,13 +836,125 @@ export async function requestLoan(
     member_note: payload.member_note ?? "",
   };
 
-  const res = await api.post(ENDPOINTS.loans.request, body);
+  const res = await api.post(loanEndpoint("request", "loans/request/"), body);
   return res.data;
 }
 
 export async function getLoanDetail(loanId: number | string): Promise<Loan> {
-  const res = await api.get(ENDPOINTS.loans.detail(loanId));
+  const res = await api.get(
+    loanEndpoint("detail", (id) => `loans/loan/${id}/`, loanId)
+  );
   return res.data;
+}
+
+/* =========================================================
+   Admin loans
+========================================================= */
+
+export async function getAdminLoans(params?: AdminLoansParams): Promise<Loan[]> {
+  const cleanedParams: Record<string, string> = {};
+
+  if (params?.status && params.status !== "ALL") {
+    cleanedParams.status = String(params.status);
+  }
+
+  if (params?.q?.trim()) {
+    cleanedParams.q = params.q.trim();
+  }
+
+  const res = await api.get(loanEndpoint("adminLoans", "loans/admin/loans/"), {
+    params: cleanedParams,
+  });
+
+  return unwrapList<Loan>(res.data);
+}
+
+export async function approveLoan(
+  loanId: number | string
+): Promise<ApproveLoanResponse> {
+  const res = await api.patch(
+    loanEndpoint("approve", (id) => `loans/loan/${id}/approve/`, loanId)
+  );
+  return res.data;
+}
+
+export async function disburseLoan(
+  loanId: number | string
+): Promise<DisburseLoanResponse> {
+  const res = await api.patch(
+    loanEndpoint("disburse", (id) => `loans/loan/${id}/disburse/`, loanId)
+  );
+  return res.data;
+}
+
+export async function rejectLoan(
+  loanId: number | string,
+  rejectionReason: string
+): Promise<RejectLoanResponse> {
+  const res = await api.patch(
+    loanEndpoint("reject", (id) => `loans/loan/${id}/reject/`, loanId),
+    {
+      rejection_reason: rejectionReason,
+    }
+  );
+  return res.data;
+}
+
+/* =========================================================
+   Loan reminders
+========================================================= */
+
+export async function getLoanReminderPreview(
+  loanId: number | string,
+  installmentId?: number | string
+): Promise<LoanReminderPreview> {
+  const params =
+    installmentId != null && String(installmentId).trim()
+      ? { installment_id: String(installmentId) }
+      : {};
+
+  const res = await api.get(
+    loanEndpoint(
+      "reminderPreview",
+      (id) => `loans/loan/${id}/reminder-preview/`,
+      loanId
+    ),
+    { params }
+  );
+
+  return res.data;
+}
+
+export async function sendLoanReminder(
+  loanId: number | string,
+  payload: SendLoanReminderPayload = {}
+): Promise<SendLoanReminderResponse> {
+  const body = {
+    installment_id: payload.installment_id,
+    channel: payload.channel || "PUSH",
+    message: payload.message ?? "",
+    reminder_type: payload.reminder_type,
+  };
+
+  const res = await api.post(
+    loanEndpoint(
+      "sendReminder",
+      (id) => `loans/loan/${id}/send-reminder/`,
+      loanId
+    ),
+    body
+  );
+
+  return res.data;
+}
+
+export async function getLoanReminderLogs(
+  loanId: number | string
+): Promise<LoanReminderLog[]> {
+  const res = await api.get(
+    loanEndpoint("reminderLogs", (id) => `loans/loan/${id}/reminders/`, loanId)
+  );
+  return unwrapList<LoanReminderLog>(res.data);
 }
 
 /* =========================================================
@@ -526,47 +970,43 @@ export async function addGuarantor(
     request_note: payload.request_note ?? "",
   };
 
-  const res = await api.post(ENDPOINTS.loans.addGuarantor, body);
+  const res = await api.post(
+    loanEndpoint("addGuarantor", "loans/loan/add-guarantor/"),
+    body
+  );
   return res.data;
 }
 
 export async function getMyGuaranteeRequests(): Promise<LoanGuarantor[]> {
-  const res = await api.get(ENDPOINTS.loans.myGuaranteeRequests);
+  const res = await api.get(
+    loanEndpoint("myGuaranteeRequests", "loans/guarantee/my-requests/")
+  );
   return unwrapList<LoanGuarantor>(res.data);
 }
 
 export async function acceptGuarantee(
   guarantorId: number | string
 ): Promise<{ message: string; note?: string }> {
-  const res = await api.patch(ENDPOINTS.loans.acceptGuarantee(guarantorId));
+  const res = await api.patch(
+    loanEndpoint(
+      "acceptGuarantee",
+      (id) => `loans/guarantee/${id}/accept/`,
+      guarantorId
+    )
+  );
   return res.data;
 }
 
 export async function rejectGuarantee(
   guarantorId: number | string
 ): Promise<{ message: string }> {
-  const res = await api.patch(ENDPOINTS.loans.rejectGuarantee(guarantorId));
-  return res.data;
-}
-
-/* =========================================================
-   Admin approval / rejection
-========================================================= */
-
-export async function approveLoan(
-  loanId: number | string
-): Promise<ApproveLoanResponse> {
-  const res = await api.patch(ENDPOINTS.loans.approve(loanId));
-  return res.data;
-}
-
-export async function rejectLoan(
-  loanId: number | string,
-  rejectionReason: string
-): Promise<RejectLoanResponse> {
-  const res = await api.patch(ENDPOINTS.loans.reject(loanId), {
-    rejection_reason: rejectionReason,
-  });
+  const res = await api.patch(
+    loanEndpoint(
+      "rejectGuarantee",
+      (id) => `loans/guarantee/${id}/reject/`,
+      guarantorId
+    )
+  );
   return res.data;
 }
 
@@ -584,7 +1024,10 @@ export async function payLoan(
     reference: payload.reference ?? "",
   };
 
-  const res = await api.post(ENDPOINTS.loans.pay(loanId), body);
+  const res = await api.post(
+    loanEndpoint("pay", (id) => `loans/loan/${id}/pay/`, loanId),
+    body
+  );
   return res.data;
 }
 
@@ -597,12 +1040,12 @@ export async function stkRepayLoan(
 ): Promise<StkPushResponse> {
   const borrowerUserId = toPositiveInt(payload.borrower_user_id);
   if (!borrowerUserId) {
-    throw new Error("A valid borrower user id is required for STK loan repayment.");
+    throw new Error("A valid member id is required for this contribution.");
   }
 
   const amount = normalizeMoneyInput(payload.amount);
   if (!amount || Number(amount) <= 0) {
-    throw new Error("A valid repayment amount is required.");
+    throw new Error("A valid amount is required.");
   }
 
   const body = {
@@ -634,6 +1077,29 @@ export function canAddGuarantor(loan?: Loan | null) {
   return s === "PENDING" || s === "UNDER_REVIEW";
 }
 
+export function canApproveLoan(loan?: Loan | null) {
+  if (!loan) return false;
+  const s = String(loan.status || "").toUpperCase();
+  return s === "PENDING" || s === "UNDER_REVIEW";
+}
+
+export function canDisburseLoan(loan?: Loan | null) {
+  if (!loan) return false;
+  return String(loan.status || "").toUpperCase() === "APPROVED";
+}
+
+export function canRejectLoan(loan?: Loan | null) {
+  if (!loan) return false;
+  const s = String(loan.status || "").toUpperCase();
+  return s === "PENDING" || s === "UNDER_REVIEW" || s === "APPROVED";
+}
+
+export function canSendLoanReminder(loan?: Loan | null) {
+  if (!loan) return false;
+  const s = String(loan.status || "").toUpperCase();
+  return ["APPROVED", "DISBURSED", "UNDER_REPAYMENT", "DEFAULTED"].includes(s);
+}
+
 export function canPayLoan(loan?: Loan | null) {
   if (!loan) return false;
   return (
@@ -657,8 +1123,15 @@ export function getLoanSecuritySummary(loan?: Loan | null) {
     ? `KES ${toNumber(loan.security_reserved_total).toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-      })} reserved`
-    : "No reserved security";
+      })} reserved cover`
+    : "No reserved cover";
+}
+
+export function getLoanDefaultSummary(loan?: Loan | null) {
+  if (!loan) return "No late addition";
+  const defaultInterest = toNumber(loan.default_interest_total);
+  if (defaultInterest <= 0) return "No late addition";
+  return `${fmtKES(defaultInterest)} late addition`;
 }
 
 /* =========================================================

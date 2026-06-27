@@ -55,7 +55,7 @@ const REFRESH_KEY = "refresh_token";
 ============================================================ */
 export const api = axios.create({
   baseURL: BASE_URL || undefined,
-  timeout: 20000,
+  timeout: 120000,
   headers: {
     Accept: "application/json",
     // NOTE:
